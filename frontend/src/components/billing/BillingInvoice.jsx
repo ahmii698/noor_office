@@ -18,7 +18,7 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState('grid'); // grid or list
+  const [viewMode, setViewMode] = useState('grid');
 
   const groupedServices = services.reduce((acc, service) => {
     if (!acc[service.category]) acc[service.category] = [];
@@ -26,7 +26,6 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
     return acc;
   }, {});
 
-  // Filter services by search
   const filteredServices = searchTerm ? 
     services.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())) :
     services;
@@ -50,7 +49,7 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
     }
     
     setCart([...cart, { ...service, quantity: 1 }]);
-    toast.success(`${service.name} added`, { icon: '✅' });
+    toast.success(`${service.name} added`);
   };
 
   const updateQuantity = (id, newQuantity) => {
@@ -74,60 +73,157 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
   const isFullyPaid = remainingAmount <= 0;
 
   const printBill = () => {
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
+    const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+    
+    if (!printWindow) {
+      toast.error('Please allow popups to print bill');
+      return;
+    }
+    
+    const printContent = `
       <!DOCTYPE html>
       <html>
         <head>
           <title>Noorani Car AC - Invoice</title>
+          <meta charset="UTF-8">
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             body { 
-              font-family: 'Segoe UI', 'Poppins', Arial, sans-serif; 
-              margin: 40px; 
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              min-height: 100vh;
+              font-family: 'Segoe UI', Arial, sans-serif; 
+              margin: 0;
+              padding: 20px;
+              background: #eef2f5;
             }
             .invoice-container { 
               max-width: 800px; 
               margin: 0 auto; 
               background: white;
-              border-radius: 20px;
-              box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+              border-radius: 16px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.1);
               overflow: hidden;
             }
             .header { 
-              background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+              background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
               color: white;
-              padding: 30px;
+              padding: 25px;
               text-align: center;
             }
-            .logo { font-size: 32px; font-weight: bold; }
-            .subtitle { opacity: 0.8; margin-top: 5px; }
+            .logo-img {
+              width: 70px;
+              height: 70px;
+              border-radius: 50%;
+              margin-bottom: 12px;
+              border: 3px solid #ef4444;
+              object-fit: cover;
+            }
+            .shop-name { font-size: 24px; font-weight: bold; letter-spacing: 1px; }
+            .subtitle { opacity: 0.8; margin-top: 5px; font-size: 12px; }
+            .contact-info { font-size: 11px; margin-top: 8px; opacity: 0.7; }
             .customer-info { 
               margin: 20px; 
-              padding: 20px; 
-              background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-              border-radius: 15px;
+              padding: 18px; 
+              background: #fff5f5;
+              border-radius: 12px;
+              border-left: 4px solid #ef4444;
             }
-            .customer-info h4 { margin-bottom: 15px; color: #1a1a2e; }
-            .invoice-details { display: flex; justify-content: space-between; margin: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px; }
-            table { width: 100%; border-collapse: collapse; margin: 20px; width: calc(100% - 40px); }
-            th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-            th { background: #1a1a2e; color: white; }
-            .payment-details { margin: 20px; padding: 20px; background: #e8f4f8; border-radius: 15px; }
-            .total-row { font-size: 24px; font-weight: bold; text-align: right; margin: 20px; padding-top: 15px; border-top: 2px solid #333; }
-            .footer { text-align: center; padding: 20px; background: #1a1a2e; color: white; }
-            .signature { margin: 20px; display: flex; justify-content: space-between; padding-top: 40px; }
+            .customer-info h4 { margin-bottom: 12px; color: #991b1b; font-size: 14px; }
+            .customer-info p { margin: 6px 0; font-size: 13px; color: #333; }
+            .invoice-details { 
+              display: flex; 
+              justify-content: space-between; 
+              margin: 20px; 
+              padding: 12px 15px; 
+              background: #f8f9fa; 
+              border-radius: 8px; 
+              font-size: 13px;
+            }
+            table { 
+              width: calc(100% - 40px); 
+              margin: 20px; 
+              border-collapse: collapse; 
+            }
+            th, td { 
+              border: 1px solid #e5e7eb; 
+              padding: 10px 12px; 
+              text-align: left; 
+              font-size: 13px;
+            }
+            th { 
+              background: #111827; 
+              color: white; 
+              font-weight: 600;
+            }
+            .payment-details { 
+              margin: 20px; 
+              padding: 18px; 
+              background: #f0fdf4; 
+              border-radius: 12px;
+              border-left: 4px solid #22c55e;
+            }
+            .payment-details h4 { margin-bottom: 12px; color: #166534; font-size: 14px; }
+            .payment-details p { margin: 6px 0; font-size: 13px; }
+            .total-row { 
+              font-size: 20px; 
+              font-weight: bold; 
+              text-align: right; 
+              margin: 20px; 
+              padding-top: 12px; 
+              border-top: 2px solid #e5e7eb; 
+              color: #dc2626;
+            }
+            .footer { 
+              text-align: center; 
+              padding: 18px; 
+              background: #111827; 
+              color: white; 
+              font-size: 12px;
+            }
+            .signature { 
+              margin: 20px; 
+              display: flex; 
+              justify-content: space-between; 
+              padding-top: 30px;
+              font-size: 12px;
+            }
+            .print-actions {
+              text-align: center;
+              margin-top: 20px;
+              padding: 15px;
+              background: white;
+              border-radius: 12px;
+              max-width: 800px;
+              margin-left: auto;
+              margin-right: auto;
+            }
+            .print-btn, .close-btn {
+              padding: 10px 24px;
+              border: none;
+              border-radius: 8px;
+              cursor: pointer;
+              font-size: 14px;
+              font-weight: 500;
+              margin: 0 8px;
+            }
+            .print-btn { background: #ef4444; color: white; }
+            .close-btn { background: #6b7280; color: white; }
+            .print-btn:hover { background: #dc2626; }
+            .close-btn:hover { background: #4b5563; }
+            @media print {
+              body { background: white; padding: 0; }
+              .print-actions { display: none; }
+              .invoice-container { box-shadow: none; margin: 0; }
+            }
           </style>
         </head>
         <body>
           <div class="invoice-container">
             <div class="header">
-              <div class="logo">❄️ NOORANI CAR A/C & AUTOS</div>
+              <img src="/logo.jpg" alt="Noorani Logo" class="logo-img" onerror="this.style.display='none'" />
+              <div class="shop-name">❄️ NOORANI CAR A/C & AUTOS</div>
               <p class="subtitle">Professional Auto Care Service</p>
-              <p>123 Main Street, City | Phone: +92 300 1234567</p>
+              <p class="contact-info">123 Main Street, City | Phone: +92 300 1234567</p>
             </div>
+            
             <div class="customer-info">
               <h4>📋 CUSTOMER INFORMATION</h4>
               <p><strong>Name:</strong> ${customerDetails.name}</p>
@@ -135,12 +231,16 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
               <p><strong>Car Number:</strong> ${customerDetails.carNumber}</p>
               <p><strong>Car Model:</strong> ${customerDetails.carModel || 'N/A'}</p>
             </div>
+            
             <div class="invoice-details">
               <p><strong>Invoice #:</strong> INV-${Date.now()}</p>
               <p><strong>Date:</strong> ${customerDetails.date}</p>
             </div>
+            
             <table>
-              <thead><tr><th>#</th><th>Service</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead>
+              <thead>
+                <tr><th>#</th><th>Service</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+              </thead>
               <tbody>
                 ${cart.map((item, idx) => `
                   <tr>
@@ -153,6 +253,7 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
                 `).join('')}
               </tbody>
             </table>
+            
             <div class="payment-details">
               <h4>💰 PAYMENT DETAILS</h4>
               <p><strong>Subtotal:</strong> Rs. ${billTotal.toLocaleString()}</p>
@@ -161,19 +262,36 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
               <p><strong>Remaining Balance:</strong> Rs. ${remainingAmount.toLocaleString()}</p>
               <p><strong>Payment Status:</strong> ${isFullyPaid ? '✅ FULLY PAID' : '⚠️ PENDING'}</p>
             </div>
+            
             <div class="total-row">Total: Rs. ${billTotal.toLocaleString()}</div>
+            
             <div class="signature">
               <p>Customer Signature: _________________</p>
               <p>Authorized Signature: _________________</p>
             </div>
+            
             <div class="footer">Thank you for choosing Noorani Car AC & Autos! Drive Safe 🚗</div>
           </div>
+          
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">🖨️ Print Bill</button>
+            <button class="close-btn" onclick="window.close()">❌ Close</button>
+          </div>
+          
+          <script>
+            // Auto trigger print after page loads
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          </script>
         </body>
       </html>
-    `);
-    printWindow.print();
-    printWindow.close();
-    toast.success('Bill printed');
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+    toast.success('Print preview opened');
   };
 
   const exportToExcel = () => {
@@ -300,7 +418,7 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
     setPaymentAmount('');
     setPaymentMethod('cash');
     
-    toast.success(`Payment successful! ${isFullyPaid ? 'Bill fully paid' : 'Partial payment received'}`, { icon: '🎉' });
+    toast.success(`Payment successful! ${isFullyPaid ? 'Bill fully paid' : 'Partial payment received'}`);
   };
 
   return (

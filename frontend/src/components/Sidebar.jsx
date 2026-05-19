@@ -9,7 +9,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   
   const menuItems = [
-    { id: 'all-data', label: 'All Data', icon: FiHome, path: '/all-data' },
+    { id: 'all-data', label: 'Dashboard', icon: FiHome, path: '/dashboard' },
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },

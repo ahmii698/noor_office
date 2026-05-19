@@ -6,6 +6,7 @@ import { HiMenu, HiX } from 'react-icons/hi';
 const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => {
   const [logoExists, setLogoExists] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   
   const menuItems = [
     { id: 'all-data', label: 'All Data', icon: FiHome, path: '/all-data' },
@@ -21,6 +22,24 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'finance-charts', label: 'Charts', icon: FiPieChart, path: '/finance-charts' },
     { id: 'finance-reports', label: 'Reports', icon: FiBarChart2, path: '/finance-reports' },
   ];
+
+  // Check window size for mobile detection
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+      // Auto close sidebar on mobile when resizing to mobile
+      if (window.innerWidth < 1024 && isOpen) {
+        setIsOpen(false);
+      }
+      // Auto open sidebar on desktop when resizing from mobile
+      if (window.innerWidth >= 1024 && !isOpen) {
+        setIsOpen(true);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isOpen, setIsOpen]);
 
   useEffect(() => {
     const img = new Image();
@@ -47,13 +66,25 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
       }
     } else {
       setActiveMenu(item.id);
-      if (window.innerWidth < 1024) setIsOpen(false);
+      // On mobile, close sidebar after clicking a menu item
+      if (isMobile) {
+        setIsOpen(false);
+      }
     }
+  };
+
+  const toggleSidebar = () => {
+    setIsOpen(!isOpen);
   };
 
   return (
     <>
-      <div className={`fixed lg:relative z-40 bg-black shadow-2xl transition-all duration-300 h-full ${isOpen ? 'w-72' : 'w-20'}`}>
+      {/* Sidebar */}
+      <div className={`
+        fixed lg:relative z-40 bg-black shadow-2xl transition-all duration-300 h-full
+        ${isOpen ? 'w-72' : 'w-20'}
+        ${isMobile && isOpen ? 'left-0' : isMobile && !isOpen ? '-left-72' : ''}
+      `}>
         {/* Logo Section */}
         <div className={`pt-6 pb-4 px-6 border-b border-gray-800 flex justify-center ${!isOpen ? 'lg:px-2' : ''}`}>
           <div className={`flex items-center justify-center overflow-hidden transition-all duration-300 ${isOpen ? 'w-56 h-32 rounded-xl' : 'w-12 h-12 rounded-full'}`}>
@@ -101,7 +132,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                           key={subItem.id}
                           onClick={() => {
                             setActiveMenu(subItem.id);
-                            if (window.innerWidth < 1024) setIsOpen(false);
+                            if (isMobile) {
+                              setIsOpen(false);
+                            }
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-300 ${
                             activeMenu === subItem.id
@@ -122,14 +155,24 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
         </div>
       </div>
 
-      {/* Mobile Menu Toggle Button */}
-      <button onClick={() => setIsOpen(!isOpen)} className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-black rounded-lg text-white">
-        {isOpen ? <HiX className="text-2xl" /> : <HiMenu className="text-2xl" />}
+      {/* Mobile Menu Toggle Button - Always visible on mobile */}
+      <button 
+        onClick={toggleSidebar} 
+        className="lg:hidden fixed top-4 left-4 z-50 p-2.5 bg-black rounded-xl text-white shadow-lg hover:bg-gray-800 transition-all duration-300"
+        style={{ 
+          left: isOpen ? '260px' : '16px',
+          transition: 'left 0.3s ease'
+        }}
+      >
+        {isOpen ? <HiX className="text-xl" /> : <HiMenu className="text-xl" />}
       </button>
 
-      {/* Overlay for mobile */}
-      {isOpen && (
-        <div className="fixed inset-0 bg-black/70 z-30 lg:hidden" onClick={() => setIsOpen(false)} />
+      {/* Overlay for mobile - closes sidebar when clicking outside */}
+      {isMobile && isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setIsOpen(false)}
+        />
       )}
     </>
   );

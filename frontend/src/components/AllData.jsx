@@ -6,21 +6,21 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiShoppingCart, FiTrendingUp, 
   FiAlertCircle, FiCheckCircle, FiClock, FiArrowRight,
-  FiSun, FiMoon, FiLogOut, FiMenu, FiChevronLeft,
-  FiPieChart
+  FiSun, FiMoon, FiLogOut, FiMenu, FiChevronLeft
 } from 'react-icons/fi';
 
 const AllData = ({ darkMode, setDarkMode }) => {
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
-  // Sample Data
+  // Demo Data
   const totalSales = 125000;
   const totalProfit = 45000;
   const totalExpenses = 80000;
   const totalProducts = 12;
   const paidInvoices = 8;
-  const pendingInvoices = 4;
+  const partialInvoices = 2;
+  const pendingInvoices = 2;
 
   const handleLogout = () => {
     localStorage.removeItem('isLoggedIn');
@@ -89,7 +89,7 @@ const AllData = ({ darkMode, setDarkMode }) => {
           </div>
 
           {/* Content */}
-          <div className={`flex-1 overflow-y-auto p-8 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+          <div className="flex-1 overflow-y-auto p-8">
             
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
@@ -132,8 +132,8 @@ const AllData = ({ darkMode, setDarkMode }) => {
             </div>
 
             {/* Invoice Status */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6`}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
                     <FiCheckCircle className="text-green-500 text-2xl" />
@@ -144,13 +144,24 @@ const AllData = ({ darkMode, setDarkMode }) => {
                   </div>
                 </div>
               </div>
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6`}>
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                    <FiClock className="text-yellow-500 text-2xl" />
+                    <FiAlertCircle className="text-yellow-500 text-2xl" />
                   </div>
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Pending/Partial</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Partial Payments</p>
+                    <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{partialInvoices}</p>
+                  </div>
+                </div>
+              </div>
+              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <FiClock className="text-red-500 text-2xl" />
+                  </div>
+                  <div>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Pending Invoices</p>
                     <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{pendingInvoices}</p>
                   </div>
                 </div>
@@ -181,10 +192,10 @@ const AllData = ({ darkMode, setDarkMode }) => {
               </Link>
             </div>
 
-            {/* Demo Note */}
-            <div className="mt-8 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-center">
-              <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                This is demo data. Connect your backend to see real data from Inventory, Billing, Records, and Finance modules.
+            {/* Info Box */}
+            <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-center border border-blue-200 dark:border-blue-800">
+              <p className="text-sm text-blue-700 dark:text-blue-400">
+                ✅ All Data page is working! Data shown is demo data. Connect your backend to see real data.
               </p>
             </div>
           </div>

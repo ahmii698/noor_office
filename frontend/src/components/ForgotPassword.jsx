@@ -11,10 +11,8 @@ const ForgotPassword = ({ onBack }) => {
   const [resetToken, setResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showResetForm, setShowResetForm] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Send OTP
   const handleSendOTP = async (e) => {
     e.preventDefault();
     
@@ -30,21 +28,22 @@ const ForgotPassword = ({ onBack }) => {
         email: resetEmail
       });
       
-      if (response.data.otp) {
+      if (response.data.success) {
         setResetToken(response.data.token);
         setOtpSent(true);
-        toast.success(`OTP sent to ${resetEmail}`);
-        // Show OTP in toast for demo (in production, remove this)
-        toast.info(`Demo OTP: ${response.data.otp}`, { duration: 10000 });
+        toast.success(response.data.message || `OTP sent to ${resetEmail}`);
+      } else {
+        toast.error(response.data.message || 'Failed to send OTP');
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Email not found');
+      console.error('Forgot password error:', error);
+      const message = error.response?.data?.message || 'Email not found or server error';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Verify OTP and Reset Password
   const handleVerifyAndReset = async (e) => {
     e.preventDefault();
     
@@ -66,19 +65,38 @@ const ForgotPassword = ({ onBack }) => {
     setLoading(true);
     
     try {
-      // First verify OTP (optional - backend can combine)
-      // Then reset password
-      const response = await api.post('/reset-password', {
+      // First verify OTP
+      const verifyResponse = await api.post('/verify-otp', {
         email: resetEmail,
-        token: resetToken,
+        otp: otpCode
+      });
+      
+      if (!verifyResponse.data.success) {
+        toast.error(verifyResponse.data.message || 'Invalid OTP');
+        setLoading(false);
+        return;
+      }
+      
+      const token = verifyResponse.data.token;
+      
+      // Then reset password
+      const resetResponse = await api.post('/reset-password', {
+        email: resetEmail,
+        token: token,
         password: newPassword,
         password_confirmation: confirmPassword
       });
       
-      toast.success('Password reset successful! Please login');
-      onBack();
+      if (resetResponse.data.success) {
+        toast.success(resetResponse.data.message || 'Password reset successful! Please login');
+        onBack();
+      } else {
+        toast.error(resetResponse.data.message || 'Reset failed');
+      }
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Reset failed');
+      console.error('Reset error:', error);
+      const message = error.response?.data?.message || 'Reset failed. Please try again.';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -125,7 +143,14 @@ const ForgotPassword = ({ onBack }) => {
                   disabled={loading}
                   className="w-full bg-red-600 text-white font-semibold py-3 rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Sending...' : 'Send OTP'}
+                  {loading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Sending...
+                    </>
+                  ) : (
+                    'Send OTP'
+                  )}
                 </button>
 
                 <button
@@ -186,7 +211,16 @@ const ForgotPassword = ({ onBack }) => {
                   disabled={loading}
                   className="w-full bg-red-600 text-white font-semibold py-3 rounded-lg hover:bg-red-700 transition flex items-center justify-center gap-2"
                 >
-                  <FiCheckCircle /> {loading ? 'Resetting...' : 'Reset Password'}
+                  {loading ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Resetting...
+                    </>
+                  ) : (
+                    <>
+                      <FiCheckCircle /> Reset Password
+                    </>
+                  )}
                 </button>
 
                 <button

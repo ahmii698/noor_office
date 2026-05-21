@@ -3,20 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\PasswordReset;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 
 class AuthController extends Controller
 {
     public function login(Request $request)
     {
         try {
-            // Log login attempt
-            Log::info('Login attempt', ['email' => $request->email]);
-            
             $request->validate([
                 'email' => 'required|email',
                 'password' => 'required'
@@ -25,55 +23,24 @@ class AuthController extends Controller
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
-                Log::warning('Login failed: User not found', ['email' => $request->email]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'Account not found. Please check your email address.'
+                    'message' => 'Account not found'
                 ], 401);
             }
 
-            // Check password - supports both bcrypt and plain text
-            $passwordValid = false;
-            
-            // If password is already hashed (starts with $2y$)
-            if (str_starts_with($user->password, '$2y$')) {
-                $passwordValid = Hash::check($request->password, $user->password);
-            } else {
-                // Plain text password (from manual insert)
-                $passwordValid = ($user->password === $request->password);
-                
-                // Update to hashed password for next time
-                if ($passwordValid) {
-                    $user->password = Hash::make($request->password);
-                    $user->save();
-                    Log::info('Password hashed for user', ['email' => $request->email]);
-                }
-            }
-
-            if (!$passwordValid) {
-                Log::warning('Login failed: Invalid password', ['email' => $request->email]);
+            if (!Hash::check($request->password, $user->password)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Wrong password! Please try again.'
+                    'message' => 'Wrong password!'
                 ], 401);
             }
 
-            // Delete old tokens
-            try {
-                $user->tokens()->delete();
-            } catch (\Exception $e) {
-                // Token table might not exist, continue anyway
-                Log::warning('Could not delete tokens: ' . $e->getMessage());
-            }
-            
-            // Create new token
             $token = $user->createToken('auth_token')->plainTextToken;
-
-            Log::info('Login successful', ['email' => $request->email, 'user_id' => $user->id]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Login successful! Welcome back.',
+                'message' => 'Login successful',
                 'user' => [
                     'id' => $user->id,
                     'name' => $user->name,
@@ -82,35 +49,10 @@ class AuthController extends Controller
                 ],
                 'token' => $token
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Please provide valid email and password.',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error('Login error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Server error. Please try again later.'
-            ], 500);
-        }
-    }
-
-    public function logout(Request $request)
-    {
-        try {
-            if ($request->user()) {
-                $request->user()->currentAccessToken()->delete();
-            }
-            return response()->json([
-                'success' => true,
-                'message' => 'Logged out successfully'
-            ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Logout failed: ' . $e->getMessage()
+                'message' => 'Login failed'
             ], 500);
         }
     }
@@ -126,7 +68,7 @@ class AuthController extends Controller
             if (!$user) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Email not found. Please check your email address.'
+                    'message' => 'Email not found'
                 ], 404);
             }
 
@@ -134,28 +76,71 @@ class AuthController extends Controller
             $token = Str::random(60);
 
             // Delete old reset requests
-            PasswordReset::where('email', $request->email)->delete();
+            DB::table('password_resets')->where('email', $request->email)->delete();
             
             // Create new reset request
-            PasswordReset::create([
+            DB::table('password_resets')->insert([
                 'email' => $request->email,
                 'token' => $token,
                 'otp' => $otp,
-                'expires_at' => now()->addMinutes(30)
+                'expires_at' => now()->addMinutes(30),
+                'created_at' => now()
             ]);
 
-            // In production, send email here
+            // Send email with OTP
+            $this->sendOtpEmail($request->email, $user->name, $otp);
+
             return response()->json([
                 'success' => true,
-                'message' => 'OTP sent successfully to your email.',
-                'otp' => $otp, // Remove in production
+                'message' => 'OTP sent successfully to your email',
                 'token' => $token
             ]);
+            
         } catch (\Exception $e) {
+            Log::error('Forgot password error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to send OTP. Please try again.'
+                'message' => 'Failed to send OTP: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    private function sendOtpEmail($email, $name, $otp)
+    {
+        try {
+            $html = "
+            <html>
+            <head><title>Password Reset OTP</title></head>
+            <body style='font-family: Arial, sans-serif;'>
+                <div style='max-width: 500px; margin: 0 auto; padding: 20px;'>
+                    <div style='background: #ef4444; color: white; padding: 20px; text-align: center;'>
+                        <h2>❄️ NOORANI CAR AC & AUTOS</h2>
+                    </div>
+                    <div style='padding: 20px; text-align: center;'>
+                        <h3>Hello " . $name . ",</h3>
+                        <p>You requested to reset your password. Use the following OTP code:</p>
+                        <div style='font-size: 32px; font-weight: bold; color: #ef4444; letter-spacing: 5px; margin: 20px 0;'>
+                            " . $otp . "
+                        </div>
+                        <p>This OTP is valid for 30 minutes.</p>
+                        <p>If you didn't request this, please ignore this email.</p>
+                    </div>
+                    <div style='text-align: center; padding: 20px; color: #666; font-size: 12px;'>
+                        <p>Noorani Car AC & Autos | Professional Auto Care Service</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            ";
+
+            Mail::html($html, function ($message) use ($email) {
+                $message->to($email)
+                        ->subject('Password Reset OTP - Noorani Car AC');
+            });
+            
+            Log::info('OTP email sent to: ' . $email);
+        } catch (\Exception $e) {
+            Log::error('Mail send failed: ' . $e->getMessage());
         }
     }
 
@@ -167,7 +152,8 @@ class AuthController extends Controller
                 'otp' => 'required|string|size:6'
             ]);
 
-            $reset = PasswordReset::where('email', $request->email)
+            $reset = DB::table('password_resets')
+                ->where('email', $request->email)
                 ->where('otp', $request->otp)
                 ->where('expires_at', '>', now())
                 ->first();
@@ -175,19 +161,19 @@ class AuthController extends Controller
             if (!$reset) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid or expired OTP. Please request a new one.'
+                    'message' => 'Invalid or expired OTP'
                 ], 400);
             }
 
             return response()->json([
                 'success' => true,
-                'message' => 'OTP verified successfully.',
+                'message' => 'OTP verified successfully',
                 'token' => $reset->token
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'OTP verification failed. Please try again.'
+                'message' => 'OTP verification failed'
             ], 500);
         }
     }
@@ -201,7 +187,8 @@ class AuthController extends Controller
                 'password' => 'required|min:4|confirmed'
             ]);
 
-            $reset = PasswordReset::where('email', $request->email)
+            $reset = DB::table('password_resets')
+                ->where('email', $request->email)
                 ->where('token', $request->token)
                 ->where('expires_at', '>', now())
                 ->first();
@@ -209,69 +196,25 @@ class AuthController extends Controller
             if (!$reset) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid or expired token. Please request a new password reset.'
+                    'message' => 'Invalid or expired token'
                 ], 400);
             }
 
             $user = User::where('email', $request->email)->first();
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'User not found.'
-                ], 404);
-            }
-
-            // Update password with bcrypt hash
             $user->password = Hash::make($request->password);
             $user->save();
 
-            // Delete all reset requests for this email
-            PasswordReset::where('email', $request->email)->delete();
-            
-            // Delete all user tokens (force re-login)
-            try {
-                $user->tokens()->delete();
-            } catch (\Exception $e) {
-                // Token table might not exist
-            }
+            DB::table('password_resets')->where('email', $request->email)->delete();
+            $user->tokens()->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Password reset successful! Please login with your new password.'
+                'message' => 'Password reset successful! Please login.'
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Password reset failed. Please try again.'
-            ], 500);
-        }
-    }
-    
-    // Get authenticated user
-    public function me(Request $request)
-    {
-        try {
-            $user = $request->user();
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthenticated. Please login again.'
-                ], 401);
-            }
-            
-            return response()->json([
-                'success' => true,
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->role
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to get user information.'
+                'message' => 'Password reset failed'
             ], 500);
         }
     }

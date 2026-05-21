@@ -160,7 +160,7 @@ class InvoiceController extends Controller
                 'status' => $status
             ]);
 
-            // Create invoice items and update stock
+            // Create invoice items - NO PRODUCT STOCK UPDATE HERE
             foreach ($request->items as $item) {
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
@@ -172,13 +172,8 @@ class InvoiceController extends Controller
                     'total' => $item['price'] * $item['quantity']
                 ]);
 
-                // Update product stock
-                $product = Product::find($item['id']);
-                if ($product) {
-                    $newQuantity = $product->quantity - $item['quantity'];
-                    $product->quantity = $newQuantity >= 0 ? $newQuantity : 0;
-                    $product->save();
-                }
+                // ❌ PRODUCT STOCK UPDATE REMOVED - BillingInvoice already handles this
+                // Stock is updated by BillingInvoice component before calling this API
             }
 
             DB::commit();

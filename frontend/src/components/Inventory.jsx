@@ -1,5 +1,5 @@
 // src/components/Inventory.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -7,13 +7,22 @@ import 'jspdf-autotable';
 import { 
   FiSearch, FiX, FiPlus, FiFileText, FiDownload, 
   FiEdit2, FiPackage, FiDollarSign, FiTrendingUp,
-  FiShoppingCart, FiBarChart2, FiCheckCircle, FiAlertCircle
+  FiShoppingCart, FiBarChart2, FiCheckCircle, FiAlertCircle,
+  FiLoader
 } from 'react-icons/fi';
+import api from '../services/api';
 
-const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
+const Inventory = ({ darkMode }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState([]);
+  const [weeklyStats, setWeeklyStats] = useState({
+    totalPurchase: 0,
+    totalSelling: 0,
+    totalProfit: 0
+  });
   const [formData, setFormData] = useState({
     name: '',
     purchasePrice: '',
@@ -23,36 +32,95 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
   
   const [editingCell, setEditingCell] = useState({ productId: null, field: null, value: '' });
 
-  const getStartOfWeek = () => {
-    const today = new Date();
-    const day = today.getDay();
-    const diff = (day === 0 ? 6 : day - 1);
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - diff);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
+  // Fetch products from API
+  const fetchProducts = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/products');
+      if (response.data && Array.isArray(response.data)) {
+        setProducts(response.data);
+        calculateWeeklyStats(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      toast.error('Failed to load products');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const weeklyStats = products.reduce((acc, product) => {
-    const isThisWeek = product.dateAdded ? new Date(product.dateAdded) >= getStartOfWeek() : true;
+  // Calculate weekly stats
+  const calculateWeeklyStats = (productsList) => {
+    const getStartOfWeek = () => {
+      const today = new Date();
+      const day = today.getDay();
+      const diff = (day === 0 ? 6 : day - 1);
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - diff);
+      monday.setHours(0, 0, 0, 0);
+      return monday;
+    };
+
+    const stats = productsList.reduce((acc, product) => {
+      const isThisWeek = product.date_added ? new Date(product.date_added) >= getStartOfWeek() : true;
+      
+      if (isThisWeek) {
+        acc.totalPurchase += product.purchase_price * product.quantity;
+        acc.totalSelling += product.selling_price * product.quantity;
+        acc.totalProfit += (product.selling_price - product.purchase_price) * product.quantity;
+      }
+      return acc;
+    }, { totalPurchase: 0, totalSelling: 0, totalProfit: 0 });
     
-    if (isThisWeek) {
-      acc.totalPurchase += product.purchasePrice * product.quantity;
-      acc.totalSelling += product.sellingPrice * product.quantity;
-      acc.totalProfit += (product.sellingPrice - product.purchasePrice) * product.quantity;
+    setWeeklyStats(stats);
+  };
+
+  // Add new product
+  const handleAddProduct = async (productData) => {
+    try {
+      const response = await api.post('/products', productData);
+      if (response.data) {
+        toast.success('Product added successfully!');
+        fetchProducts(); // Refresh list
+        return true;
+      }
+    } catch (error) {
+      console.error('Error adding product:', error);
+      toast.error(error.response?.data?.message || 'Failed to add product');
+      return false;
     }
-    return acc;
-  }, { totalPurchase: 0, totalSelling: 0, totalProfit: 0 });
+  };
+
+  // Update product
+  const handleUpdateProduct = async (id, productData) => {
+    try {
+      const response = await api.put(`/products/${id}`, productData);
+      if (response.data) {
+        toast.success('Product updated successfully!');
+        fetchProducts(); // Refresh list
+        return true;
+      }
+    } catch (error) {
+      console.error('Error updating product:', error);
+      toast.error(error.response?.data?.message || 'Failed to update product');
+      return false;
+    }
+  };
+
+  // Load products on component mount
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
   const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase())
+    product.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const exportToExcel = (data, filename) => {
     const exportData = data.map(p => ({
       'Product': p.name,
-      'Purchase Price': `Rs. ${p.purchasePrice.toLocaleString()}`,
-      'Selling Price': `Rs. ${p.sellingPrice.toLocaleString()}`,
+      'Purchase Price': `Rs. ${p.purchase_price.toLocaleString()}`,
+      'Selling Price': `Rs. ${p.selling_price.toLocaleString()}`,
       'Stock': p.quantity
     }));
     
@@ -70,8 +138,8 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
       head: [['Product', 'Purchase Price', 'Selling Price', 'Stock']],
       body: data.map(p => [
         p.name,
-        `Rs. ${p.purchasePrice.toLocaleString()}`,
-        `Rs. ${p.sellingPrice.toLocaleString()}`,
+        `Rs. ${p.purchase_price.toLocaleString()}`,
+        `Rs. ${p.selling_price.toLocaleString()}`,
         p.quantity
       ]),
       startY: 20,
@@ -87,7 +155,7 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!formData.name || !formData.purchasePrice || !formData.sellingPrice || !formData.quantity) {
@@ -109,34 +177,31 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
       return;
     }
 
-    const newProduct = {
-      id: Date.now(),
+    const success = await handleAddProduct({
       name: formData.name,
       purchasePrice: purchasePriceNum,
       sellingPrice: sellingPriceNum,
-      quantity: quantityNum,
-      dateAdded: new Date().toISOString()
-    };
+      quantity: quantityNum
+    });
 
-    onAddProduct(newProduct);
-    toast.success('Product added successfully!');
-    
-    setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
-    setIsModalOpen(false);
+    if (success) {
+      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
+      setIsModalOpen(false);
+    }
   };
 
   const handleEditProduct = (product) => {
     setEditingProduct(product);
     setFormData({
       name: product.name,
-      purchasePrice: product.purchasePrice,
-      sellingPrice: product.sellingPrice,
+      purchasePrice: product.purchase_price,
+      sellingPrice: product.selling_price,
       quantity: product.quantity
     });
     setIsModalOpen(true);
   };
 
-  const handleUpdateSubmit = (e) => {
+  const handleUpdateSubmit = async (e) => {
     e.preventDefault();
     
     if (!formData.name || !formData.purchasePrice || !formData.sellingPrice || !formData.quantity) {
@@ -153,20 +218,18 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
       return;
     }
 
-    const updatedProduct = {
-      ...editingProduct,
+    const success = await handleUpdateProduct(editingProduct.id, {
       name: formData.name,
-      purchasePrice: purchasePriceNum,
-      sellingPrice: sellingPriceNum,
+      purchase_price: purchasePriceNum,
+      selling_price: sellingPriceNum,
       quantity: quantityNum
-    };
+    });
 
-    onUpdateProduct(updatedProduct);
-    toast.success('Product updated successfully!');
-    
-    setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
-    setEditingProduct(null);
-    setIsModalOpen(false);
+    if (success) {
+      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
+      setEditingProduct(null);
+      setIsModalOpen(false);
+    }
   };
 
   const startInlineEdit = (productId, field, currentValue) => {
@@ -177,7 +240,7 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
     });
   };
 
-  const saveInlineEdit = (productId, field) => {
+  const saveInlineEdit = async (productId, field) => {
     let newValue;
     if (field === 'name') {
       newValue = editingCell.value.trim();
@@ -203,16 +266,33 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
     }
 
     const productToUpdate = products.find(p => p.id === productId);
-    const updatedProduct = { ...productToUpdate, [field]: newValue };
-    onUpdateProduct(updatedProduct);
+    const updateData = {
+      name: productToUpdate.name,
+      purchase_price: productToUpdate.purchase_price,
+      selling_price: productToUpdate.selling_price,
+      quantity: productToUpdate.quantity
+    };
     
-    let successMessage = '';
-    if (field === 'name') successMessage = 'Product name updated successfully!';
-    else if (field === 'quantity') successMessage = 'Stock updated successfully!';
-    else if (field === 'purchasePrice') successMessage = 'Purchase price updated successfully!';
-    else if (field === 'sellingPrice') successMessage = 'Selling price updated successfully!';
+    if (field === 'name') updateData.name = newValue;
+    else if (field === 'quantity') updateData.quantity = newValue;
+    else if (field === 'purchasePrice') updateData.purchase_price = newValue;
+    else if (field === 'sellingPrice') updateData.selling_price = newValue;
     
-    toast.success(successMessage);
+    try {
+      await api.put(`/products/${productId}`, updateData);
+      fetchProducts(); // Refresh list
+      
+      let successMessage = '';
+      if (field === 'name') successMessage = 'Product name updated successfully!';
+      else if (field === 'quantity') successMessage = 'Stock updated successfully!';
+      else if (field === 'purchasePrice') successMessage = 'Purchase price updated successfully!';
+      else if (field === 'sellingPrice') successMessage = 'Selling price updated successfully!';
+      
+      toast.success(successMessage);
+    } catch (error) {
+      console.error('Error updating product:', error);
+      toast.error('Failed to update product');
+    }
     setEditingCell({ productId: null, field: null, value: '' });
   };
 
@@ -225,14 +305,24 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
   };
 
   const formatPrice = (price) => {
-    return `Rs. ${price.toLocaleString()}`;
+    return `Rs. ${price?.toLocaleString() || 0}`;
   };
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+        <div className="text-center">
+          <FiLoader className="text-5xl text-red-500 animate-spin mx-auto mb-4" />
+          <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading inventory...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Weekly Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Purchase Total - Blue */}
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
             <div>
@@ -244,7 +334,6 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
           </div>
         </div>
         
-        {/* Selling Value - Red */}
         <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
             <div>
@@ -256,7 +345,6 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
           </div>
         </div>
         
-        {/* Profit - Green */}
         <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
             <div>
@@ -342,7 +430,6 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
               ) : (
                 filteredProducts.map(product => (
                   <tr key={product.id} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
-                    {/* Product Name Cell */}
                     <td className="px-6 py-4">
                       {editingCell.productId === product.id && editingCell.field === 'name' ? (
                         <input
@@ -360,8 +447,6 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
                         </div>
                       )}
                     </td>
-                    
-                    {/* Purchase Price Cell */}
                     <td className="px-6 py-4">
                       {editingCell.productId === product.id && editingCell.field === 'purchasePrice' ? (
                         <input
@@ -376,13 +461,11 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
                           min="0"
                         />
                       ) : (
-                        <div onDoubleClick={() => startInlineEdit(product.id, 'purchasePrice', product.purchasePrice)} className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit purchase price">
-                          {formatPrice(product.purchasePrice)}
+                        <div onDoubleClick={() => startInlineEdit(product.id, 'purchasePrice', product.purchase_price)} className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit purchase price">
+                          {formatPrice(product.purchase_price)}
                         </div>
                       )}
                     </td>
-                    
-                    {/* Selling Price Cell */}
                     <td className="px-6 py-4">
                       {editingCell.productId === product.id && editingCell.field === 'sellingPrice' ? (
                         <input
@@ -397,13 +480,11 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
                           min="0"
                         />
                       ) : (
-                        <div onDoubleClick={() => startInlineEdit(product.id, 'sellingPrice', product.sellingPrice)} className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit selling price">
-                          {formatPrice(product.sellingPrice)}
+                        <div onDoubleClick={() => startInlineEdit(product.id, 'sellingPrice', product.selling_price)} className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit selling price">
+                          {formatPrice(product.selling_price)}
                         </div>
                       )}
                     </td>
-                    
-                    {/* Stock Cell */}
                     <td className="px-6 py-4">
                       {editingCell.productId === product.id && editingCell.field === 'quantity' ? (
                         <input
@@ -428,8 +509,6 @@ const Inventory = ({ products, darkMode, onAddProduct, onUpdateProduct }) => {
                         </div>
                       )}
                     </td>
-                    
-                    {/* Actions */}
                     <td className="px-6 py-4">
                       <button onClick={() => handleEditProduct(product)} className="px-3 py-1 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-1 shadow-md">
                         <FiEdit2 className="text-xs" /> Edit

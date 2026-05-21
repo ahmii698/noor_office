@@ -1,11 +1,14 @@
 // src/components/finance/UpcomingPayments.jsx
-import React, { useState } from 'react';
-import { FiClock, FiCalendar, FiAlertCircle, FiFileText, FiDollarSign, FiUsers, FiHome, FiZap, FiPlus, FiX, FiEdit2, FiTrash2, FiSave } from 'react-icons/fi';
+import React, { useState, useEffect } from 'react';
+import { FiClock, FiCalendar, FiAlertCircle, FiFileText, FiDollarSign, FiUsers, FiHome, FiZap, FiPlus, FiX, FiEdit2, FiTrash2, FiSave, FiLoader } from 'react-icons/fi';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import api from '../../services/api';
 
-const UpcomingPayments = ({ upcomingReminders: initialReminders, darkMode, onAddReminder, onUpdateReminder, onDeleteReminder }) => {
-  const [reminders, setReminders] = useState(initialReminders || []);
+const UpcomingPayments = ({ darkMode }) => {
+  const [reminders, setReminders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingReminder, setEditingReminder] = useState(null);
   const [formData, setFormData] = useState({
@@ -22,6 +25,100 @@ const UpcomingPayments = ({ upcomingReminders: initialReminders, darkMode, onAdd
     { value: 'bill', label: 'Bill', icon: FiZap, color: 'blue' },
     { value: 'other', label: 'Other', icon: FiAlertCircle, color: 'red' }
   ];
+
+  // Fetch reminders from API
+  const fetchReminders = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/reminders');
+      if (response.data && Array.isArray(response.data)) {
+        // Transform API data to match component format
+        const transformedReminders = response.data.map(reminder => ({
+          id: reminder.id,
+          type: reminder.type,
+          date: reminder.reminder_date,
+          description: reminder.description,
+          amount: reminder.amount,
+          recurring: reminder.recurring || 'one-time'
+        }));
+        setReminders(transformedReminders);
+      } else {
+        setReminders([]);
+      }
+    } catch (err) {
+      console.error('Error fetching reminders:', err);
+      setError('Failed to load reminders. Please check your connection.');
+      toast.error('Failed to load reminders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add new reminder
+  const handleAddReminder = async (reminderData) => {
+    try {
+      const response = await api.post('/reminders', {
+        type: reminderData.type,
+        date: reminderData.date,
+        description: reminderData.description,
+        amount: reminderData.amount,
+        recurring: reminderData.recurring
+      });
+      
+      if (response.data) {
+        toast.success('Reminder added successfully!');
+        fetchReminders(); // Refresh list
+        return true;
+      }
+    } catch (err) {
+      console.error('Error adding reminder:', err);
+      toast.error(err.response?.data?.message || 'Failed to add reminder');
+      return false;
+    }
+  };
+
+  // Update reminder
+  const handleUpdateReminder = async (reminderData) => {
+    try {
+      const response = await api.put(`/reminders/${reminderData.id}`, {
+        type: reminderData.type,
+        reminder_date: reminderData.date,
+        description: reminderData.description,
+        amount: reminderData.amount,
+        recurring: reminderData.recurring
+      });
+      
+      if (response.data) {
+        toast.success('Reminder updated successfully!');
+        fetchReminders(); // Refresh list
+        return true;
+      }
+    } catch (err) {
+      console.error('Error updating reminder:', err);
+      toast.error(err.response?.data?.message || 'Failed to update reminder');
+      return false;
+    }
+  };
+
+  // Delete reminder
+  const handleDeleteReminder = async (id) => {
+    try {
+      await api.delete(`/reminders/${id}`);
+      toast.success('Reminder deleted successfully!');
+      fetchReminders(); // Refresh list
+      return true;
+    } catch (err) {
+      console.error('Error deleting reminder:', err);
+      toast.error(err.response?.data?.message || 'Failed to delete reminder');
+      return false;
+    }
+  };
+
+  // Load reminders on component mount
+  useEffect(() => {
+    fetchReminders();
+  }, []);
 
   const handleAddClick = () => {
     setEditingReminder(null);
@@ -47,14 +144,13 @@ const UpcomingPayments = ({ upcomingReminders: initialReminders, darkMode, onAdd
     setIsModalOpen(true);
   };
 
-  const handleDeleteClick = (id) => {
+  const handleDeleteClick = async (id) => {
     if (window.confirm('Are you sure you want to delete this reminder?')) {
-      onDeleteReminder(id);
-      toast.success('Reminder deleted successfully!');
+      await handleDeleteReminder(id);
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!formData.description || !formData.amount || !formData.date) {
@@ -68,33 +164,31 @@ const UpcomingPayments = ({ upcomingReminders: initialReminders, darkMode, onAdd
       return;
     }
 
+    let success;
     if (editingReminder) {
-      const updatedReminder = {
-        ...editingReminder,
+      success = await handleUpdateReminder({
+        id: editingReminder.id,
         ...formData,
         amount: amountNum
-      };
-      onUpdateReminder(updatedReminder);
-      toast.success('Reminder updated successfully!');
+      });
     } else {
-      const newReminder = {
-        id: Date.now(),
+      success = await handleAddReminder({
         ...formData,
         amount: amountNum
-      };
-      onAddReminder(newReminder);
-      toast.success('Reminder added successfully!');
+      });
     }
 
-    setIsModalOpen(false);
-    setEditingReminder(null);
-    setFormData({
-      type: 'bill',
-      date: new Date().toISOString().split('T')[0],
-      description: '',
-      amount: '',
-      recurring: 'one-time'
-    });
+    if (success) {
+      setIsModalOpen(false);
+      setEditingReminder(null);
+      setFormData({
+        type: 'bill',
+        date: new Date().toISOString().split('T')[0],
+        description: '',
+        amount: '',
+        recurring: 'one-time'
+      });
+    }
   };
 
   const getTypeIcon = (type) => {
@@ -114,6 +208,31 @@ const UpcomingPayments = ({ upcomingReminders: initialReminders, darkMode, onAdd
     };
     return colors[color] || colors.red;
   };
+
+  // Filter reminders for next 30 days
+  const getUpcomingReminders = () => {
+    const today = new Date();
+    const next30Days = new Date();
+    next30Days.setDate(today.getDate() + 30);
+    
+    return reminders.filter(r => {
+      const reminderDate = new Date(r.date);
+      return reminderDate >= today && reminderDate <= next30Days;
+    }).sort((a, b) => new Date(a.date) - new Date(b.date));
+  };
+
+  const upcomingReminders = getUpcomingReminders();
+
+  if (loading) {
+    return (
+      <div className={`min-h-[200px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className="text-center">
+          <FiLoader className="text-4xl text-red-500 animate-spin mx-auto mb-3" />
+          <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading reminders...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -147,16 +266,16 @@ const UpcomingPayments = ({ upcomingReminders: initialReminders, darkMode, onAdd
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
-              {reminders.length === 0 ? (
+              {upcomingReminders.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="px-6 py-12 text-center">
                     <FiClock className="text-6xl mx-auto text-gray-400" />
-                    <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No reminders added yet</p>
+                    <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No upcoming reminders</p>
                     <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Click "Add Reminder" to create a new reminder</p>
                    </td>
                 </tr>
               ) : (
-                reminders.map(reminder => {
+                upcomingReminders.map(reminder => {
                   const daysLeft = Math.ceil((new Date(reminder.date) - new Date()) / (1000 * 60 * 60 * 24));
                   const isOverdue = daysLeft < 0;
                   return (

@@ -1,5 +1,5 @@
 // src/components/Records.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -8,12 +8,16 @@ import {
   FiFileText, FiDownload, FiEye, FiPrinter, FiX, FiUser, 
   FiPhone, FiTool, FiPackage, FiCalendar, FiDollarSign, 
   FiCheckCircle, FiAlertCircle, FiInbox, FiList, FiClock,
-  FiSearch, FiChevronLeft, FiChevronRight, FiFilter
+  FiSearch, FiChevronLeft, FiChevronRight, FiLoader
 } from 'react-icons/fi';
+import api from '../services/api';
 
-const Records = ({ invoices, darkMode }) => {
+const Records = ({ darkMode }) => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
   // Search and Pagination States
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,7 +25,55 @@ const Records = ({ invoices, darkMode }) => {
   const [itemsPerPage] = useState(10);
   const [filterStatus, setFilterStatus] = useState('all');
 
-  // Filter invoices based on search term and status
+  // Fetch invoices from API
+  const fetchInvoices = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.get('/invoices');
+      console.log('Invoices fetched:', response.data);
+      
+      if (response.data && Array.isArray(response.data)) {
+        const transformedInvoices = response.data.map(inv => ({
+          id: inv.id,
+          invoiceNo: inv.invoice_no,
+          date: inv.invoice_date,
+          total: inv.total_amount,
+          paidAmount: inv.paid_amount,
+          remainingAmount: inv.remaining_amount,
+          paymentMethod: inv.payment_method,
+          status: inv.status,
+          customer: {
+            name: inv.customer_name,
+            phone: inv.customer_phone,
+            carNumber: inv.customer_car_number,
+            carModel: inv.customer_car_model
+          },
+          items: inv.items?.map(item => ({
+            id: item.id,
+            name: item.service_name,
+            category: item.service_category,
+            price: item.price,
+            quantity: item.quantity
+          })) || []
+        }));
+        setInvoices(transformedInvoices);
+      } else {
+        setInvoices([]);
+      }
+    } catch (err) {
+      console.error('Error fetching invoices:', err);
+      setError('Failed to load invoices. Please check your connection.');
+      toast.error('Failed to load invoices');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInvoices();
+  }, []);
+
   const filteredInvoices = invoices.filter(inv => {
     const searchMatch = 
       (inv.customer?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -39,7 +91,6 @@ const Records = ({ invoices, darkMode }) => {
     return searchMatch && statusMatch;
   });
 
-  // Pagination
   const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -153,9 +204,18 @@ const Records = ({ invoices, darkMode }) => {
               <p><strong>Date:</strong> ${new Date(selectedInvoice.date).toLocaleString()}</p>
             </div>
             <table>
-              <thead><tr><th>#</th><th>Service</th><th>Category</th><th>Price (PKR)</th></tr></thead>
+              <thead>
+                <tr><th>#</th><th>Service</th><th>Category</th><th>Price</th></tr>
+              </thead>
               <tbody>
-                ${selectedInvoice.items.map((item, idx) => `<tr><td>${idx+1}</td><td>${item.name}</td><td>${item.category || 'Service'}</td><td>Rs. ${item.price.toLocaleString()}</td></tr>`).join('')}
+                ${selectedInvoice.items.map((item, idx) => `
+                  <tr>
+                    <td>${idx+1}</td>
+                    <td>${item.name}</td>
+                    <td>${item.category || 'Service'}</td>
+                    <td>Rs. ${item.price.toLocaleString()}</td>
+                  </tr>
+                `).join('')}
               </tbody>
             </table>
             <div class="payment-details">
@@ -180,6 +240,17 @@ const Records = ({ invoices, darkMode }) => {
     printWindow.close();
     toast.success('Invoice sent to printer');
   };
+
+  if (loading) {
+    return (
+      <div className={`min-h-[400px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+        <div className="text-center">
+          <FiLoader className="text-5xl text-red-500 animate-spin mx-auto mb-4" />
+          <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading invoices...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -224,9 +295,7 @@ const Records = ({ invoices, darkMode }) => {
             <button
               onClick={() => handleFilterChange('all')}
               className={`px-3 py-2 rounded-lg text-sm transition flex items-center gap-1 ${
-                filterStatus === 'all' 
-                  ? 'bg-red-500 text-white' 
-                  : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                filterStatus === 'all' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               <FiList className="text-sm" /> All
@@ -234,9 +303,7 @@ const Records = ({ invoices, darkMode }) => {
             <button
               onClick={() => handleFilterChange('paid')}
               className={`px-3 py-2 rounded-lg text-sm transition flex items-center gap-1 ${
-                filterStatus === 'paid' 
-                  ? 'bg-green-600 text-white' 
-                  : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                filterStatus === 'paid' ? 'bg-green-600 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               <FiCheckCircle className="text-sm" /> Paid
@@ -244,9 +311,7 @@ const Records = ({ invoices, darkMode }) => {
             <button
               onClick={() => handleFilterChange('partial')}
               className={`px-3 py-2 rounded-lg text-sm transition flex items-center gap-1 ${
-                filterStatus === 'partial' 
-                  ? 'bg-yellow-500 text-white' 
-                  : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                filterStatus === 'partial' ? 'bg-yellow-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               <FiAlertCircle className="text-sm" /> Partial
@@ -258,15 +323,15 @@ const Records = ({ invoices, darkMode }) => {
           <table className="w-full">
             <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
               <tr>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiFileText className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Invoice #</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiCalendar className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Date</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiUser className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Customer</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiPhone className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Phone</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiTool className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Car Number</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiPackage className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Services</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiDollarSign className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Total</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiCheckCircle className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Status</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}><FiEye className={`inline mr-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Action</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Invoice #</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Customer</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Phone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Car Number</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Services</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Total</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Action</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
@@ -274,8 +339,8 @@ const Records = ({ invoices, darkMode }) => {
                 <tr>
                   <td colSpan="9" className="px-6 py-12 text-center">
                     <FiInbox className="text-6xl mx-auto text-gray-500" />
-                    <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No invoices found</p>
-                    <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <p className="mt-2 text-gray-500">No invoices found</p>
+                    <p className="text-sm mt-1 text-gray-400">
                       {searchTerm ? `No results for "${searchTerm}"` : 'Create your first invoice from the Billing section'}
                     </p>
                   </td>
@@ -283,33 +348,28 @@ const Records = ({ invoices, darkMode }) => {
               ) : (
                 currentInvoices.map(inv => (
                   <tr key={inv.id} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
-                    <td className={`px-6 py-4 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{inv.invoiceNo}</td>
-                    <td className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{new Date(inv.date).toLocaleDateString()}</td>
-                    <td className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{inv.customer?.name || 'Walk-in'}</td>
-                    <td className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{inv.customer?.phone || 'N/A'}</td>
-                    <td className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{inv.customer?.carNumber || 'N/A'}</td>
-                    <td className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{inv.invoiceNo}</td>
+                    <td className="text-gray-700 dark:text-gray-300">{new Date(inv.date).toLocaleDateString()}</td>
+                    <td className="text-gray-700 dark:text-gray-300">{inv.customer?.name || 'Walk-in'}</td>
+                    <td className="text-gray-700 dark:text-gray-300">{inv.customer?.phone || 'N/A'}</td>
+                    <td className="text-gray-700 dark:text-gray-300">{inv.customer?.carNumber || 'N/A'}</td>
+                    <td className="text-gray-700 dark:text-gray-300">
                       {inv.items.map(i => i.name).slice(0, 2).join(', ')}
                       {inv.items.length > 2 && ` +${inv.items.length - 2} more`}
                     </td>
                     <td className="px-6 py-4 font-semibold text-red-500">Rs. {inv.total.toLocaleString()}</td>
-                    <td>
+                    <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit ${
-                        inv.status === 'Paid' 
-                          ? darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'
-                          : inv.status === 'Partial'
-                          ? darkMode ? 'bg-yellow-900/30 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
-                          : darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-700'
+                        inv.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
+                        inv.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
+                        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                       }`}>
                         {inv.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : inv.status === 'Partial' ? <FiAlertCircle className="text-xs" /> : <FiClock className="text-xs" />}
                         {inv.status === 'Paid' ? 'Paid' : inv.status === 'Partial' ? 'Partial' : 'Pending'}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <button
-                        onClick={() => viewInvoiceDetails(inv)}
-                        className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md"
-                      >
+                      <button onClick={() => viewInvoiceDetails(inv)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md">
                         <FiEye className="text-sm" /> View
                       </button>
                     </td>
@@ -322,61 +382,32 @@ const Records = ({ invoices, darkMode }) => {
         
         {/* Pagination */}
         {filteredInvoices.length > 0 && (
-          <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredInvoices.length)} of {filteredInvoices.length} entries
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className={`p-2 rounded-lg transition ${
-                  currentPage === 1
-                    ? 'opacity-50 cursor-not-allowed'
-                    : darkMode ? 'hover:bg-gray-800 text-white' : 'hover:bg-gray-100 text-gray-800'
-                }`}
-              >
+              <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800">
                 <FiChevronLeft className="text-lg" />
               </button>
               <div className="flex gap-1">
                 {[...Array(totalPages)].map((_, i) => {
                   const pageNum = i + 1;
-                  if (
-                    pageNum === 1 ||
-                    pageNum === totalPages ||
-                    (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
-                  ) {
+                  if (pageNum === 1 || pageNum === totalPages || (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)) {
                     return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-8 h-8 rounded-lg text-sm transition ${
-                          currentPage === pageNum
-                            ? 'bg-red-500 text-white'
-                            : darkMode ? 'hover:bg-gray-800 text-gray-300' : 'hover:bg-gray-100 text-gray-700'
-                        }`}
-                      >
+                      <button key={pageNum} onClick={() => setCurrentPage(pageNum)} className={`w-8 h-8 rounded-lg text-sm transition ${
+                        currentPage === pageNum ? 'bg-red-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                      }`}>
                         {pageNum}
                       </button>
                     );
-                  } else if (
-                    (pageNum === currentPage - 2 && currentPage > 3) ||
-                    (pageNum === currentPage + 2 && currentPage < totalPages - 2)
-                  ) {
+                  } else if ((pageNum === currentPage - 2 && currentPage > 3) || (pageNum === currentPage + 2 && currentPage < totalPages - 2)) {
                     return <span key={pageNum} className="px-1 text-gray-500">...</span>;
                   }
                   return null;
                 })}
               </div>
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className={`p-2 rounded-lg transition ${
-                  currentPage === totalPages
-                    ? 'opacity-50 cursor-not-allowed'
-                    : darkMode ? 'hover:bg-gray-800 text-white' : 'hover:bg-gray-100 text-gray-800'
-                }`}
-              >
+              <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800">
                 <FiChevronRight className="text-lg" />
               </button>
             </div>
@@ -388,74 +419,94 @@ const Records = ({ invoices, darkMode }) => {
       {isModalOpen && selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className={`sticky top-0 flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'} rounded-t-2xl`}>
+            <div className="sticky top-0 flex justify-between items-center p-4 border-b rounded-t-2xl bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
               <div>
-                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <FiFileText className={`text-xl ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Invoice Details
+                <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                  <FiFileText className="text-xl text-red-500" /> Invoice Details
                 </h2>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {selectedInvoice.invoiceNo}
-                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{selectedInvoice.invoiceNo}</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={printSingleInvoice} className="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 shadow-md"><FiPrinter /> Print</button>
-                <button onClick={closeModal} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"><FiX /></button>
+                <button onClick={printSingleInvoice} className="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 shadow-md">
+                  <FiPrinter /> Print
+                </button>
+                <button onClick={closeModal} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition">
+                  <FiX />
+                </button>
               </div>
             </div>
             <div className="p-6 space-y-6">
-              <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-red-50'} border ${darkMode ? 'border-gray-700' : 'border-red-200'}`}>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <FiUser className={`text-lg ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Customer Information
+              <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+                  <FiUser className="text-lg text-red-500" /> Customer Information
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiUser className="text-xs" /> Full Name</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.name || 'Walk-in Customer'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiPhone className="text-xs" /> Phone Number</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.phone || 'N/A'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiTool className="text-xs" /> Car Number Plate</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.carNumber || 'N/A'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiPackage className="text-xs" /> Car Model</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.carModel || 'N/A'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiCalendar className="text-xs" /> Invoice Date</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{new Date(selectedInvoice.date).toLocaleString()}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiUser className="text-xs" /> Full Name</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.name || 'Walk-in Customer'}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiPhone className="text-xs" /> Phone Number</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.phone || 'N/A'}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiTool className="text-xs" /> Car Number Plate</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.carNumber || 'N/A'}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiPackage className="text-xs" /> Car Model</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.carModel || 'N/A'}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiCalendar className="text-xs" /> Invoice Date</p><p className="font-semibold text-gray-900 dark:text-white">{new Date(selectedInvoice.date).toLocaleString()}</p></div>
                 </div>
               </div>
               <div>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <FiTool className={`text-lg ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Services Provided
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+                  <FiTool className="text-lg text-red-500" /> Services Provided
                 </h3>
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-                      <tr><th className="px-4 py-2 text-left text-sm">#</th><th className="px-4 py-2 text-left text-sm">Service Name</th><th className="px-4 py-2 text-left text-sm">Category</th><th className="px-4 py-2 text-right text-sm">Price</th></tr>
+                    <thead className="bg-gray-100 dark:bg-gray-800">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-sm">#</th>
+                        <th className="px-4 py-2 text-left text-sm">Service Name</th>
+                        <th className="px-4 py-2 text-left text-sm">Category</th>
+                        <th className="px-4 py-2 text-right text-sm">Price</th>
+                      </tr>
                     </thead>
-                    <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                       {selectedInvoice.items.map((item, idx) => (
                         <tr key={idx}>
                           <td className="px-4 py-2 text-sm">{idx + 1}</td>
-                          <td className={`px-4 py-2 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</td>
-                          <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.category || 'Service'}</td>
+                          <td className="px-4 py-2 text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
+                          <td className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">{item.category || 'Service'}</td>
                           <td className="px-4 py-2 text-sm text-right font-semibold text-red-500">Rs. {item.price.toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-                      <tr><td colSpan="3" className="px-4 py-3 text-right font-bold">Total:</td><td className="px-4 py-3 text-right font-bold text-red-500">Rs. {selectedInvoice.total.toLocaleString()}</td></tr>
+                    <tfoot className="bg-gray-100 dark:bg-gray-800">
+                      <tr>
+                        <td colSpan="3" className="px-4 py-3 text-right font-bold">Total:</td>
+                        <td className="px-4 py-3 text-right font-bold text-red-500">Rs. {selectedInvoice.total.toLocaleString()}</td>
+                      </tr>
                     </tfoot>
                   </table>
                 </div>
               </div>
-              <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-green-50'} border ${darkMode ? 'border-gray-700' : 'border-green-200'}`}>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <FiDollarSign className={`text-lg ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Payment Details
+              <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+                  <FiDollarSign className="text-lg text-red-500" /> Payment Details
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Amount</p><p className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {selectedInvoice.total.toLocaleString()}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paid Amount</p><p className={`text-xl font-bold text-green-500`}>Rs. {(selectedInvoice.paidAmount || selectedInvoice.total).toLocaleString()}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Method</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center gap-1`}><FiDollarSign className="text-sm" /> {selectedInvoice.paymentMethod || 'Cash'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Remaining Balance</p><p className={`text-xl font-bold ${(selectedInvoice.remainingAmount || 0) > 0 ? 'text-red-500' : 'text-green-500'}`}>Rs. {(selectedInvoice.remainingAmount || 0).toLocaleString()}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Status</p><span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1 w-fit ${selectedInvoice.status === 'Paid' ? darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700' : selectedInvoice.status === 'Partial' ? darkMode ? 'bg-yellow-900/30 text-yellow-400' : 'bg-yellow-100 text-yellow-700' : darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-700'}`}>{selectedInvoice.status === 'Paid' ? <FiCheckCircle /> : selectedInvoice.status === 'Partial' ? <FiAlertCircle /> : <FiClock />}{selectedInvoice.status === 'Paid' ? 'FULLY PAID' : selectedInvoice.status === 'Partial' ? 'PARTIAL PAYMENT' : 'PENDING'}</span></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Total Amount</p><p className="text-xl font-bold text-gray-900 dark:text-white">Rs. {selectedInvoice.total.toLocaleString()}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Paid Amount</p><p className="text-xl font-bold text-green-500">Rs. {(selectedInvoice.paidAmount || selectedInvoice.total).toLocaleString()}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Payment Method</p><p className="font-semibold text-gray-900 dark:text-white flex items-center gap-1"><FiDollarSign className="text-sm" /> {selectedInvoice.paymentMethod || 'Cash'}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Remaining Balance</p><p className="text-xl font-bold text-red-500">Rs. {(selectedInvoice.remainingAmount || 0).toLocaleString()}</p></div>
+                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Payment Status</p><span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1 w-fit ${
+                    selectedInvoice.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
+                    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  }`}>
+                    {selectedInvoice.status === 'Paid' ? <FiCheckCircle /> : <FiAlertCircle />}
+                    {selectedInvoice.status === 'Paid' ? 'FULLY PAID' : 'PARTIAL PAYMENT'}
+                  </span></div>
                 </div>
               </div>
             </div>
-            <div className={`sticky bottom-0 flex justify-end gap-3 p-4 border-t ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'} rounded-b-2xl`}>
-              <button onClick={closeModal} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2"><FiX /> Close</button>
-              <button onClick={printSingleInvoice} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2 shadow-md"><FiPrinter /> Print Invoice</button>
+            <div className="sticky bottom-0 flex justify-end gap-3 p-4 border-t rounded-b-2xl bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+              <button onClick={closeModal} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
+                <FiX /> Close
+              </button>
+              <button onClick={printSingleInvoice} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2 shadow-md">
+                <FiPrinter /> Print Invoice
+              </button>
             </div>
           </div>
         </div>

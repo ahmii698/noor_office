@@ -3,10 +3,11 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FiUser, FiPhone, FiCalendar, FiClock, FiTool, FiPackage, 
-  FiCheckCircle, FiAlertCircle, FiX, FiArrowRight
+  FiCheckCircle, FiAlertCircle, FiX, FiArrowRight, FiLoader
 } from 'react-icons/fi';
+import api from '../../services/api';
 
-const CustomerForm = ({ invoices, onCustomerSubmit, initialData, darkMode }) => {
+const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   const [customerDetails, setCustomerDetails] = useState(initialData || {
     name: '',
     phone: '',
@@ -17,37 +18,53 @@ const CustomerForm = ({ invoices, onCustomerSubmit, initialData, darkMode }) => 
   
   const [customerHistory, setCustomerHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   // Search customer history when phone number changes
   useEffect(() => {
-    if (customerDetails.phone && customerDetails.phone.length >= 4) {
-      const history = invoices.filter(inv => 
-        inv.customer?.phone === customerDetails.phone
-      ).sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10);
-      
-      setCustomerHistory(history);
-      setShowHistory(history.length > 0);
-      
-      if (history.length > 0) {
-        const lastInvoice = history[0];
-        if (lastInvoice.customer) {
-          if (!customerDetails.name) {
-            setCustomerDetails(prev => ({ ...prev, name: lastInvoice.customer.name || '' }));
+    const searchCustomerHistory = async () => {
+      if (customerDetails.phone && customerDetails.phone.length >= 4) {
+        setSearching(true);
+        try {
+          const response = await api.get('/invoices');
+          if (response.data && Array.isArray(response.data)) {
+            const history = response.data
+              .filter(inv => inv.customer_phone === customerDetails.phone)
+              .sort((a, b) => new Date(b.invoice_date) - new Date(a.invoice_date))
+              .slice(0, 10);
+            
+            setCustomerHistory(history);
+            setShowHistory(history.length > 0);
+            
+            if (history.length > 0) {
+              const lastInvoice = history[0];
+              if (!customerDetails.name && lastInvoice.customer_name) {
+                setCustomerDetails(prev => ({ ...prev, name: lastInvoice.customer_name || '' }));
+              }
+              if (!customerDetails.carNumber && lastInvoice.customer_car_number) {
+                setCustomerDetails(prev => ({ ...prev, carNumber: lastInvoice.customer_car_number || '' }));
+              }
+              if (!customerDetails.carModel && lastInvoice.customer_car_model) {
+                setCustomerDetails(prev => ({ ...prev, carModel: lastInvoice.customer_car_model || '' }));
+              }
+              if (lastInvoice.customer_name) {
+                toast.success(`Welcome back ${lastInvoice.customer_name}!`, { duration: 2000 });
+              }
+            }
           }
-          if (!customerDetails.carNumber) {
-            setCustomerDetails(prev => ({ ...prev, carNumber: lastInvoice.customer.carNumber || '' }));
-          }
-          if (!customerDetails.carModel) {
-            setCustomerDetails(prev => ({ ...prev, carModel: lastInvoice.customer.carModel || '' }));
-          }
-          toast.success(`Welcome back ${lastInvoice.customer.name}!`, { duration: 2000 });
+        } catch (err) {
+          console.error('Error fetching customer history:', err);
+        } finally {
+          setSearching(false);
         }
+      } else {
+        setShowHistory(false);
+        setCustomerHistory([]);
       }
-    } else {
-      setShowHistory(false);
-      setCustomerHistory([]);
-    }
-  }, [customerDetails.phone, invoices]);
+    };
+    
+    searchCustomerHistory();
+  }, [customerDetails.phone]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -95,20 +112,27 @@ const CustomerForm = ({ invoices, onCustomerSubmit, initialData, darkMode }) => 
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiPhone className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Phone Number * (Type to search history)
             </label>
-            <input
-              type="tel"
-              value={customerDetails.phone}
-              onChange={(e) => updateField('phone', e.target.value)}
-              placeholder="Enter phone number"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
-                darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-              }`}
-              required
-            />
+            <div className="relative">
+              <input
+                type="tel"
+                value={customerDetails.phone}
+                onChange={(e) => updateField('phone', e.target.value)}
+                placeholder="Enter phone number"
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
+                }`}
+                required
+              />
+              {searching && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <FiLoader className="animate-spin text-red-500" />
+                </div>
+              )}
+            </div>
           </div>
           
           <div>
-            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiUser className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Customer Name *
             </label>
             <input
@@ -124,7 +148,7 @@ const CustomerForm = ({ invoices, onCustomerSubmit, initialData, darkMode }) => 
           </div>
           
           <div>
-            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiTool className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Car Number Plate *
             </label>
             <input
@@ -140,7 +164,7 @@ const CustomerForm = ({ invoices, onCustomerSubmit, initialData, darkMode }) => 
           </div>
           
           <div>
-            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiPackage className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Car Model (Optional)
             </label>
             <input
@@ -155,7 +179,7 @@ const CustomerForm = ({ invoices, onCustomerSubmit, initialData, darkMode }) => 
           </div>
         </div>
         
-        {/* Customer History Section - Red/Pink theme */}
+        {/* Customer History Section */}
         {showHistory && customerHistory.length > 0 && (
           <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-red-900/20 border border-red-800' : 'bg-red-50 border border-red-200'}`}>
             <div className="flex justify-between items-center mb-3">
@@ -170,21 +194,25 @@ const CustomerForm = ({ invoices, onCustomerSubmit, initialData, darkMode }) => 
               <table className="w-full text-sm">
                 <thead>
                   <tr className={`border-b ${darkMode ? 'border-red-800' : 'border-red-200'}`}>
-                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}><FiCalendar className="inline text-xs mr-1" /> Date</th>
-                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}><FiTool className="inline text-xs mr-1" /> Services</th>
-                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}><FiPackage className="inline text-xs mr-1" /> Total</th>
-                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}><FiCheckCircle className="inline text-xs mr-1" /> Status</th>
+                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Date</th>
+                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Services</th>
+                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total</th>
+                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {customerHistory.map((inv, idx) => (
-                    <tr key={inv.id} className={`border-b ${darkMode ? 'border-red-800/50' : 'border-red-100'} hover:bg-red-50 dark:hover:bg-red-900/20`}>
-                      <td className={`py-2 px-2 text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{new Date(inv.date).toLocaleDateString()}</td>
+                    <tr key={inv.id}>
                       <td className={`py-2 px-2 text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {inv.items.map(i => i.name).slice(0, 2).join(', ')}
-                        {inv.items.length > 2 && ` +${inv.items.length - 2}`}
+                        {new Date(inv.invoice_date).toLocaleDateString()}
                       </td>
-                      <td className={`py-2 px-2 font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Rs. {inv.total.toLocaleString()}</td>
+                      <td className={`py-2 px-2 text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {inv.items?.map(i => i.service_name).slice(0, 2).join(', ') || 'N/A'}
+                        {inv.items?.length > 2 && ` +${inv.items.length - 2}`}
+                      </td>
+                      <td className={`py-2 px-2 font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                        Rs. {inv.total_amount?.toLocaleString() || 0}
+                      </td>
                       <td className="py-2 px-2">
                         <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 w-fit ${
                           inv.status === 'Paid' 

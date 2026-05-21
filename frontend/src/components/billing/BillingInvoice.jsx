@@ -1,5 +1,5 @@
 // src/components/billing/BillingInvoice.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -9,16 +9,72 @@ import {
   FiPlus, FiX, FiPrinter, FiFileText, FiDownload, FiCheckCircle, 
   FiAlertCircle, FiTool, FiPackage, FiShoppingCart, FiCreditCard,
   FiChevronDown, FiChevronUp, FiTrash2, FiEdit2, FiSave,
-  FiSearch, FiGrid, FiList as FiListIcon, FiTag, FiPercent
+  FiSearch, FiGrid, FiList as FiListIcon, FiTag, FiPercent, FiLoader
 } from 'react-icons/fi';
+import api from '../../services/api';
 
-const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices, customerDetails, darkMode }) => {
+const BillingInvoice = ({ customerDetails, darkMode }) => {
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [cart, setCart] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('grid');
+  const [services, setServices] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch services from API
+  const fetchServices = async () => {
+    try {
+      const response = await api.get('/services');
+      if (response.data && Array.isArray(response.data)) {
+        setServices(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching services:', err);
+      toast.error('Failed to load services');
+    }
+  };
+
+  // Fetch products from API
+  const fetchProducts = async () => {
+    try {
+      const response = await api.get('/products');
+      if (response.data && Array.isArray(response.data)) {
+        setProducts(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching products:', err);
+    }
+  };
+
+  // Fetch invoices from API
+  const fetchInvoices = async () => {
+    try {
+      const response = await api.get('/invoices');
+      if (response.data && Array.isArray(response.data)) {
+        setInvoices(response.data);
+      }
+    } catch (err) {
+      console.error('Error fetching invoices:', err);
+    }
+  };
+
+  // Load all data
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchServices(),
+        fetchProducts(),
+        fetchInvoices()
+      ]);
+      setLoading(false);
+    };
+    loadData();
+  }, []);
 
   const groupedServices = services.reduce((acc, service) => {
     if (!acc[service.category]) acc[service.category] = [];
@@ -279,7 +335,6 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
           </div>
           
           <script>
-            // Auto trigger print after page loads
             setTimeout(function() {
               window.print();
             }, 300);
@@ -373,7 +428,7 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
     toast.success('Exported to PDF');
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     if (cart.length === 0) {
       toast.error('No services in bill');
       return;
@@ -389,37 +444,51 @@ const BillingInvoice = ({ services, products, setProducts, invoices, setInvoices
       return;
     }
     
-    const updatedProducts = products.map(product => {
-      const cartItem = cart.find(item => item.id === product.id);
-      if (cartItem) {
-        const newQuantity = product.quantity - cartItem.quantity;
-        return { ...product, quantity: newQuantity >= 0 ? newQuantity : 0 };
-      }
-      return product;
-    });
-    
-    setProducts(updatedProducts);
-    
-    const newInvoice = {
-      id: Date.now(),
-      invoiceNo: `INV-${Date.now()}`,
-      date: customerDetails.date,
-      customer: { ...customerDetails },
-      items: cart.map(item => ({ ...item })),
+    // Prepare invoice data
+    const invoiceData = {
+      customer: {
+        name: customerDetails.name,
+        phone: customerDetails.phone,
+        carNumber: customerDetails.carNumber,
+        carModel: customerDetails.carModel,
+        date: customerDetails.date
+      },
+      items: cart.map(item => ({
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        price: item.price,
+        quantity: item.quantity
+      })),
       total: billTotal,
       paidAmount: paidAmount,
-      remainingAmount: remainingAmount,
-      paymentMethod: paymentMethod,
-      status: isFullyPaid ? 'Paid' : 'Partial'
+      paymentMethod: paymentMethod
     };
-    setInvoices([...invoices, newInvoice]);
     
-    setCart([]);
-    setPaymentAmount('');
-    setPaymentMethod('cash');
-    
-    toast.success(`Payment successful! ${isFullyPaid ? 'Bill fully paid' : 'Partial payment received'}`);
+    try {
+      const response = await api.post('/invoices', invoiceData);
+      if (response.data) {
+        toast.success(`Payment successful! ${isFullyPaid ? 'Bill fully paid' : 'Partial payment received'}`);
+        setCart([]);
+        setPaymentAmount('');
+        setPaymentMethod('cash');
+      }
+    } catch (err) {
+      console.error('Error saving invoice:', err);
+      toast.error('Failed to save invoice. Please try again.');
+    }
   };
+
+  if (loading) {
+    return (
+      <div className={`min-h-[400px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+        <div className="text-center">
+          <FiLoader className="text-5xl text-red-500 animate-spin mx-auto mb-4" />
+          <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading billing data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

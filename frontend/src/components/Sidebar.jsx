@@ -16,11 +16,11 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
   ];
 
+  // Finance Submenu - Reports REMOVED
   const financeSubmenu = [
     { id: 'finance-overview', label: 'Overview', icon: FiTrendingUp, path: '/finance' },
     { id: 'finance-expenses', label: 'Expenses', icon: FiList, path: '/finance-expenses' },
     { id: 'finance-charts', label: 'Charts', icon: FiPieChart, path: '/finance-charts' },
-    { id: 'finance-reports', label: 'Reports', icon: FiBarChart2, path: '/finance-reports' },
   ];
 
   // Check window size for mobile detection
@@ -122,7 +122,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   )}
                 </button>
                 
-                {/* Finance Submenu */}
+                {/* Finance Submenu - Reports Removed */}
                 {isOpen && item.hasSubmenu && isFinanceOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {financeSubmenu.map((subItem) => {

@@ -4,78 +4,81 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { FiMail, FiLock, FiLogIn } from 'react-icons/fi';
 import ForgotPassword from './ForgotPassword';
+import api from '../services/api';
 
 const Login = () => {
   const navigate = useNavigate();
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Demo users storage - koi bhi email/password save karne ke liye
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem('users');
-    if (saved) return JSON.parse(saved);
-    return [
-      { email: 'admin@noorani.com', password: '123456', name: 'Admin' }
-    ];
-  });
-
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     
-    // Agar email aur password dono fill hai toh login de do (kuch bhi ho)
-    if (credentials.email && credentials.password) {
-      // Check if user exists in our records
-      let user = users.find(u => u.email === credentials.email);
-      
-      if (!user) {
-        // Agar user nahi hai toh new user bana do
-        user = { 
-          email: credentials.email, 
-          password: credentials.password, 
-          name: credentials.email.split('@')[0] 
-        };
-        const updatedUsers = [...users, user];
-        setUsers(updatedUsers);
-        localStorage.setItem('users', JSON.stringify(updatedUsers));
-      } else {
-        // User exists but password mismatch? Update karo
-        if (user.password !== credentials.password) {
-          const updatedUsers = users.map(u => 
-            u.email === credentials.email 
-              ? { ...u, password: credentials.password }
-              : u
-          );
-          setUsers(updatedUsers);
-          localStorage.setItem('users', JSON.stringify(updatedUsers));
-        }
-      }
-      
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('user', JSON.stringify({ 
-        name: user.name || credentials.email.split('@')[0], 
-        email: credentials.email 
-      }));
-      toast.success('Login Successful!');
-      navigate('/dashboard');
-    } else {
+    // Prevent browser autofill popup
+    e.stopPropagation();
+    
+    if (!credentials.email || !credentials.password) {
       toast.error('Please enter email and password');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const response = await api.post('/login', {
+        email: credentials.email,
+        password: credentials.password
+      });
+      
+      if (response.data.success && response.data.token) {
+        // Save token and user data
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
+        localStorage.setItem('isLoggedIn', 'true');
+        
+        toast.success(response.data.message || 'Login Successful!');
+        navigate('/dashboard');
+      } else {
+        toast.error(response.data.message || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      
+      // Handle different error cases
+      if (error.response) {
+        const status = error.response.status;
+        const message = error.response.data?.message;
+        
+        if (status === 401) {
+          if (message === 'Account not found. Please check your email address.') {
+            toast.error('Account not found. Please check your email address.');
+          } else if (message === 'Wrong password! Please try again.') {
+            toast.error('Wrong password! Please try again.');
+          } else if (message === 'Invalid password') {
+            toast.error('Wrong password! Please try again.');
+          } else {
+            toast.error('Invalid email or password. Please try again.');
+          }
+        } else if (status === 422) {
+          toast.error('Please enter valid email and password.');
+        } else if (status === 500) {
+          toast.error('Server error. Please try again later.');
+        } else {
+          toast.error(message || 'Login failed. Please try again.');
+        }
+      } else if (error.request) {
+        toast.error('Cannot connect to server. Please make sure backend is running on port 8000');
+      } else {
+        toast.error('Something went wrong. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Update users from ForgotPassword component
-  const updateUsers = (updatedUsers) => {
-    setUsers(updatedUsers);
-    localStorage.setItem('users', JSON.stringify(updatedUsers));
-  };
-
   if (showForgotPassword) {
-    return (
-      <ForgotPassword 
-        onBack={() => setShowForgotPassword(false)} 
-        users={users}
-        updateUsers={updateUsers}
-      />
-    );
+    return <ForgotPassword onBack={() => setShowForgotPassword(false)} />;
   }
 
   return (
@@ -110,16 +113,27 @@ const Login = () => {
 
           {/* Login Form */}
           <div className="p-6">
-            <form onSubmit={handleLogin} className="space-y-5">
+            <form 
+              onSubmit={handleLogin} 
+              className="space-y-5" 
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck="false"
+            >
               <div className="relative">
                 <FiMail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   type="email"
+                  name="email"
                   placeholder="Email Address"
                   value={credentials.email}
                   onChange={(e) => setCredentials({...credentials, email: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent outline-none transition"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition"
                   required
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
                 />
               </div>
               
@@ -127,11 +141,13 @@ const Login = () => {
                 <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
                   type="password"
+                  name="password"
                   placeholder="Password"
                   value={credentials.password}
                   onChange={(e) => setCredentials({...credentials, password: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-800 focus:border-transparent outline-none transition"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition"
                   required
+                  autoComplete="new-password"
                 />
               </div>
 
@@ -139,7 +155,7 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={() => setShowForgotPassword(true)}
-                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline transition"
+                  className="text-sm text-red-600 hover:text-red-800 hover:underline transition"
                 >
                   Forgot Password?
                 </button>
@@ -147,14 +163,26 @@ const Login = () => {
 
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-gray-900 to-gray-800 hover:from-gray-800 hover:to-gray-700 text-white font-semibold py-3 rounded-lg transition duration-300 flex items-center justify-center gap-2"
+                disabled={loading}
+                className={`w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold py-3 rounded-lg transition duration-300 flex items-center justify-center gap-2 ${
+                  loading ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
               >
-                <FiLogIn className="w-5 h-5" />
-                Login to Dashboard
+                {loading ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Logging in...
+                  </>
+                ) : (
+                  <>
+                    <FiLogIn className="w-5 h-5" />
+                    Login to Dashboard
+                  </>
+                )}
               </button>
               
               <div className="text-center text-sm text-gray-500">
-                <p>Enter any email and password to login</p>
+                <p>Demo: admin@noorani.com / 123456</p>
               </div>
             </form>
           </div>

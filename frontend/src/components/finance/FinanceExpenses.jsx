@@ -1,5 +1,5 @@
 // src/components/finance/FinanceExpenses.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ExpensesRecord from './ExpensesRecord';
 import { FiLoader } from 'react-icons/fi';
 import api from '../../services/api';
@@ -10,8 +10,8 @@ const FinanceExpenses = ({ darkMode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch expenses from API
-  const fetchExpenses = async () => {
+  // Fetch expenses from API - Optimized with useCallback
+  const fetchExpenses = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -28,10 +28,10 @@ const FinanceExpenses = ({ darkMode }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Add new expense
-  const handleAddExpense = async (expenseData) => {
+  // Add new expense - Optimized with useCallback
+  const handleAddExpense = useCallback(async (expenseData) => {
     try {
       const response = await api.post('/expenses', {
         description: expenseData.description,
@@ -46,7 +46,7 @@ const FinanceExpenses = ({ darkMode }) => {
       
       if (response.data) {
         toast.success('Expense added successfully!');
-        fetchExpenses();
+        await fetchExpenses();
         return true;
       }
     } catch (err) {
@@ -54,10 +54,10 @@ const FinanceExpenses = ({ darkMode }) => {
       toast.error(err.response?.data?.message || 'Failed to add expense');
       return false;
     }
-  };
+  }, [fetchExpenses]);
 
-  // Update existing expense
-  const handleUpdateExpense = async (updatedExpense) => {
+  // Update existing expense - Optimized with useCallback
+  const handleUpdateExpense = useCallback(async (updatedExpense) => {
     try {
       const response = await api.put(`/expenses/${updatedExpense.id}`, {
         description: updatedExpense.description,
@@ -72,7 +72,7 @@ const FinanceExpenses = ({ darkMode }) => {
       
       if (response.data) {
         toast.success('Expense updated successfully!');
-        fetchExpenses();
+        await fetchExpenses();
         return true;
       }
     } catch (err) {
@@ -80,12 +80,12 @@ const FinanceExpenses = ({ darkMode }) => {
       toast.error(err.response?.data?.message || 'Failed to update expense');
       return false;
     }
-  };
+  }, [fetchExpenses]);
 
   // Load expenses on component mount
   useEffect(() => {
     fetchExpenses();
-  }, []);
+  }, [fetchExpenses]);
 
   if (loading) {
     return (

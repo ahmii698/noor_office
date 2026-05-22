@@ -1,5 +1,5 @@
 // src/components/finance/ExpensesRecord.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheckCircle, FiSearch, FiTrendingDown, FiDollarSign, FiHome, FiGrid } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -22,16 +22,15 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
   });
 
   // ✅ Fixed Monthly Categories - Match with your database
-  const fixedCategories = ['Rent', 'Utilities', 'Salary', 'Office', 'Staff'];
-  
-  // Other Categories
-  const otherCategories = ['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair', 'Other'];
+  const fixedCategories = useMemo(() => ['Rent', 'Utilities', 'Salary', 'Office', 'Staff'], []);
+  const otherCategories = useMemo(() => ['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair', 'Other'], []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setLocalExpenses(expenses);
   }, [expenses]);
 
-  const getFilteredExpenses = () => {
+  // Memoized filtered expenses - Yeh sirf tab calculate hoga jab dependencies change hongi
+  const filteredExpenses = useMemo(() => {
     let filtered = localExpenses;
     
     if (activeTab === 'fixed') {
@@ -41,27 +40,42 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     }
     
     if (searchTerm) {
+      const term = searchTerm.toLowerCase();
       filtered = filtered.filter(exp =>
-        exp.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        exp.category?.toLowerCase().includes(searchTerm.toLowerCase())
+        exp.description?.toLowerCase().includes(term) ||
+        exp.category?.toLowerCase().includes(term)
       );
     }
     
     return filtered;
-  };
+  }, [localExpenses, activeTab, searchTerm, fixedCategories, otherCategories]);
 
-  const filteredExpenses = getFilteredExpenses();
-  const totalExpenses = filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
+  // Memoized total expenses
+  const totalExpenses = useMemo(() => 
+    filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
+    [filteredExpenses]
+  );
 
-  const handleInputChange = (e) => {
+  // Memoized counts for tabs
+  const fixedCount = useMemo(() => 
+    localExpenses.filter(e => fixedCategories.includes(e.category)).length,
+    [localExpenses, fixedCategories]
+  );
+
+  const otherCount = useMemo(() => 
+    localExpenses.filter(e => otherCategories.includes(e.category)).length,
+    [localExpenses, otherCategories]
+  );
+
+  const handleInputChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       [name]: type === 'checkbox' ? checked : value
-    });
-  };
+    }));
+  }, []);
 
-  const calculateNextPaymentDate = (lastPaidDate, recurringType) => {
+  const calculateNextPaymentDate = useCallback((lastPaidDate, recurringType) => {
     if (!lastPaidDate) return '';
     const date = new Date(lastPaidDate);
     if (recurringType === 'monthly') {
@@ -74,9 +88,9 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
       date.setMonth(date.getMonth() + 1);
     }
     return date.toISOString().split('T')[0];
-  };
+  }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     
     if (!formData.description || !formData.amount || !formData.date) {
@@ -128,9 +142,9 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         nextPaymentDate: ''
       });
     }
-  };
+  }, [formData, editingExpense, onAddExpense, onUpdateExpense, calculateNextPaymentDate]);
 
-  const handlePayNow = async (expense) => {
+  const handlePayNow = useCallback(async (expense) => {
     const today = new Date().toISOString().split('T')[0];
     let newNextPaymentDate = '';
     
@@ -184,9 +198,9 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
       console.error('Error recording payment:', err);
       toast.error('Failed to record payment');
     }
-  };
+  }, [refreshExpenses]);
 
-  const handleEdit = (expense) => {
+  const handleEdit = useCallback((expense) => {
     setEditingExpense(expense);
     setFormData({
       description: expense.description,
@@ -199,9 +213,9 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
       nextPaymentDate: expense.next_payment_date || ''
     });
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const handleDelete = async (expenseId, expenseDesc) => {
+  const handleDelete = useCallback(async (expenseId, expenseDesc) => {
     if (window.confirm(`Are you sure you want to delete "${expenseDesc}"?`)) {
       try {
         await api.delete(`/expenses/${expenseId}`);
@@ -215,12 +229,14 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         toast.error('Failed to delete expense');
       }
     }
-  };
+  }, [refreshExpenses]);
 
-  const isOverdue = (nextPaymentDate) => {
+  const isOverdue = useCallback((nextPaymentDate) => {
     if (!nextPaymentDate) return false;
     return new Date(nextPaymentDate) < new Date();
-  };
+  }, []);
+
+  const clearSearch = useCallback(() => setSearchTerm(''), []);
 
   return (
     <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -237,16 +253,21 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                 placeholder="Search expenses..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className={`px-4 py-2 pl-10 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-400 ${
+                className={`px-4 py-2 pl-10 pr-8 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-400 ${
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900'
                 }`}
                 style={{ width: '250px' }}
               />
               <FiSearch className="absolute left-3 top-3 text-gray-400" />
+              {searchTerm && (
+                <button onClick={clearSearch} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+                  <FiX size={14} />
+                </button>
+              )}
             </div>
             <button
               onClick={() => setIsModalOpen(true)}
-              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2 shadow-md"
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2 shadow-md whitespace-nowrap"
             >
               <FiPlus /> Add Expense
             </button>
@@ -265,7 +286,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
           >
             <FiHome className="text-lg" /> Fixed Monthly Expenses
             <span className="ml-1 text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-              {localExpenses.filter(e => fixedCategories.includes(e.category)).length}
+              {fixedCount}
             </span>
           </button>
           <button
@@ -278,7 +299,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
           >
             <FiGrid className="text-lg" /> Other Expenses
             <span className="ml-1 text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-              {localExpenses.filter(e => otherCategories.includes(e.category)).length}
+              {otherCount}
             </span>
           </button>
         </div>
@@ -330,46 +351,48 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                   <td className="px-4 py-3 font-medium">
                     {expense.description}
                     {expense.is_recurring === 1 && (
-                      <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Recurring</span>
+                      <span className="ml-2 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-1.5 py-0.5 rounded">Recurring</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded text-xs ${
+                    <span className={`px-2 py-1 rounded text-xs whitespace-nowrap ${
                       fixedCategories.includes(expense.category) 
-                        ? 'bg-red-100 text-red-700' 
-                        : darkMode ? 'bg-gray-700' : 'bg-gray-100'
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' 
+                        : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                     }`}>
                       {expense.category || 'General'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-3 text-sm whitespace-nowrap">
                     {expense.last_paid_date ? new Date(expense.last_paid_date).toLocaleDateString() : 
                      expense.expense_date ? new Date(expense.expense_date).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-4 py-3">
                     {expense.is_recurring === 1 ? (
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-medium ${isOverdue(expense.next_payment_date) ? 'text-red-500 font-bold' : 'text-yellow-500'}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-sm font-medium whitespace-nowrap ${isOverdue(expense.next_payment_date) ? 'text-red-500 font-bold' : 'text-yellow-500'}`}>
                           {expense.next_payment_date ? new Date(expense.next_payment_date).toLocaleDateString() : 'Not set'}
                         </span>
                         {isOverdue(expense.next_payment_date) && (
-                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Overdue!</span>
+                          <span className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-0.5 rounded whitespace-nowrap">Overdue!</span>
                         )}
                       </div>
                     ) : (
                       <span className="text-sm text-gray-400">One-time</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold text-red-500">Rs. {parseFloat(expense.amount).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-red-500 whitespace-nowrap">Rs. {parseFloat(expense.amount).toLocaleString()}</td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex justify-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => handlePayNow(expense)}
-                        className="px-3 py-1 bg-green-600 text-white rounded-lg text-xs hover:bg-green-700 transition flex items-center gap-1 shadow-md"
-                        title="Pay Now"
-                      >
-                        <FiDollarSign size={12} /> Pay Now
-                      </button>
+                      {expense.is_recurring === 1 && (
+                        <button
+                          onClick={() => handlePayNow(expense)}
+                          className="px-3 py-1 bg-green-600 text-white rounded-lg text-xs hover:bg-green-700 transition flex items-center gap-1 shadow-md whitespace-nowrap"
+                          title="Pay Now"
+                        >
+                          <FiDollarSign size={12} /> Pay Now
+                        </button>
+                      )}
                       <button
                         onClick={() => handleEdit(expense)}
                         className="p-1.5 text-blue-500 hover:text-blue-700 transition bg-blue-50 dark:bg-blue-900/20 rounded"

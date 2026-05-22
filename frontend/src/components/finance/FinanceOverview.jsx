@@ -1,13 +1,158 @@
 // src/components/finance/FinanceOverview.jsx
-import React, { useState, useEffect } from 'react';
-import StatsCards from './StatsCards';
-import UpcomingPayments from './UpcomingPayments';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { FiCalendar, FiTrendingUp, FiDollarSign, FiPackage, FiBarChart2, FiChevronDown, FiChevronUp, FiDownload, FiFileText, FiLoader, FiClock, FiTrendingDown, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+
+// Lazy load heavy components
+const StatsCards = lazy(() => import('./StatsCards'));
+const UpcomingPayments = lazy(() => import('./UpcomingPayments'));
+
+// Debounce function
+const debounce = (func, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
+  };
+};
+
+// Memoized Invoice Details Component
+const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
+  if (!data?.details || data.details.length === 0) {
+    return (
+      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
+        <p className="text-gray-500">No sales data available</p>
+      </div>
+    );
+  }
+  
+  const allItems = useMemo(() => {
+    const items = [];
+    data.details.forEach(inv => {
+      inv.items.forEach(item => {
+        items.push({ ...item, inv });
+      });
+    });
+    return items;
+  }, [data.details]);
+  
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex justify-between items-center">
+        <h4 className="font-semibold">📋 {title}</h4>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+      </div>
+      <div className="overflow-x-auto max-h-96">
+        <table className="w-full text-sm">
+          <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+            <tr>
+              <th className="px-3 py-2 text-left">Item</th>
+              <th className="px-3 py-2 text-left">Type</th>
+              <th className="px-3 py-2 text-right">Purchase</th>
+              <th className="px-3 py-2 text-right">Sell</th>
+              <th className="px-3 py-2 text-center">Qty</th>
+              <th className="px-3 py-2 text-right">Unit Profit</th>
+              <th className="px-3 py-2 text-right">Total Profit</th>
+              <th className="px-3 py-2 text-left">Customer</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            {allItems.map((item, idx) => (
+              <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                <td className="px-3 py-2 font-medium">{item.service_name}</td>
+                <td className="px-3 py-2">
+                  <span className={`px-2 py-1 rounded text-xs ${item.isProduct ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                    {item.isProduct ? 'Product' : 'Service'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  {item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}
+                </td>
+                <td className="px-3 py-2 text-right">Rs. {item.price.toLocaleString()}</td>
+                <td className="px-3 py-2 text-center font-semibold">{item.quantity}</td>
+                <td className="px-3 py-2 text-right font-semibold text-green-500">
+                  + Rs. {item.unitProfit.toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-right font-semibold text-green-500">
+                  Rs. {(item.unitProfit * item.quantity).toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-xs">{item.inv.customer}</td>
+               </tr>
+            ))}
+          </tbody>
+          <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+            <tr>
+              <td colSpan="6" className="px-3 py-2 text-right font-bold">Total:</td>
+              <td className="px-3 py-2 text-right font-bold text-green-500">Rs. {data.profit.toLocaleString()}</td>
+              <td></td>
+             </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+});
+
+// Memoized Expense Details Component
+const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
+  if (!expenses || expenses.length === 0) {
+    return (
+      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
+        <p className="text-gray-500">No expense data available</p>
+      </div>
+    );
+  }
+  
+  const totalAmount = useMemo(() => 
+    expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0), 
+    [expenses]
+  );
+  
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex justify-between items-center">
+        <h4 className="font-semibold">📋 {title}</h4>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+      </div>
+      <div className="overflow-x-auto max-h-96">
+        <table className="w-full text-sm">
+          <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+            <tr>
+              <th className="px-3 py-2 text-left">Description</th>
+              <th className="px-3 py-2 text-left">Category</th>
+              <th className="px-3 py-2 text-left">Date</th>
+              <th className="px-3 py-2 text-right">Amount</th>
+             </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            {expenses.map((exp, idx) => (
+              <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                <td className="px-3 py-2 font-medium">{exp.description}</td>
+                <td className="px-3 py-2">
+                  <span className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                    {exp.category || 'General'}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-sm">{new Date(exp.date).toLocaleDateString()}</td>
+                <td className="px-3 py-2 text-right font-semibold text-red-500">Rs. {exp.amount.toLocaleString()}</td>
+               </tr>
+            ))}
+          </tbody>
+          <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+            <tr>
+              <td colSpan="3" className="px-3 py-2 text-right font-bold">Total:</td>
+              <td className="px-3 py-2 text-right font-bold text-red-500">Rs. {totalAmount.toLocaleString()}</td>
+             </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+});
 
 const FinanceOverview = ({ darkMode }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -50,49 +195,8 @@ const FinanceOverview = ({ darkMode }) => {
     monthMargin: 0
   });
 
-  const fetchProducts = async () => {
-    try {
-      const response = await api.get('/products');
-      if (response.data && Array.isArray(response.data)) {
-        setProducts(response.data);
-        return response.data;
-      }
-      return [];
-    } catch (err) {
-      console.error('Error fetching products:', err);
-      return [];
-    }
-  };
-
-  const fetchExpenses = async () => {
-    try {
-      const response = await api.get('/expenses');
-      if (response.data && Array.isArray(response.data)) {
-        setExpenses(response.data);
-        return response.data;
-      }
-      return [];
-    } catch (err) {
-      console.error('Error fetching expenses:', err);
-      return [];
-    }
-  };
-
-  const fetchInvoices = async () => {
-    try {
-      const response = await api.get('/invoices');
-      if (response.data && Array.isArray(response.data)) {
-        setInvoices(response.data);
-        return response.data;
-      }
-      return [];
-    } catch (err) {
-      console.error('Error fetching invoices:', err);
-      return [];
-    }
-  };
-
-  const getStartOfWeek = () => {
+  // Memoized helper functions
+  const getStartOfWeek = useCallback(() => {
     const today = new Date();
     const day = today.getDay();
     const diff = (day === 0 ? 6 : day - 1);
@@ -100,33 +204,91 @@ const FinanceOverview = ({ darkMode }) => {
     monday.setDate(today.getDate() - diff);
     monday.setHours(0, 0, 0, 0);
     return monday;
-  };
+  }, []);
 
-  const getStartOfMonth = () => {
+  const getStartOfMonth = useCallback(() => {
     const date = new Date();
     date.setDate(1);
     date.setHours(0, 0, 0, 0);
     return date;
-  };
+  }, []);
 
-  const loadAllData = async () => {
+  // Fetch functions with abort controller
+  const fetchProducts = useCallback(async (signal) => {
+    try {
+      const response = await api.get('/products', { signal });
+      if (response.data && Array.isArray(response.data)) {
+        setProducts(response.data);
+        return response.data;
+      }
+      return [];
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching products:', err);
+      }
+      return [];
+    }
+  }, []);
+
+  const fetchExpenses = useCallback(async (signal) => {
+    try {
+      const response = await api.get('/expenses', { signal });
+      if (response.data && Array.isArray(response.data)) {
+        setExpenses(response.data);
+        return response.data;
+      }
+      return [];
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching expenses:', err);
+      }
+      return [];
+    }
+  }, []);
+
+  const fetchInvoices = useCallback(async (signal) => {
+    try {
+      const response = await api.get('/invoices', { signal });
+      if (response.data && Array.isArray(response.data)) {
+        setInvoices(response.data);
+        return response.data;
+      }
+      return [];
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching invoices:', err);
+      }
+      return [];
+    }
+  }, []);
+
+  const loadAllData = useCallback(async () => {
+    const abortController = new AbortController();
     setLoading(true);
     setError(null);
     
     try {
-      const productsList = await fetchProducts();
-      const expensesList = await fetchExpenses();
-      const invoicesList = await fetchInvoices();
-      
-      setProducts(productsList);
+      // Fetch all data in parallel with Promise.all
+      const [productsList, expensesList, invoicesList] = await Promise.all([
+        fetchProducts(abortController.signal),
+        fetchExpenses(abortController.signal),
+        fetchInvoices(abortController.signal)
+      ]);
       
       const todayStr = new Date().toDateString();
       const weekStart = getStartOfWeek();
       const monthStart = getStartOfMonth();
       
+      // Process invoices efficiently
       let todayTotal = 0, todayItems = 0, todayProfit = 0, todayDetails = [];
       let weekTotal = 0, weekItems = 0, weekProfit = 0, weekDetails = [];
       let monthTotal = 0, monthItems = 0, monthProfit = 0, monthDetails = [];
+      
+      // Create a map for faster product lookup
+      const productsMap = new Map();
+      productsList.forEach(p => {
+        productsMap.set(p.name, p);
+      });
       
       invoicesList.forEach(inv => {
         if (!inv.invoice_date) return;
@@ -150,7 +312,7 @@ const FinanceOverview = ({ darkMode }) => {
             let itemProfit = 0;
             let purchasePrice = 0;
             
-            const product = productsList.find(p => p.name === item.service_name);
+            const product = productsMap.get(item.service_name);
             
             if (product) {
               purchasePrice = parseFloat(product.purchase_price) || 0;
@@ -163,7 +325,7 @@ const FinanceOverview = ({ darkMode }) => {
             invProfit += itemProfit;
             item.purchasePrice = purchasePrice;
             item.isProduct = !!product;
-            item.unitProfit = itemProfit / itemQty;
+            item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
           });
         }
         
@@ -201,6 +363,7 @@ const FinanceOverview = ({ darkMode }) => {
       setWeeklySales({ total: weekTotal, items: weekItems, count: weekDetails.length, profit: weekProfit, details: weekDetails });
       setMonthlySales({ total: monthTotal, items: monthItems, count: monthDetails.length, profit: monthProfit, details: monthDetails });
       
+      // Process expenses
       let todayExp = 0, todayExpCount = 0, todayExpList = [];
       let weekExp = 0, weekExpCount = 0, weekExpList = [];
       let monthExp = 0, monthExpCount = 0, monthExpList = [];
@@ -254,6 +417,7 @@ const FinanceOverview = ({ darkMode }) => {
         monthMargin: monthMargin
       });
       
+      // Process yearly data
       const year = selectedYear;
       const yearInvoices = invoicesList.filter(inv => {
         if (!inv.invoice_date) return false;
@@ -276,7 +440,7 @@ const FinanceOverview = ({ darkMode }) => {
             let itemProfit = 0;
             let purchasePrice = 0;
             
-            const product = productsList.find(p => p.name === item.service_name);
+            const product = productsMap.get(item.service_name);
             
             if (product) {
               purchasePrice = parseFloat(product.purchase_price) || 0;
@@ -289,7 +453,7 @@ const FinanceOverview = ({ darkMode }) => {
             invProfit += itemProfit;
             item.purchasePrice = purchasePrice;
             item.isProduct = !!product;
-            item.unitProfit = itemProfit / itemQty;
+            item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
           });
         }
         
@@ -308,24 +472,29 @@ const FinanceOverview = ({ darkMode }) => {
       });
       
       setSelectedYearData({ total: yearlyTotal, items: yearlyItems, count: yearInvoices.length, profit: yearlyProfit, details: yearlyDetails });
-      
-      // Reset to first page when year changes
       setCurrentPage(1);
       
     } catch (err) {
-      console.error('Error loading data:', err);
-      setError('Failed to load finance data. Please check your connection.');
+      if (err.name !== 'AbortError') {
+        console.error('Error loading data:', err);
+        setError('Failed to load finance data. Please check your connection.');
+      }
     } finally {
       setLoading(false);
     }
-  };
+    
+    return () => abortController.abort();
+  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, getStartOfWeek, getStartOfMonth]);
 
   useEffect(() => {
-    loadAllData();
-  }, [selectedYear]);
+    const cleanup = loadAllData();
+    return () => {
+      if (cleanup && typeof cleanup === 'function') cleanup();
+    };
+  }, [loadAllData]);
 
-  // Get flattened items for the yearly report with pagination
-  const getFlattenedYearlyItems = () => {
+  // Memoized flattened items for yearly report
+  const flattenedItems = useMemo(() => {
     const items = [];
     selectedYearData.details.forEach(inv => {
       inv.items.forEach(item => {
@@ -333,33 +502,36 @@ const FinanceOverview = ({ darkMode }) => {
       });
     });
     return items;
-  };
+  }, [selectedYearData.details]);
 
   // Pagination logic
-  const flattenedItems = getFlattenedYearlyItems();
   const totalItems = flattenedItems.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = flattenedItems.slice(indexOfFirstItem, indexOfLastItem);
+  const currentItems = useMemo(() => 
+    flattenedItems.slice(indexOfFirstItem, indexOfLastItem),
+    [flattenedItems, indexOfFirstItem, indexOfLastItem]
+  );
 
-  const paginate = (pageNumber) => {
+  const paginate = useCallback((pageNumber) => {
     setCurrentPage(pageNumber);
-  };
+  }, []);
 
-  const goToPrevPage = () => {
+  const goToPrevPage = useCallback(() => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
     }
-  };
+  }, [currentPage]);
 
-  const goToNextPage = () => {
+  const goToNextPage = useCallback(() => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
     }
-  };
+  }, [currentPage, totalPages]);
 
-  const exportToExcel = () => {
+  // Memoized export functions
+  const exportToExcel = useCallback(() => {
     if (selectedYearData.details.length === 0) {
       toast.error('No data available for the selected year');
       return;
@@ -388,9 +560,9 @@ const FinanceOverview = ({ darkMode }) => {
     XLSX.utils.book_append_sheet(wb, ws, `Year_${selectedYear}_Report`);
     XLSX.writeFile(wb, `Year_${selectedYear}_Sales_Report.xlsx`);
     toast.success(`Exported to Excel for year ${selectedYear}`);
-  };
+  }, [selectedYearData, selectedYear]);
 
-  const exportToPDF = () => {
+  const exportToPDF = useCallback(() => {
     if (selectedYearData.details.length === 0) {
       toast.error('No data available for the selected year');
       return;
@@ -423,135 +595,7 @@ const FinanceOverview = ({ darkMode }) => {
     });
     doc.save(`Year_${selectedYear}_Sales_Report.pdf`);
     toast.success(`Exported to PDF for year ${selectedYear}`);
-  };
-
-  // Sales Details Component
-  const InvoiceDetails = ({ title, data, darkMode, onClose }) => {
-    if (!data.details || data.details.length === 0) {
-      return (
-        <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
-          <p className="text-gray-500">No sales data available</p>
-        </div>
-      );
-    }
-    
-    const allItems = [];
-    data.details.forEach(inv => {
-      inv.items.forEach(item => {
-        allItems.push({ ...item, inv });
-      });
-    });
-    
-    return (
-      <div className="mt-4 space-y-3">
-        <div className="flex justify-between items-center">
-          <h4 className="font-semibold">📋 {title}</h4>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
-        </div>
-        <div className="overflow-x-auto max-h-96">
-          <table className="w-full text-sm">
-            <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-              <tr>
-                <th className="px-3 py-2 text-left">Item</th>
-                <th className="px-3 py-2 text-left">Type</th>
-                <th className="px-3 py-2 text-right">Purchase</th>
-                <th className="px-3 py-2 text-right">Sell</th>
-                <th className="px-3 py-2 text-center">Qty</th>
-                <th className="px-3 py-2 text-right">Unit Profit</th>
-                <th className="px-3 py-2 text-right">Total Profit</th>
-                <th className="px-3 py-2 text-left">Customer</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {allItems.map((item, idx) => (
-                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-3 py-2 font-medium">{item.service_name}</td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-1 rounded text-xs ${item.isProduct ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                      {item.isProduct ? 'Product' : 'Service'}
-                    </span>
-                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}
-                   </td>
-                  <td className="px-3 py-2 text-right">Rs. {item.price.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-center font-semibold">{item.quantity}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-green-500">
-                    + Rs. {item.unitProfit.toLocaleString()}
-                   </td>
-                  <td className="px-3 py-2 text-right font-semibold text-green-500">
-                    Rs. {(item.unitProfit * item.quantity).toLocaleString()}
-                   </td>
-                  <td className="px-3 py-2 text-xs">{item.inv.customer}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-              <tr>
-                <td colSpan="6" className="px-3 py-2 text-right font-bold">Total:</td>
-                <td className="px-3 py-2 text-right font-bold text-green-500">Rs. {data.profit.toLocaleString()}</td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  // Expense Details Component
-  const ExpenseDetails = ({ title, expenses, darkMode, onClose }) => {
-    if (!expenses || expenses.length === 0) {
-      return (
-        <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
-          <p className="text-gray-500">No expense data available</p>
-        </div>
-      );
-    }
-    
-    const totalAmount = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-    
-    return (
-      <div className="mt-4 space-y-3">
-        <div className="flex justify-between items-center">
-          <h4 className="font-semibold">📋 {title}</h4>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
-        </div>
-        <div className="overflow-x-auto max-h-96">
-          <table className="w-full text-sm">
-            <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-              <tr>
-                <th className="px-3 py-2 text-left">Description</th>
-                <th className="px-3 py-2 text-left">Category</th>
-                <th className="px-3 py-2 text-left">Date</th>
-                <th className="px-3 py-2 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {expenses.map((exp, idx) => (
-                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-3 py-2 font-medium">{exp.description}</td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                      {exp.category || 'General'}
-                    </span>
-                   </td>
-                  <td className="px-3 py-2 text-sm">{new Date(exp.date).toLocaleDateString()}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-red-500">Rs. {exp.amount.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-              <tr>
-                <td colSpan="3" className="px-3 py-2 text-right font-bold">Total:</td>
-                <td className="px-3 py-2 text-right font-bold text-red-500">Rs. {totalAmount.toLocaleString()}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    );
-  };
+  }, [selectedYearData, selectedYear]);
 
   if (loading) {
     return (

@@ -1,5 +1,5 @@
 // src/components/Inventory.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -11,6 +11,131 @@ import {
   FiLoader
 } from 'react-icons/fi';
 import api from '../services/api';
+
+// Debounce function
+const debounce = (func, delay) => {
+  let timeoutId;
+  return (...args) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
+  };
+};
+
+// Product Row Component with memoization
+const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, onSaveEdit, onKeyPress, onEditProduct, formatPrice }) => {
+  const isEditingName = editingCell.productId === product.id && editingCell.field === 'name';
+  const isEditingPurchase = editingCell.productId === product.id && editingCell.field === 'purchasePrice';
+  const isEditingSelling = editingCell.productId === product.id && editingCell.field === 'sellingPrice';
+  const isEditingQuantity = editingCell.productId === product.id && editingCell.field === 'quantity';
+
+  return (
+    <tr className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
+      <td className="px-6 py-4">
+        {isEditingName ? (
+          <input
+            type="text"
+            value={editingCell.value}
+            onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
+            onBlur={() => onSaveEdit(product.id, 'name')}
+            onKeyDown={(e) => onKeyPress(e, product.id, 'name')}
+            className={`w-full px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+            autoFocus
+          />
+        ) : (
+          <div 
+            onDoubleClick={() => onStartEdit({ productId: product.id, field: 'name', value: product.name })} 
+            className={`cursor-pointer font-medium ${darkMode ? 'text-white' : 'text-gray-900'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
+            title="Double-click to edit product name"
+          >
+            {product.name}
+          </div>
+        )}
+      </td>
+      <td className="px-6 py-4">
+        {isEditingPurchase ? (
+          <input
+            type="number"
+            value={editingCell.value}
+            onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
+            onBlur={() => onSaveEdit(product.id, 'purchasePrice')}
+            onKeyDown={(e) => onKeyPress(e, product.id, 'purchasePrice')}
+            className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+            autoFocus
+            step="0.01"
+            min="0"
+          />
+        ) : (
+          <div 
+            onDoubleClick={() => onStartEdit({ productId: product.id, field: 'purchasePrice', value: product.purchase_price })} 
+            className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
+            title="Double-click to edit purchase price"
+          >
+            {formatPrice(product.purchase_price)}
+          </div>
+        )}
+      </td>
+      <td className="px-6 py-4">
+        {isEditingSelling ? (
+          <input
+            type="number"
+            value={editingCell.value}
+            onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
+            onBlur={() => onSaveEdit(product.id, 'sellingPrice')}
+            onKeyDown={(e) => onKeyPress(e, product.id, 'sellingPrice')}
+            className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+            autoFocus
+            step="0.01"
+            min="0"
+          />
+        ) : (
+          <div 
+            onDoubleClick={() => onStartEdit({ productId: product.id, field: 'sellingPrice', value: product.selling_price })} 
+            className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
+            title="Double-click to edit selling price"
+          >
+            {formatPrice(product.selling_price)}
+          </div>
+        )}
+      </td>
+      <td className="px-6 py-4">
+        {isEditingQuantity ? (
+          <input
+            type="number"
+            value={editingCell.value}
+            onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
+            onBlur={() => onSaveEdit(product.id, 'quantity')}
+            onKeyDown={(e) => onKeyPress(e, product.id, 'quantity')}
+            className={`w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+            autoFocus
+            min="0"
+          />
+        ) : (
+          <div 
+            onDoubleClick={() => onStartEdit({ productId: product.id, field: 'quantity', value: product.quantity })} 
+            className={`cursor-pointer font-semibold flex items-center gap-1 ${
+              product.quantity < 5 && product.quantity > 0 ? 'text-yellow-500' : 
+              product.quantity === 0 ? 'text-red-500' : 
+              darkMode ? 'text-white' : 'text-gray-900'
+            } hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
+            title="Double-click to edit stock"
+          >
+            {product.quantity}
+            {product.quantity < 5 && product.quantity > 0 && <FiAlertCircle className="text-xs" />}
+            {product.quantity === 0 && <FiX className="text-xs" />}
+          </div>
+        )}
+      </td>
+      <td className="px-6 py-4">
+        <button 
+          onClick={() => onEditProduct(product)} 
+          className="px-3 py-1 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-1 shadow-md"
+        >
+          <FiEdit2 className="text-xs" /> Edit
+        </button>
+      </td>
+    </tr>
+  );
+});
 
 const Inventory = ({ darkMode }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -32,25 +157,16 @@ const Inventory = ({ darkMode }) => {
   
   const [editingCell, setEditingCell] = useState({ productId: null, field: null, value: '' });
 
-  // Fetch products from API
-  const fetchProducts = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/products');
-      if (response.data && Array.isArray(response.data)) {
-        setProducts(response.data);
-        calculateWeeklyStats(response.data);
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-      toast.error('Failed to load products');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Memoized filtered products
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm.trim()) return products;
+    return products.filter(product =>
+      product.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [products, searchTerm]);
 
-  // Calculate weekly stats
-  const calculateWeeklyStats = (productsList) => {
+  // Memoized weekly stats calculation
+  const calculateWeeklyStats = useCallback((productsList) => {
     const getStartOfWeek = () => {
       const today = new Date();
       const day = today.getDay();
@@ -65,23 +181,58 @@ const Inventory = ({ darkMode }) => {
       const isThisWeek = product.date_added ? new Date(product.date_added) >= getStartOfWeek() : true;
       
       if (isThisWeek) {
-        acc.totalPurchase += product.purchase_price * product.quantity;
-        acc.totalSelling += product.selling_price * product.quantity;
-        acc.totalProfit += (product.selling_price - product.purchase_price) * product.quantity;
+        acc.totalPurchase += (product.purchase_price || 0) * (product.quantity || 0);
+        acc.totalSelling += (product.selling_price || 0) * (product.quantity || 0);
+        acc.totalProfit += ((product.selling_price || 0) - (product.purchase_price || 0)) * (product.quantity || 0);
       }
       return acc;
     }, { totalPurchase: 0, totalSelling: 0, totalProfit: 0 });
     
     setWeeklyStats(stats);
+  }, []);
+
+  // Fetch products with abort controller
+  const fetchProducts = useCallback(async () => {
+    const abortController = new AbortController();
+    setLoading(true);
+    try {
+      const response = await api.get('/products', {
+        signal: abortController.signal
+      });
+      if (response.data && Array.isArray(response.data)) {
+        setProducts(response.data);
+        calculateWeeklyStats(response.data);
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Error fetching products:', error);
+        toast.error('Failed to load products');
+      }
+    } finally {
+      setLoading(false);
+    }
+    return () => abortController.abort();
+  }, [calculateWeeklyStats]);
+
+  // Debounced search handler
+  const debouncedSearch = useMemo(
+    () => debounce((value) => {
+      setSearchTerm(value);
+    }, 300),
+    []
+  );
+
+  const handleSearchChange = (e) => {
+    debouncedSearch(e.target.value);
   };
 
   // Add new product
-  const handleAddProduct = async (productData) => {
+  const handleAddProduct = useCallback(async (productData) => {
     try {
       const response = await api.post('/products', productData);
       if (response.data) {
         toast.success('Product added successfully!');
-        fetchProducts(); // Refresh list
+        await fetchProducts();
         return true;
       }
     } catch (error) {
@@ -89,15 +240,15 @@ const Inventory = ({ darkMode }) => {
       toast.error(error.response?.data?.message || 'Failed to add product');
       return false;
     }
-  };
+  }, [fetchProducts]);
 
   // Update product
-  const handleUpdateProduct = async (id, productData) => {
+  const handleUpdateProduct = useCallback(async (id, productData) => {
     try {
       const response = await api.put(`/products/${id}`, productData);
       if (response.data) {
         toast.success('Product updated successfully!');
-        fetchProducts(); // Refresh list
+        await fetchProducts();
         return true;
       }
     } catch (error) {
@@ -105,23 +256,20 @@ const Inventory = ({ darkMode }) => {
       toast.error(error.response?.data?.message || 'Failed to update product');
       return false;
     }
-  };
+  }, [fetchProducts]);
 
   // Load products on component mount
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [fetchProducts]);
 
-  const filteredProducts = products.filter(product =>
-    product.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const exportToExcel = (data, filename) => {
+  // Memoized export functions
+  const exportToExcel = useCallback((data, filename) => {
     const exportData = data.map(p => ({
       'Product': p.name,
-      'Purchase Price': `Rs. ${p.purchase_price.toLocaleString()}`,
-      'Selling Price': `Rs. ${p.selling_price.toLocaleString()}`,
-      'Stock': p.quantity
+      'Purchase Price': `Rs. ${(p.purchase_price || 0).toLocaleString()}`,
+      'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}`,
+      'Stock': p.quantity || 0
     }));
     
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -129,33 +277,33 @@ const Inventory = ({ darkMode }) => {
     XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
     XLSX.writeFile(wb, `${filename}.xlsx`);
     toast.success('Exported to Excel');
-  };
+  }, []);
 
-  const exportToPDF = (data, title) => {
+  const exportToPDF = useCallback((data, title) => {
     const doc = new jsPDF('landscape');
     doc.text(title, 14, 10);
     doc.autoTable({
       head: [['Product', 'Purchase Price', 'Selling Price', 'Stock']],
       body: data.map(p => [
-        p.name,
-        `Rs. ${p.purchase_price.toLocaleString()}`,
-        `Rs. ${p.selling_price.toLocaleString()}`,
-        p.quantity
+        p.name || '',
+        `Rs. ${(p.purchase_price || 0).toLocaleString()}`,
+        `Rs. ${(p.selling_price || 0).toLocaleString()}`,
+        p.quantity || 0
       ]),
       startY: 20,
     });
     doc.save(`${title}.pdf`);
     toast.success('Exported to PDF');
-  };
+  }, []);
 
-  const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
+  const handleInputChange = useCallback((e) => {
+    setFormData(prev => ({
+      ...prev,
       [e.target.name]: e.target.value
-    });
-  };
+    }));
+  }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     
     if (!formData.name || !formData.purchasePrice || !formData.sellingPrice || !formData.quantity) {
@@ -188,9 +336,9 @@ const Inventory = ({ darkMode }) => {
       setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
       setIsModalOpen(false);
     }
-  };
+  }, [formData, handleAddProduct]);
 
-  const handleEditProduct = (product) => {
+  const handleEditProduct = useCallback((product) => {
     setEditingProduct(product);
     setFormData({
       name: product.name,
@@ -199,9 +347,9 @@ const Inventory = ({ darkMode }) => {
       quantity: product.quantity
     });
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const handleUpdateSubmit = async (e) => {
+  const handleUpdateSubmit = useCallback(async (e) => {
     e.preventDefault();
     
     if (!formData.name || !formData.purchasePrice || !formData.sellingPrice || !formData.quantity) {
@@ -230,18 +378,16 @@ const Inventory = ({ darkMode }) => {
       setEditingProduct(null);
       setIsModalOpen(false);
     }
-  };
+  }, [formData, editingProduct, handleUpdateProduct]);
 
-  const startInlineEdit = (productId, field, currentValue) => {
-    setEditingCell({
-      productId,
-      field,
-      value: currentValue
-    });
-  };
+  const startInlineEdit = useCallback(({ productId, field, value }) => {
+    setEditingCell({ productId, field, value });
+  }, []);
 
-  const saveInlineEdit = async (productId, field) => {
+  const saveInlineEdit = useCallback(async (productId, field) => {
     let newValue;
+    const productToUpdate = products.find(p => p.id === productId);
+    
     if (field === 'name') {
       newValue = editingCell.value.trim();
       if (!newValue) {
@@ -265,7 +411,6 @@ const Inventory = ({ darkMode }) => {
       }
     }
 
-    const productToUpdate = products.find(p => p.id === productId);
     const updateData = {
       name: productToUpdate.name,
       purchase_price: productToUpdate.purchase_price,
@@ -280,13 +425,14 @@ const Inventory = ({ darkMode }) => {
     
     try {
       await api.put(`/products/${productId}`, updateData);
-      fetchProducts(); // Refresh list
+      await fetchProducts();
       
-      let successMessage = '';
-      if (field === 'name') successMessage = 'Product name updated successfully!';
-      else if (field === 'quantity') successMessage = 'Stock updated successfully!';
-      else if (field === 'purchasePrice') successMessage = 'Purchase price updated successfully!';
-      else if (field === 'sellingPrice') successMessage = 'Selling price updated successfully!';
+      const successMessage = {
+        name: 'Product name updated successfully!',
+        quantity: 'Stock updated successfully!',
+        purchasePrice: 'Purchase price updated successfully!',
+        sellingPrice: 'Selling price updated successfully!'
+      }[field];
       
       toast.success(successMessage);
     } catch (error) {
@@ -294,19 +440,19 @@ const Inventory = ({ darkMode }) => {
       toast.error('Failed to update product');
     }
     setEditingCell({ productId: null, field: null, value: '' });
-  };
+  }, [editingCell, products, fetchProducts]);
 
-  const handleKeyPress = (e, productId, field) => {
+  const handleKeyPress = useCallback((e, productId, field) => {
     if (e.key === 'Enter') {
       saveInlineEdit(productId, field);
     } else if (e.key === 'Escape') {
       setEditingCell({ productId: null, field: null, value: '' });
     }
-  };
+  }, [saveInlineEdit]);
 
-  const formatPrice = (price) => {
+  const formatPrice = useCallback((price) => {
     return `Rs. ${price?.toLocaleString() || 0}`;
-  };
+  }, []);
 
   if (loading) {
     return (
@@ -370,8 +516,7 @@ const Inventory = ({ darkMode }) => {
                 <input
                   type="text"
                   placeholder="Search products..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={handleSearchChange}
                   className={`px-4 py-2 pl-10 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-red-400 ${
                     darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-white border-gray-300 text-gray-900'
                   }`}
@@ -429,92 +574,17 @@ const Inventory = ({ darkMode }) => {
                 </tr>
               ) : (
                 filteredProducts.map(product => (
-                  <tr key={product.id} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
-                    <td className="px-6 py-4">
-                      {editingCell.productId === product.id && editingCell.field === 'name' ? (
-                        <input
-                          type="text"
-                          value={editingCell.value}
-                          onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
-                          onBlur={() => saveInlineEdit(product.id, 'name')}
-                          onKeyDown={(e) => handleKeyPress(e, product.id, 'name')}
-                          className={`w-full px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                          autoFocus
-                        />
-                      ) : (
-                        <div onDoubleClick={() => startInlineEdit(product.id, 'name', product.name)} className={`cursor-pointer font-medium ${darkMode ? 'text-white' : 'text-gray-900'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit product name">
-                          {product.name}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {editingCell.productId === product.id && editingCell.field === 'purchasePrice' ? (
-                        <input
-                          type="number"
-                          value={editingCell.value}
-                          onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
-                          onBlur={() => saveInlineEdit(product.id, 'purchasePrice')}
-                          onKeyDown={(e) => handleKeyPress(e, product.id, 'purchasePrice')}
-                          className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                          autoFocus
-                          step="0.01"
-                          min="0"
-                        />
-                      ) : (
-                        <div onDoubleClick={() => startInlineEdit(product.id, 'purchasePrice', product.purchase_price)} className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit purchase price">
-                          {formatPrice(product.purchase_price)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {editingCell.productId === product.id && editingCell.field === 'sellingPrice' ? (
-                        <input
-                          type="number"
-                          value={editingCell.value}
-                          onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
-                          onBlur={() => saveInlineEdit(product.id, 'sellingPrice')}
-                          onKeyDown={(e) => handleKeyPress(e, product.id, 'sellingPrice')}
-                          className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                          autoFocus
-                          step="0.01"
-                          min="0"
-                        />
-                      ) : (
-                        <div onDoubleClick={() => startInlineEdit(product.id, 'sellingPrice', product.selling_price)} className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit selling price">
-                          {formatPrice(product.selling_price)}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {editingCell.productId === product.id && editingCell.field === 'quantity' ? (
-                        <input
-                          type="number"
-                          value={editingCell.value}
-                          onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
-                          onBlur={() => saveInlineEdit(product.id, 'quantity')}
-                          onKeyDown={(e) => handleKeyPress(e, product.id, 'quantity')}
-                          className={`w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                          autoFocus
-                          min="0"
-                        />
-                      ) : (
-                        <div onDoubleClick={() => startInlineEdit(product.id, 'quantity', product.quantity)} className={`cursor-pointer font-semibold flex items-center gap-1 ${
-                          product.quantity < 5 && product.quantity > 0 ? 'text-yellow-500' : 
-                          product.quantity === 0 ? 'text-red-500' : 
-                          darkMode ? 'text-white' : 'text-gray-900'
-                        } hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} title="Double-click to edit stock">
-                          {product.quantity}
-                          {product.quantity < 5 && product.quantity > 0 && <FiAlertCircle className="text-xs" />}
-                          {product.quantity === 0 && <FiX className="text-xs" />}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <button onClick={() => handleEditProduct(product)} className="px-3 py-1 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-1 shadow-md">
-                        <FiEdit2 className="text-xs" /> Edit
-                      </button>
-                    </td>
-                  </tr>
+                  <ProductRow
+                    key={product.id}
+                    product={product}
+                    darkMode={darkMode}
+                    editingCell={editingCell}
+                    onStartEdit={startInlineEdit}
+                    onSaveEdit={saveInlineEdit}
+                    onKeyPress={handleKeyPress}
+                    onEditProduct={handleEditProduct}
+                    formatPrice={formatPrice}
+                  />
                 ))
               )}
             </tbody>

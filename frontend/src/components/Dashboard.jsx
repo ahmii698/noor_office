@@ -1,5 +1,5 @@
 // src/components/Dashboard.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
@@ -10,15 +10,41 @@ import {
 } from 'react-icons/fi';
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Sidebar from './Sidebar';
-import Inventory from './Inventory';
-import FinanceOverview from './finance/FinanceOverview';
-import FinanceExpenses from './finance/FinanceExpenses';
-import FinanceCharts from './finance/FinanceCharts';
-import FinanceReports from './finance/FinanceReports';
-import FinanceReminders from './finance/FinanceReminders';
-import Billing from './Billing';
-import Records from './Records';
 import api from '../services/api';
+
+// Lazy load heavy components
+const Inventory = lazy(() => import('./Inventory'));
+const FinanceOverview = lazy(() => import('./finance/FinanceOverview'));
+const FinanceExpenses = lazy(() => import('./finance/FinanceExpenses'));
+const FinanceCharts = lazy(() => import('./finance/FinanceCharts'));
+const FinanceReports = lazy(() => import('./finance/FinanceReports'));
+const FinanceReminders = lazy(() => import('./finance/FinanceReminders'));
+const Billing = lazy(() => import('./Billing'));
+const Records = lazy(() => import('./Records'));
+
+// Loading fallback component
+const LoadingFallback = ({ darkMode }) => (
+  <div className={`flex items-center justify-center h-96 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+    <div className="text-center">
+      <FiLoader className="text-5xl text-red-500 animate-spin mx-auto mb-4" />
+      <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading...</p>
+    </div>
+  </div>
+);
+
+// Memoized Stats Card Component
+const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkMode }) => (
+  <div className={`bg-gradient-to-r ${color} rounded-2xl p-6 text-white shadow-lg`}>
+    <div className="flex justify-between items-start">
+      <div>
+        <p className="text-sm opacity-90">{title}</p>
+        <p className="text-3xl font-bold mt-2">{value}</p>
+        {subtitle && <p className="text-xs opacity-75 mt-1">{subtitle}</p>}
+      </div>
+      <Icon className="text-3xl opacity-50" />
+    </div>
+  </div>
+));
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -36,15 +62,113 @@ const Dashboard = () => {
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
 
+  // Memoized calculations - sirf tab calculate hoga jab data change hoga
+  const totalSales = useMemo(() => 
+    invoices.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0),
+    [invoices]
+  );
+
+  const totalExpensesSum = useMemo(() => 
+    expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
+    [expenses]
+  );
+
+  const totalProfitCalc = useMemo(() => {
+    let profit = 0;
+    for (const inv of invoices) {
+      if (inv.items && inv.items.length > 0) {
+        for (const item of inv.items) {
+          const product = products.find(p => p.name === item.service_name);
+          if (product) {
+            const itemProfit = (parseFloat(item.price) - parseFloat(product.purchase_price)) * parseInt(item.quantity);
+            profit += itemProfit;
+          } else {
+            profit += parseFloat(item.price) * parseInt(item.quantity);
+          }
+        }
+      }
+    }
+    return profit;
+  }, [invoices, products]);
+
+  const profitMargin = useMemo(() => 
+    totalSales > 0 ? (totalProfitCalc / totalSales) * 100 : 0,
+    [totalSales, totalProfitCalc]
+  );
+
+  const totalProductsCount = useMemo(() => products.length, [products]);
+  const totalStock = useMemo(() => 
+    products.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0),
+    [products]
+  );
+
+  const lowStockProducts = useMemo(() => 
+    products.filter(p => (p.quantity || 0) < 10),
+    [products]
+  );
+
+  const recentInvoices = useMemo(() => 
+    [...invoices]
+      .sort((a, b) => new Date(b.invoice_date) - new Date(a.invoice_date))
+      .slice(0, 5),
+    [invoices]
+  );
+
+  // Chart Data - based on real data
+  const monthlyData = useMemo(() => {
+    // Group invoices by month
+    const monthly = {};
+    invoices.forEach(inv => {
+      if (inv.invoice_date) {
+        const date = new Date(inv.invoice_date);
+        const month = date.toLocaleString('default', { month: 'short' });
+        if (!monthly[month]) {
+          monthly[month] = { sales: 0, profit: 0 };
+        }
+        monthly[month].sales += parseFloat(inv.total_amount) || 0;
+        
+        // Calculate profit for this invoice
+        if (inv.items && inv.items.length > 0) {
+          inv.items.forEach(item => {
+            const product = products.find(p => p.name === item.service_name);
+            if (product) {
+              monthly[month].profit += (parseFloat(item.price) - parseFloat(product.purchase_price)) * parseInt(item.quantity);
+            } else {
+              monthly[month].profit += parseFloat(item.price) * parseInt(item.quantity);
+            }
+          });
+        }
+      }
+    });
+    
+    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return monthOrder.map(month => ({
+      month,
+      sales: monthly[month]?.sales || 0,
+      profit: monthly[month]?.profit || 0
+    }));
+  }, [invoices, products]);
+
+  const productSalesData = useMemo(() => 
+    products.map(p => ({
+      name: p.name,
+      value: (parseFloat(p.selling_price) || 0) * (parseInt(p.quantity) || 0)
+    })).filter(p => p.value > 0),
+    [products]
+  );
+
+  const COLORS = useMemo(() => ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4'], []);
+
   // Fetch all data from API
-  const fetchAllData = async () => {
+  const fetchAllData = useCallback(async () => {
+    const abortController = new AbortController();
     setLoading(true);
     try {
       const [productsRes, expensesRes, invoicesRes, servicesRes] = await Promise.all([
-        api.get('/products'),
-        api.get('/expenses'),
-        api.get('/invoices'),
-        api.get('/services')
+        api.get('/products', { signal: abortController.signal }),
+        api.get('/expenses', { signal: abortController.signal }),
+        api.get('/invoices', { signal: abortController.signal }),
+        api.get('/services', { signal: abortController.signal })
       ]);
       
       setProducts(productsRes.data || []);
@@ -53,16 +177,22 @@ const Dashboard = () => {
       setServices(servicesRes.data || []);
       
     } catch (err) {
-      console.error('Error fetching data:', err);
-      toast.error('Failed to load data');
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching data:', err);
+        toast.error('Failed to load data');
+      }
     } finally {
       setLoading(false);
     }
-  };
+    return () => abortController.abort();
+  }, []);
 
   useEffect(() => {
-    fetchAllData();
-  }, []);
+    const cleanup = fetchAllData();
+    return () => {
+      if (cleanup && typeof cleanup === 'function') cleanup();
+    };
+  }, [fetchAllData]);
 
   useEffect(() => {
     if (darkMode) {
@@ -73,7 +203,7 @@ const Dashboard = () => {
     localStorage.setItem('darkMode', darkMode);
   }, [darkMode]);
 
-  const handleAddProduct = async (product) => {
+  const handleAddProduct = useCallback(async (product) => {
     try {
       const response = await api.post('/products', product);
       if (response.data) {
@@ -86,9 +216,9 @@ const Dashboard = () => {
       toast.error('Failed to add product');
       return false;
     }
-  };
+  }, [fetchAllData]);
 
-  const handleUpdateProduct = async (updatedProduct) => {
+  const handleUpdateProduct = useCallback(async (updatedProduct) => {
     try {
       const response = await api.put(`/products/${updatedProduct.id}`, updatedProduct);
       if (response.data) {
@@ -101,9 +231,9 @@ const Dashboard = () => {
       toast.error('Failed to update product');
       return false;
     }
-  };
+  }, [fetchAllData]);
 
-  const handleAddExpense = async (expense) => {
+  const handleAddExpense = useCallback(async (expense) => {
     try {
       const response = await api.post('/expenses', expense);
       if (response.data) {
@@ -116,9 +246,9 @@ const Dashboard = () => {
       toast.error('Failed to add expense');
       return false;
     }
-  };
+  }, [fetchAllData]);
 
-  const handleUpdateExpense = async (updatedExpense) => {
+  const handleUpdateExpense = useCallback(async (updatedExpense) => {
     try {
       const response = await api.put(`/expenses/${updatedExpense.id}`, updatedExpense);
       if (response.data) {
@@ -131,9 +261,9 @@ const Dashboard = () => {
       toast.error('Failed to update expense');
       return false;
     }
-  };
+  }, [fetchAllData]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await api.post('/logout');
     } catch (err) {
@@ -144,54 +274,9 @@ const Dashboard = () => {
     localStorage.removeItem('user');
     toast.success('Logged out');
     navigate('/');
-  };
+  }, [navigate]);
 
-  // Calculate Stats for All Data
-  const totalSales = invoices.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0);
-  const totalExpensesSum = expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
-  
-  // Calculate total profit from invoices
-  let totalProfitCalc = 0;
-  for (const inv of invoices) {
-    if (inv.items && inv.items.length > 0) {
-      for (const item of inv.items) {
-        const product = products.find(p => p.name === item.service_name);
-        if (product) {
-          const profit = (parseFloat(item.price) - parseFloat(product.purchase_price)) * parseInt(item.quantity);
-          totalProfitCalc += profit;
-        } else {
-          totalProfitCalc += parseFloat(item.price) * parseInt(item.quantity);
-        }
-      }
-    }
-  }
-  const totalProfit = totalProfitCalc;
-  const profitMargin = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
-  const totalProductsCount = products.length;
-  const totalStock = products.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
-  const lowStockProducts = products.filter(p => (p.quantity || 0) < 10);
-  const recentInvoices = [...invoices]
-    .sort((a, b) => new Date(b.invoice_date) - new Date(a.invoice_date))
-    .slice(0, 5);
-
-  // Chart Data
-  const monthlyData = [
-    { month: 'Jan', sales: totalSales * 0.1, profit: totalProfit * 0.08 },
-    { month: 'Feb', sales: totalSales * 0.15, profit: totalProfit * 0.12 },
-    { month: 'Mar', sales: totalSales * 0.12, profit: totalProfit * 0.1 },
-    { month: 'Apr', sales: totalSales * 0.18, profit: totalProfit * 0.15 },
-    { month: 'May', sales: totalSales * 0.2, profit: totalProfit * 0.18 },
-    { month: 'Jun', sales: totalSales * 0.25, profit: totalProfit * 0.22 },
-  ];
-
-  const productSalesData = products.map(p => ({
-    name: p.name,
-    value: (parseFloat(p.selling_price) || 0) * (parseInt(p.quantity) || 0)
-  }));
-
-  const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4'];
-
-  const getMenuTitle = () => {
+  const getMenuTitle = useCallback(() => {
     const titles = {
       'all-data': 'Complete Business Overview',
       inventory: 'Inventory Management',
@@ -204,9 +289,9 @@ const Dashboard = () => {
       record: 'Records Archive'
     };
     return titles[activeMenu] || 'Dashboard';
-  };
+  }, [activeMenu]);
 
-  const getMenuDescription = () => {
+  const getMenuDescription = useCallback(() => {
     const descriptions = {
       'all-data': 'Everything at a glance - Sales, Expenses, Products, Invoices',
       inventory: 'Manage products, track purchases and sales',
@@ -219,9 +304,9 @@ const Dashboard = () => {
       record: 'View all transaction history'
     };
     return descriptions[activeMenu] || '';
-  };
+  }, [activeMenu]);
 
-  const getActiveIcon = () => {
+  const getActiveIcon = useCallback(() => {
     const icons = {
       'all-data': <FiBarChart2 className="text-2xl" />,
       inventory: <FiPackage className="text-2xl" />,
@@ -234,7 +319,7 @@ const Dashboard = () => {
       record: <FiBarChart2 className="text-2xl" />
     };
     return icons[activeMenu] || <FiPackage className="text-2xl" />;
-  };
+  }, [activeMenu]);
 
   if (loading) {
     return (
@@ -300,44 +385,10 @@ const Dashboard = () => {
               <div className="space-y-6">
                 {/* 4 Main Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm opacity-90">Total Sales</p>
-                        <p className="text-3xl font-bold mt-2">Rs. {totalSales.toLocaleString()}</p>
-                      </div>
-                      <FiDollarSign className="text-3xl opacity-50" />
-                    </div>
-                  </div>
-                  <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm opacity-90">Total Profit</p>
-                        <p className="text-3xl font-bold mt-2">Rs. {totalProfit.toLocaleString()}</p>
-                        <p className="text-xs opacity-75 mt-1">Margin: {profitMargin.toFixed(1)}%</p>
-                      </div>
-                      <FiTrendingUp className="text-3xl opacity-50" />
-                    </div>
-                  </div>
-                  <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm opacity-90">Total Expenses</p>
-                        <p className="text-3xl font-bold mt-2">Rs. {totalExpensesSum.toLocaleString()}</p>
-                      </div>
-                      <FiShoppingCart className="text-3xl opacity-50" />
-                    </div>
-                  </div>
-                  <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm opacity-90">Total Products</p>
-                        <p className="text-3xl font-bold mt-2">{totalProductsCount}</p>
-                        <p className="text-xs opacity-75 mt-1">{totalStock} units in stock</p>
-                      </div>
-                      <FiPackage className="text-3xl opacity-50" />
-                    </div>
-                  </div>
+                  <StatsCard title="Total Sales" value={`Rs. ${totalSales.toLocaleString()}`} icon={FiDollarSign} color="from-red-500 to-red-600" darkMode={darkMode} />
+                  <StatsCard title="Total Profit" value={`Rs. ${totalProfitCalc.toLocaleString()}`} subtitle={`Margin: ${profitMargin.toFixed(1)}%`} icon={FiTrendingUp} color="from-green-500 to-green-600" darkMode={darkMode} />
+                  <StatsCard title="Total Expenses" value={`Rs. ${totalExpensesSum.toLocaleString()}`} icon={FiShoppingCart} color="from-blue-500 to-blue-600" darkMode={darkMode} />
+                  <StatsCard title="Total Products" value={totalProductsCount} subtitle={`${totalStock} units in stock`} icon={FiPackage} color="from-purple-500 to-purple-600" darkMode={darkMode} />
                 </div>
 
                 {/* Monthly Sales & Profit Chart */}
@@ -369,7 +420,7 @@ const Dashboard = () => {
                     <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={productSalesData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} outerRadius={100} dataKey="value">
+                          <Pie data={productSalesData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''} outerRadius={100} dataKey="value">
                             {productSalesData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                           </Pie>
                           <Tooltip formatter={(value) => `Rs. ${value.toLocaleString()}`} contentStyle={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff' }} />
@@ -463,34 +514,36 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Other Components */}
-            {activeMenu === 'inventory' && (
-              <Inventory products={products} darkMode={darkMode} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} />
-            )}
-            
-            {activeMenu === 'finance-overview' && (
-              <FinanceOverview darkMode={darkMode} />
-            )}
-            {activeMenu === 'finance-expenses' && (
-              <FinanceExpenses darkMode={darkMode} />
-            )}
-            {activeMenu === 'finance-charts' && (
-              <FinanceCharts darkMode={darkMode} />
-            )}
-            {activeMenu === 'finance-reports' && (
-              <FinanceReports darkMode={darkMode} />
-            )}
-            {activeMenu === 'finance-reminders' && (
-              <FinanceReminders darkMode={darkMode} />
-            )}
-            
-            {activeMenu === 'billing' && (
-              <Billing darkMode={darkMode} />
-            )}
-            
-            {activeMenu === 'record' && (
-              <Records darkMode={darkMode} />
-            )}
+            {/* Other Components with Suspense for lazy loading */}
+            <Suspense fallback={<LoadingFallback darkMode={darkMode} />}>
+              {activeMenu === 'inventory' && (
+                <Inventory products={products} darkMode={darkMode} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} />
+              )}
+              
+              {activeMenu === 'finance-overview' && (
+                <FinanceOverview darkMode={darkMode} />
+              )}
+              {activeMenu === 'finance-expenses' && (
+                <FinanceExpenses darkMode={darkMode} />
+              )}
+              {activeMenu === 'finance-charts' && (
+                <FinanceCharts darkMode={darkMode} />
+              )}
+              {activeMenu === 'finance-reports' && (
+                <FinanceReports darkMode={darkMode} />
+              )}
+              {activeMenu === 'finance-reminders' && (
+                <FinanceReminders darkMode={darkMode} />
+              )}
+              
+              {activeMenu === 'billing' && (
+                <Billing darkMode={darkMode} />
+              )}
+              
+              {activeMenu === 'record' && (
+                <Records darkMode={darkMode} />
+              )}
+            </Suspense>
           </div>
         </div>
       </div>

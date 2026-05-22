@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import StatsCards from './StatsCards';
 import UpcomingPayments from './UpcomingPayments';
-import { FiCalendar, FiTrendingUp, FiDollarSign, FiPackage, FiBarChart2, FiChevronDown, FiChevronUp, FiDownload, FiFileText, FiLoader } from 'react-icons/fi';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { FiCalendar, FiTrendingUp, FiDollarSign, FiPackage, FiBarChart2, FiChevronDown, FiChevronUp, FiDownload, FiFileText, FiLoader, FiClock, FiTrendingDown, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -13,31 +12,44 @@ import api from '../../services/api';
 const FinanceOverview = ({ darkMode }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showYearlyReport, setShowYearlyReport] = useState(true);
+  const [showTodayDetails, setShowTodayDetails] = useState(false);
+  const [showWeekDetails, setShowWeekDetails] = useState(false);
+  const [showMonthDetails, setShowMonthDetails] = useState(false);
+  const [showTodayExpenses, setShowTodayExpenses] = useState(false);
+  const [showWeekExpenses, setShowWeekExpenses] = useState(false);
+  const [showMonthExpenses, setShowMonthExpenses] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // State for dynamic data
+  // Pagination state for yearly report
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
+  
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
-  const [inventoryStats, setInventoryStats] = useState({
-    totalPurchase: 0,
-    totalSelling: 0,
-    totalProfit: 0
-  });
-  const [periodStats, setPeriodStats] = useState({
-    daily: { totalExpenses: 0, totalRevenue: 0, netProfit: 0, profitMargin: 0, count: 0 },
-    weekly: { totalExpenses: 0, totalRevenue: 0, netProfit: 0, profitMargin: 0, count: 0 },
-    monthly: { totalExpenses: 0, totalRevenue: 0, netProfit: 0, profitMargin: 0, count: 0 },
-    yearly: { totalExpenses: 0, totalRevenue: 0, netProfit: 0, profitMargin: 0, count: 0 }
-  });
+  const [invoices, setInvoices] = useState([]);
   
-  const [todaySales, setTodaySales] = useState({ total: 0, items: 0, count: 0, profit: 0 });
-  const [weeklySales, setWeeklySales] = useState({ total: 0, items: 0, count: 0, profit: 0 });
-  const [monthlySales, setMonthlySales] = useState({ total: 0, items: 0, count: 0, profit: 0 });
-  const [selectedYearData, setSelectedYearData] = useState({ total: 0, items: 0, count: 0, profit: 0 });
-  const [yearProducts, setYearProducts] = useState([]);
+  const [todaySales, setTodaySales] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
+  const [weeklySales, setWeeklySales] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
+  const [monthlySales, setMonthlySales] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
+  const [selectedYearData, setSelectedYearData] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
+  
+  const [todayExpenseDetails, setTodayExpenseDetails] = useState([]);
+  const [weekExpenseDetails, setWeekExpenseDetails] = useState([]);
+  const [monthExpenseDetails, setMonthExpenseDetails] = useState([]);
+  
+  const [stats, setStats] = useState({
+    todayExpenses: 0,
+    todayExpenseCount: 0,
+    weekExpenses: 0,
+    weekExpenseCount: 0,
+    monthExpenses: 0,
+    monthExpenseCount: 0,
+    monthRevenue: 0,
+    monthProfit: 0,
+    monthMargin: 0
+  });
 
-  // Fetch products from API
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products');
@@ -52,7 +64,6 @@ const FinanceOverview = ({ darkMode }) => {
     }
   };
 
-  // Fetch expenses from API
   const fetchExpenses = async () => {
     try {
       const response = await api.get('/expenses');
@@ -67,146 +78,37 @@ const FinanceOverview = ({ darkMode }) => {
     }
   };
 
-  // Calculate inventory stats
-  const calculateInventoryStats = (productsList) => {
-    const stats = productsList.reduce((acc, product) => {
-      acc.totalPurchase += product.purchase_price * product.quantity;
-      acc.totalSelling += product.selling_price * product.quantity;
-      acc.totalProfit += (product.selling_price - product.purchase_price) * product.quantity;
-      return acc;
-    }, { totalPurchase: 0, totalSelling: 0, totalProfit: 0 });
-    
-    setInventoryStats(stats);
-    return stats;
-  };
-
-  // Get Today's Sales
-  const calculateTodaySales = (productsList) => {
-    const todayStr = new Date().toDateString();
-    const todayProducts = productsList.filter(p => {
-      const productDate = p.date_added ? new Date(p.date_added).toDateString() : false;
-      return productDate === todayStr;
-    });
-    
-    const todaySalesTotal = todayProducts.reduce((sum, p) => sum + (p.selling_price * p.quantity), 0);
-    const todayItems = todayProducts.reduce((sum, p) => sum + p.quantity, 0);
-    const todayProfit = todayProducts.reduce((sum, p) => sum + ((p.selling_price - p.purchase_price) * p.quantity), 0);
-    
-    setTodaySales({
-      total: todaySalesTotal,
-      items: todayItems,
-      count: todayProducts.length,
-      profit: todayProfit
-    });
-  };
-
-  // Get Weekly Sales
-  const calculateWeeklySales = (productsList) => {
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    
-    const weekProducts = productsList.filter(p => {
-      if (!p.date_added) return false;
-      return new Date(p.date_added) >= weekAgo;
-    });
-    
-    const weeklySalesTotal = weekProducts.reduce((sum, p) => sum + (p.selling_price * p.quantity), 0);
-    const weeklyItems = weekProducts.reduce((sum, p) => sum + p.quantity, 0);
-    const weeklyProfit = weekProducts.reduce((sum, p) => sum + ((p.selling_price - p.purchase_price) * p.quantity), 0);
-    
-    setWeeklySales({
-      total: weeklySalesTotal,
-      items: weeklyItems,
-      count: weekProducts.length,
-      profit: weeklyProfit
-    });
-  };
-
-  // Get Monthly Sales
-  const calculateMonthlySales = (productsList) => {
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    
-    const monthProducts = productsList.filter(p => {
-      if (!p.date_added) return false;
-      const productDate = new Date(p.date_added);
-      return productDate.getMonth() === currentMonth && productDate.getFullYear() === currentYear;
-    });
-    
-    const monthlySalesTotal = monthProducts.reduce((sum, p) => sum + (p.selling_price * p.quantity), 0);
-    const monthlyItems = monthProducts.reduce((sum, p) => sum + p.quantity, 0);
-    const monthlyProfit = monthProducts.reduce((sum, p) => sum + ((p.selling_price - p.purchase_price) * p.quantity), 0);
-    
-    setMonthlySales({
-      total: monthlySalesTotal,
-      items: monthlyItems,
-      count: monthProducts.length,
-      profit: monthlyProfit
-    });
-  };
-
-  // Get Yearly Sales Data
-  const calculateYearlySalesData = (productsList, year) => {
-    const yearProductsList = productsList.filter(p => {
-      if (!p.date_added) return false;
-      return new Date(p.date_added).getFullYear() === year;
-    });
-    
-    const yearlySales = yearProductsList.reduce((sum, p) => sum + (p.selling_price * p.quantity), 0);
-    const yearlyItems = yearProductsList.reduce((sum, p) => sum + p.quantity, 0);
-    const yearlyProfit = yearProductsList.reduce((sum, p) => sum + ((p.selling_price - p.purchase_price) * p.quantity), 0);
-    
-    setSelectedYearData({
-      total: yearlySales,
-      items: yearlyItems,
-      count: yearProductsList.length,
-      profit: yearlyProfit
-    });
-    
-    setYearProducts(yearProductsList);
-  };
-
-  // Calculate Period Stats (Expenses)
-  const calculatePeriodStats = (expensesList) => {
-    const now = new Date();
-    
-    const getFilteredExpenses = (period) => {
-      if (period === 'daily') {
-        return expensesList.filter(exp => new Date(exp.expense_date).toDateString() === now.toDateString());
-      } else if (period === 'weekly') {
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        return expensesList.filter(exp => new Date(exp.expense_date) >= weekAgo);
-      } else if (period === 'monthly') {
-        return expensesList.filter(exp => new Date(exp.expense_date).getMonth() === now.getMonth() && new Date(exp.expense_date).getFullYear() === now.getFullYear());
-      } else {
-        return expensesList.filter(exp => new Date(exp.expense_date).getFullYear() === now.getFullYear());
+  const fetchInvoices = async () => {
+    try {
+      const response = await api.get('/invoices');
+      if (response.data && Array.isArray(response.data)) {
+        setInvoices(response.data);
+        return response.data;
       }
-    };
-    
-    const periods = ['daily', 'weekly', 'monthly', 'yearly'];
-    const newPeriodStats = {};
-    
-    periods.forEach(period => {
-      const filtered = getFilteredExpenses(period);
-      const totalExpenses = filtered.reduce((sum, exp) => sum + exp.amount, 0);
-      const totalRevenue = inventoryStats.totalSelling;
-      const netProfit = totalRevenue - inventoryStats.totalPurchase - totalExpenses;
-      const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-      
-      newPeriodStats[period] = {
-        totalExpenses,
-        totalRevenue,
-        netProfit,
-        profitMargin,
-        count: filtered.length
-      };
-    });
-    
-    setPeriodStats(newPeriodStats);
+      return [];
+    } catch (err) {
+      console.error('Error fetching invoices:', err);
+      return [];
+    }
   };
 
-  // Load all data
+  const getStartOfWeek = () => {
+    const today = new Date();
+    const day = today.getDay();
+    const diff = (day === 0 ? 6 : day - 1);
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - diff);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  };
+
+  const getStartOfMonth = () => {
+    const date = new Date();
+    date.setDate(1);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
   const loadAllData = async () => {
     setLoading(true);
     setError(null);
@@ -214,19 +116,201 @@ const FinanceOverview = ({ darkMode }) => {
     try {
       const productsList = await fetchProducts();
       const expensesList = await fetchExpenses();
+      const invoicesList = await fetchInvoices();
       
-      if (productsList.length === 0 && expensesList.length === 0) {
-        setError('No data found. Please add products and expenses first.');
-      }
+      setProducts(productsList);
       
-      const stats = calculateInventoryStats(productsList);
-      setInventoryStats(stats);
+      const todayStr = new Date().toDateString();
+      const weekStart = getStartOfWeek();
+      const monthStart = getStartOfMonth();
       
-      calculateTodaySales(productsList);
-      calculateWeeklySales(productsList);
-      calculateMonthlySales(productsList);
-      calculateYearlySalesData(productsList, selectedYear);
-      calculatePeriodStats(expensesList);
+      let todayTotal = 0, todayItems = 0, todayProfit = 0, todayDetails = [];
+      let weekTotal = 0, weekItems = 0, weekProfit = 0, weekDetails = [];
+      let monthTotal = 0, monthItems = 0, monthProfit = 0, monthDetails = [];
+      
+      invoicesList.forEach(inv => {
+        if (!inv.invoice_date) return;
+        
+        const invDate = new Date(inv.invoice_date);
+        const invDateStr = invDate.toDateString();
+        const isToday = invDateStr === todayStr;
+        const isThisWeek = invDate >= weekStart;
+        const isThisMonth = invDate >= monthStart;
+        
+        let invTotal = parseFloat(inv.total_amount) || 0;
+        let invProfit = 0;
+        let itemCount = 0;
+        
+        if (inv.items && inv.items.length > 0) {
+          inv.items.forEach(item => {
+            const itemQty = parseInt(item.quantity) || 0;
+            const itemPrice = parseFloat(item.price) || 0;
+            itemCount += itemQty;
+            
+            let itemProfit = 0;
+            let purchasePrice = 0;
+            
+            const product = productsList.find(p => p.name === item.service_name);
+            
+            if (product) {
+              purchasePrice = parseFloat(product.purchase_price) || 0;
+              itemProfit = (itemPrice - purchasePrice) * itemQty;
+            } else {
+              itemProfit = itemPrice * itemQty;
+              purchasePrice = 0;
+            }
+            
+            invProfit += itemProfit;
+            item.purchasePrice = purchasePrice;
+            item.isProduct = !!product;
+            item.unitProfit = itemProfit / itemQty;
+          });
+        }
+        
+        const detailItem = {
+          invoiceNo: inv.invoice_no,
+          customer: inv.customer_name,
+          date: inv.invoice_date,
+          total: invTotal,
+          profit: invProfit,
+          items: inv.items || [],
+          itemCount: itemCount
+        };
+        
+        if (isToday) {
+          todayTotal += invTotal;
+          todayItems += itemCount;
+          todayProfit += invProfit;
+          todayDetails.push(detailItem);
+        }
+        if (isThisWeek) {
+          weekTotal += invTotal;
+          weekItems += itemCount;
+          weekProfit += invProfit;
+          weekDetails.push(detailItem);
+        }
+        if (isThisMonth) {
+          monthTotal += invTotal;
+          monthItems += itemCount;
+          monthProfit += invProfit;
+          monthDetails.push(detailItem);
+        }
+      });
+      
+      setTodaySales({ total: todayTotal, items: todayItems, count: todayDetails.length, profit: todayProfit, details: todayDetails });
+      setWeeklySales({ total: weekTotal, items: weekItems, count: weekDetails.length, profit: weekProfit, details: weekDetails });
+      setMonthlySales({ total: monthTotal, items: monthItems, count: monthDetails.length, profit: monthProfit, details: monthDetails });
+      
+      let todayExp = 0, todayExpCount = 0, todayExpList = [];
+      let weekExp = 0, weekExpCount = 0, weekExpList = [];
+      let monthExp = 0, monthExpCount = 0, monthExpList = [];
+      
+      expensesList.forEach(exp => {
+        if (!exp.expense_date) return;
+        const expDate = new Date(exp.expense_date);
+        const amount = parseFloat(exp.amount) || 0;
+        const expenseItem = {
+          id: exp.id,
+          description: exp.description,
+          amount: amount,
+          date: exp.expense_date,
+          category: exp.category
+        };
+        
+        if (expDate.toDateString() === todayStr) {
+          todayExp += amount;
+          todayExpCount++;
+          todayExpList.push(expenseItem);
+        }
+        if (expDate >= weekStart) {
+          weekExp += amount;
+          weekExpCount++;
+          weekExpList.push(expenseItem);
+        }
+        if (expDate >= monthStart) {
+          monthExp += amount;
+          monthExpCount++;
+          monthExpList.push(expenseItem);
+        }
+      });
+      
+      setTodayExpenseDetails(todayExpList);
+      setWeekExpenseDetails(weekExpList);
+      setMonthExpenseDetails(monthExpList);
+      
+      const monthRevenue = monthTotal;
+      const monthNetProfit = monthProfit - monthExp;
+      const monthMargin = monthRevenue > 0 ? (monthNetProfit / monthRevenue) * 100 : 0;
+      
+      setStats({
+        todayExpenses: todayExp,
+        todayExpenseCount: todayExpCount,
+        weekExpenses: weekExp,
+        weekExpenseCount: weekExpCount,
+        monthExpenses: monthExp,
+        monthExpenseCount: monthExpCount,
+        monthRevenue: monthRevenue,
+        monthProfit: monthNetProfit,
+        monthMargin: monthMargin
+      });
+      
+      const year = selectedYear;
+      const yearInvoices = invoicesList.filter(inv => {
+        if (!inv.invoice_date) return false;
+        return new Date(inv.invoice_date).getFullYear() === year;
+      });
+      
+      let yearlyTotal = 0, yearlyItems = 0, yearlyProfit = 0, yearlyDetails = [];
+      
+      yearInvoices.forEach(inv => {
+        let invTotal = parseFloat(inv.total_amount) || 0;
+        let invProfit = 0;
+        let itemCount = 0;
+        
+        if (inv.items && inv.items.length > 0) {
+          inv.items.forEach(item => {
+            const itemQty = parseInt(item.quantity) || 0;
+            const itemPrice = parseFloat(item.price) || 0;
+            itemCount += itemQty;
+            
+            let itemProfit = 0;
+            let purchasePrice = 0;
+            
+            const product = productsList.find(p => p.name === item.service_name);
+            
+            if (product) {
+              purchasePrice = parseFloat(product.purchase_price) || 0;
+              itemProfit = (itemPrice - purchasePrice) * itemQty;
+            } else {
+              itemProfit = itemPrice * itemQty;
+              purchasePrice = 0;
+            }
+            
+            invProfit += itemProfit;
+            item.purchasePrice = purchasePrice;
+            item.isProduct = !!product;
+            item.unitProfit = itemProfit / itemQty;
+          });
+        }
+        
+        yearlyTotal += invTotal;
+        yearlyItems += itemCount;
+        yearlyProfit += invProfit;
+        yearlyDetails.push({
+          invoiceNo: inv.invoice_no,
+          customer: inv.customer_name,
+          date: inv.invoice_date,
+          total: invTotal,
+          profit: invProfit,
+          items: inv.items || [],
+          itemCount: itemCount
+        });
+      });
+      
+      setSelectedYearData({ total: yearlyTotal, items: yearlyItems, count: yearInvoices.length, profit: yearlyProfit, details: yearlyDetails });
+      
+      // Reset to first page when year changes
+      setCurrentPage(1);
       
     } catch (err) {
       console.error('Error loading data:', err);
@@ -236,28 +320,68 @@ const FinanceOverview = ({ darkMode }) => {
     }
   };
 
-  // Load data on component mount and when selectedYear changes
   useEffect(() => {
     loadAllData();
   }, [selectedYear]);
 
-  // Export to Excel for selected year
+  // Get flattened items for the yearly report with pagination
+  const getFlattenedYearlyItems = () => {
+    const items = [];
+    selectedYearData.details.forEach(inv => {
+      inv.items.forEach(item => {
+        items.push({ ...item, inv });
+      });
+    });
+    return items;
+  };
+
+  // Pagination logic
+  const flattenedItems = getFlattenedYearlyItems();
+  const totalItems = flattenedItems.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = flattenedItems.slice(indexOfFirstItem, indexOfLastItem);
+
+  const paginate = (pageNumber) => {
+    setCurrentPage(pageNumber);
+  };
+
+  const goToPrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
   const exportToExcel = () => {
-    if (yearProducts.length === 0) {
+    if (selectedYearData.details.length === 0) {
       toast.error('No data available for the selected year');
       return;
     }
     
-    const exportData = yearProducts.map(p => ({
-      'Product Name': p.name,
-      'Purchase Price': `Rs. ${p.purchase_price?.toLocaleString() || 0}`,
-      'Selling Price': `Rs. ${p.selling_price?.toLocaleString() || 0}`,
-      'Quantity Sold': p.quantity || 0,
-      'Total Purchase': `Rs. ${((p.purchase_price || 0) * (p.quantity || 0)).toLocaleString()}`,
-      'Total Revenue': `Rs. ${((p.selling_price || 0) * (p.quantity || 0)).toLocaleString()}`,
-      'Profit': `Rs. ${(((p.selling_price || 0) - (p.purchase_price || 0)) * (p.quantity || 0)).toLocaleString()}`,
-      'Date Added': p.date_added ? new Date(p.date_added).toLocaleDateString() : 'N/A'
-    }));
+    const exportData = [];
+    selectedYearData.details.forEach(inv => {
+      inv.items.forEach(item => {
+        exportData.push({
+          'Invoice #': inv.invoiceNo,
+          'Customer': inv.customer,
+          'Date': new Date(inv.date).toLocaleDateString(),
+          'Item': item.service_name,
+          'Type': item.isProduct ? 'Product' : 'Service',
+          'Quantity': item.quantity,
+          'Purchase Price': item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : 'N/A',
+          'Selling Price': `Rs. ${item.price.toLocaleString()}`,
+          'Unit Profit': `Rs. ${item.unitProfit.toLocaleString()}`,
+          'Total Profit': `Rs. ${(item.unitProfit * item.quantity).toLocaleString()}`
+        });
+      });
+    });
     
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
@@ -266,30 +390,167 @@ const FinanceOverview = ({ darkMode }) => {
     toast.success(`Exported to Excel for year ${selectedYear}`);
   };
 
-  // Export to PDF for selected year
   const exportToPDF = () => {
-    if (yearProducts.length === 0) {
+    if (selectedYearData.details.length === 0) {
       toast.error('No data available for the selected year');
       return;
     }
     
     const doc = new jsPDF('landscape');
     doc.text(`Sales Report for Year ${selectedYear}`, 14, 10);
+    const tableData = [];
+    selectedYearData.details.forEach(inv => {
+      inv.items.forEach(item => {
+        tableData.push([
+          inv.invoiceNo,
+          inv.customer,
+          new Date(inv.date).toLocaleDateString(),
+          item.service_name,
+          item.isProduct ? 'Product' : 'Service',
+          item.quantity,
+          item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-',
+          `Rs. ${item.price.toLocaleString()}`,
+          `Rs. ${item.unitProfit.toLocaleString()}`,
+          `Rs. ${(item.unitProfit * item.quantity).toLocaleString()}`
+        ]);
+      });
+    });
+    
     doc.autoTable({
-      head: [['Product', 'Purchase Price', 'Selling Price', 'Quantity', 'Total Purchase', 'Total Revenue', 'Profit']],
-      body: yearProducts.map(p => [
-        p.name,
-        `Rs. ${p.purchase_price?.toLocaleString() || 0}`,
-        `Rs. ${p.selling_price?.toLocaleString() || 0}`,
-        p.quantity || 0,
-        `Rs. ${((p.purchase_price || 0) * (p.quantity || 0)).toLocaleString()}`,
-        `Rs. ${((p.selling_price || 0) * (p.quantity || 0)).toLocaleString()}`,
-        `Rs. ${(((p.selling_price || 0) - (p.purchase_price || 0)) * (p.quantity || 0)).toLocaleString()}`
-      ]),
+      head: [['Invoice', 'Customer', 'Date', 'Item', 'Type', 'Qty', 'Purchase', 'Sell', 'Unit Profit', 'Total Profit']],
+      body: tableData,
       startY: 20,
     });
     doc.save(`Year_${selectedYear}_Sales_Report.pdf`);
     toast.success(`Exported to PDF for year ${selectedYear}`);
+  };
+
+  // Sales Details Component
+  const InvoiceDetails = ({ title, data, darkMode, onClose }) => {
+    if (!data.details || data.details.length === 0) {
+      return (
+        <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
+          <p className="text-gray-500">No sales data available</p>
+        </div>
+      );
+    }
+    
+    const allItems = [];
+    data.details.forEach(inv => {
+      inv.items.forEach(item => {
+        allItems.push({ ...item, inv });
+      });
+    });
+    
+    return (
+      <div className="mt-4 space-y-3">
+        <div className="flex justify-between items-center">
+          <h4 className="font-semibold">📋 {title}</h4>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        </div>
+        <div className="overflow-x-auto max-h-96">
+          <table className="w-full text-sm">
+            <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+              <tr>
+                <th className="px-3 py-2 text-left">Item</th>
+                <th className="px-3 py-2 text-left">Type</th>
+                <th className="px-3 py-2 text-right">Purchase</th>
+                <th className="px-3 py-2 text-right">Sell</th>
+                <th className="px-3 py-2 text-center">Qty</th>
+                <th className="px-3 py-2 text-right">Unit Profit</th>
+                <th className="px-3 py-2 text-right">Total Profit</th>
+                <th className="px-3 py-2 text-left">Customer</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {allItems.map((item, idx) => (
+                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <td className="px-3 py-2 font-medium">{item.service_name}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-1 rounded text-xs ${item.isProduct ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                      {item.isProduct ? 'Product' : 'Service'}
+                    </span>
+                   </td>
+                  <td className="px-3 py-2 text-right">
+                    {item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}
+                   </td>
+                  <td className="px-3 py-2 text-right">Rs. {item.price.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-center font-semibold">{item.quantity}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-green-500">
+                    + Rs. {item.unitProfit.toLocaleString()}
+                   </td>
+                  <td className="px-3 py-2 text-right font-semibold text-green-500">
+                    Rs. {(item.unitProfit * item.quantity).toLocaleString()}
+                   </td>
+                  <td className="px-3 py-2 text-xs">{item.inv.customer}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+              <tr>
+                <td colSpan="6" className="px-3 py-2 text-right font-bold">Total:</td>
+                <td className="px-3 py-2 text-right font-bold text-green-500">Rs. {data.profit.toLocaleString()}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Expense Details Component
+  const ExpenseDetails = ({ title, expenses, darkMode, onClose }) => {
+    if (!expenses || expenses.length === 0) {
+      return (
+        <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
+          <p className="text-gray-500">No expense data available</p>
+        </div>
+      );
+    }
+    
+    const totalAmount = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    
+    return (
+      <div className="mt-4 space-y-3">
+        <div className="flex justify-between items-center">
+          <h4 className="font-semibold">📋 {title}</h4>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        </div>
+        <div className="overflow-x-auto max-h-96">
+          <table className="w-full text-sm">
+            <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+              <tr>
+                <th className="px-3 py-2 text-left">Description</th>
+                <th className="px-3 py-2 text-left">Category</th>
+                <th className="px-3 py-2 text-left">Date</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {expenses.map((exp, idx) => (
+                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <td className="px-3 py-2 font-medium">{exp.description}</td>
+                  <td className="px-3 py-2">
+                    <span className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                      {exp.category || 'General'}
+                    </span>
+                   </td>
+                  <td className="px-3 py-2 text-sm">{new Date(exp.date).toLocaleDateString()}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-red-500">Rs. {exp.amount.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+              <tr>
+                <td colSpan="3" className="px-3 py-2 text-right font-bold">Total:</td>
+                <td className="px-3 py-2 text-right font-bold text-red-500">Rs. {totalAmount.toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -307,53 +568,133 @@ const FinanceOverview = ({ darkMode }) => {
     <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
       {/* Sales Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayDetails(!showTodayDetails)}>
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm opacity-90">Today's Sales</p>
               <p className="text-3xl font-bold mt-2">Rs. {todaySales.total.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-1">{todaySales.items} items sold</p>
               <p className="text-xs opacity-75 mt-1">Profit: Rs. {todaySales.profit.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
             </div>
             <FiCalendar className="text-3xl opacity-50" />
           </div>
         </div>
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg">
+        
+        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowWeekDetails(!showWeekDetails)}>
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm opacity-90">This Week's Sales</p>
               <p className="text-3xl font-bold mt-2">Rs. {weeklySales.total.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-1">{weeklySales.items} items sold</p>
               <p className="text-xs opacity-75 mt-1">Profit: Rs. {weeklySales.profit.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
             </div>
             <FiTrendingUp className="text-3xl opacity-50" />
           </div>
         </div>
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
+        
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowMonthDetails(!showMonthDetails)}>
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm opacity-90">This Month's Sales</p>
               <p className="text-3xl font-bold mt-2">Rs. {monthlySales.total.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-1">{monthlySales.items} items sold</p>
               <p className="text-xs opacity-75 mt-1">Profit: Rs. {monthlySales.profit.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
             </div>
             <FiDollarSign className="text-3xl opacity-50" />
           </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <StatsCards periodStats={periodStats} darkMode={darkMode} />
+      {showTodayDetails && <InvoiceDetails title="Today's Sales" data={todaySales} darkMode={darkMode} onClose={() => setShowTodayDetails(false)} />}
+      {showWeekDetails && <InvoiceDetails title="This Week's Sales" data={weeklySales} darkMode={darkMode} onClose={() => setShowWeekDetails(false)} />}
+      {showMonthDetails && <InvoiceDetails title="This Month's Sales" data={monthlySales} darkMode={darkMode} onClose={() => setShowMonthDetails(false)} />}
 
-      {/* Upcoming Payments Section */}
-      <UpcomingPayments darkMode={darkMode} />
+      {/* Expense Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'} cursor-pointer hover:scale-105 transition-transform`} onClick={() => setShowTodayExpenses(!showTodayExpenses)}>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm text-gray-500">Today's Expenses</p>
+              <p className="text-2xl font-bold text-red-500 mt-2">Rs. {stats.todayExpenses.toLocaleString()}</p>
+              <p className="text-xs text-gray-500 mt-1">{stats.todayExpenseCount} transactions</p>
+              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
+            </div>
+            <FiTrendingDown className="text-3xl text-red-500 opacity-50" />
+          </div>
+        </div>
+        
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'} cursor-pointer hover:scale-105 transition-transform`} onClick={() => setShowWeekExpenses(!showWeekExpenses)}>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm text-gray-500">This Week Expenses</p>
+              <p className="text-2xl font-bold text-orange-500 mt-2">Rs. {stats.weekExpenses.toLocaleString()}</p>
+              <p className="text-xs text-gray-500 mt-1">{stats.weekExpenseCount} transactions</p>
+              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
+            </div>
+            <FiTrendingDown className="text-3xl text-orange-500 opacity-50" />
+          </div>
+        </div>
+        
+        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'} cursor-pointer hover:scale-105 transition-transform`} onClick={() => setShowMonthExpenses(!showMonthExpenses)}>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm text-gray-500">This Month Expenses</p>
+              <p className="text-2xl font-bold text-red-500 mt-2">Rs. {stats.monthExpenses.toLocaleString()}</p>
+              <p className="text-xs text-gray-500 mt-1">{stats.monthExpenseCount} transactions</p>
+              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
+            </div>
+            <FiTrendingDown className="text-3xl text-red-500 opacity-50" />
+          </div>
+        </div>
+      </div>
 
-      {/* Yearly Report Section - OPEN BY DEFAULT */}
+      {showTodayExpenses && <ExpenseDetails title="Today's Expenses" expenses={todayExpenseDetails} darkMode={darkMode} onClose={() => setShowTodayExpenses(false)} />}
+      {showWeekExpenses && <ExpenseDetails title="This Week's Expenses" expenses={weekExpenseDetails} darkMode={darkMode} onClose={() => setShowWeekExpenses(false)} />}
+      {showMonthExpenses && <ExpenseDetails title="This Month's Expenses" expenses={monthExpenseDetails} darkMode={darkMode} onClose={() => setShowMonthExpenses(false)} />}
+
+      {/* Net Profit Card */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className="flex justify-between items-start">
+          <div>
+            <p className="text-sm text-gray-500">This Month Net Profit</p>
+            <p className="text-2xl font-bold text-green-500 mt-2">Rs. {stats.monthProfit?.toLocaleString() || 0}</p>
+            <p className="text-xs text-gray-500 mt-1">Margin: {stats.monthMargin?.toFixed(2) || 0}%</p>
+          </div>
+          <FiTrendingUp className="text-3xl text-green-500 opacity-50" />
+        </div>
+      </div>
+
+      {/* Monthly Breakdown */}
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <p className="text-sm text-gray-500">Revenue</p>
+            <p className="text-xl font-bold text-red-500">Rs. {monthlySales.total.toLocaleString()}</p>
+          </div>
+          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <p className="text-sm text-gray-500">Expenses</p>
+            <p className="text-xl font-bold text-orange-500">Rs. {stats.monthExpenses?.toLocaleString() || 0}</p>
+          </div>
+          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <p className="text-sm text-gray-500">Gross Profit (Sales Only)</p>
+            <p className="text-xl font-bold text-green-500">Rs. {monthlySales.profit.toLocaleString()}</p>
+          </div>
+          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <p className="text-sm text-gray-500">Net Profit (After Expenses)</p>
+            <p className="text-xl font-bold text-green-500">Rs. {(monthlySales.profit - (stats.monthExpenses || 0)).toLocaleString()}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Yearly Report Section with Pagination */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <button
-          onClick={() => setShowYearlyReport(!showYearlyReport)}
-          className="w-full px-6 py-4 flex justify-between items-center hover:bg-red-50 dark:hover:bg-red-900/20 transition"
-        >
+        <button onClick={() => setShowYearlyReport(!showYearlyReport)} className="w-full px-6 py-4 flex justify-between items-center hover:bg-red-50 dark:hover:bg-red-900/20 transition">
           <div className="flex items-center gap-2">
             <FiBarChart2 className="text-red-500 text-xl" />
             <h3 className="text-lg font-semibold">📊 Yearly Sales Report</h3>
@@ -363,47 +704,27 @@ const FinanceOverview = ({ darkMode }) => {
         
         {showYearlyReport && (
           <div className="p-6 border-t border-gray-200 dark:border-gray-700">
-            {/* Year Selector and Export Buttons */}
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
               <div className="flex gap-3 items-center">
                 <label className="text-sm font-medium">Select Year:</label>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                  className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                  }`}
-                >
-                  {[2022, 2023, 2024, 2025, 2026].map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
+                <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
+                  {[2024, 2025, 2026].map(year => (<option key={year} value={year}>{year}</option>))}
                 </select>
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={exportToExcel}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
-                >
-                  <FiFileText /> Export Excel
-                </button>
-                <button
-                  onClick={exportToPDF}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2"
-                >
-                  <FiDownload /> Export PDF
-                </button>
+                <button onClick={exportToExcel} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"><FiFileText /> Export Excel</button>
+                <button onClick={exportToPDF} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2"><FiDownload /> Export PDF</button>
               </div>
             </div>
 
-            {/* Year Summary Card */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className="text-sm opacity-70">Total Sales</p>
                 <p className="text-2xl font-bold text-red-500">Rs. {selectedYearData.total.toLocaleString()}</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <p className="text-sm opacity-70">Items Sold</p>
-                <p className="text-2xl font-bold">{selectedYearData.items} units</p>
+                <p className="text-sm opacity-70">Total Invoices</p>
+                <p className="text-2xl font-bold">{selectedYearData.count}</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className="text-sm opacity-70">Total Profit</p>
@@ -411,66 +732,124 @@ const FinanceOverview = ({ darkMode }) => {
               </div>
             </div>
 
-            {/* Products Table for Selected Year */}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Product Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Purchase Price</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Selling Price</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Quantity</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Total Purchase</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Total Revenue</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Profit</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Date</th>
+                    <th className="px-4 py-3 text-left">Date</th>
+                    <th className="px-4 py-3 text-left">Invoice</th>
+                    <th className="px-4 py-3 text-left">Customer</th>
+                    <th className="px-4 py-3 text-left">Item</th>
+                    <th className="px-4 py-3 text-left">Type</th>
+                    <th className="px-4 py-3 text-center">Qty</th>
+                    <th className="px-4 py-3 text-right">Purchase</th>
+                    <th className="px-4 py-3 text-right">Sell</th>
+                    <th className="px-4 py-3 text-right">Unit Profit</th>
+                    <th className="px-4 py-3 text-right">Total Profit</th>
                   </tr>
                 </thead>
-                <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                  {yearProducts.length === 0 ? (
+                <tbody>
+                  {currentItems.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="px-4 py-8 text-center text-gray-500">
-                        No products found for year {selectedYear}
-                      </td>
+                      <td colSpan="10" className="px-4 py-8 text-center">No invoices found</td>
                     </tr>
                   ) : (
-                    yearProducts.map((product) => (
-                      <tr key={product.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                        <td className="px-4 py-3 font-medium">{product.name}</td>
-                        <td className="px-4 py-3">Rs. {product.purchase_price?.toLocaleString() || 0}</td>
-                        <td className="px-4 py-3">Rs. {product.selling_price?.toLocaleString() || 0}</td>
-                        <td className="px-4 py-3">{product.quantity} units</td>
-                        <td className="px-4 py-3">Rs. {((product.purchase_price || 0) * (product.quantity || 0)).toLocaleString()}</td>
-                        <td className="px-4 py-3 font-semibold text-red-500">Rs. {((product.selling_price || 0) * (product.quantity || 0)).toLocaleString()}</td>
-                        <td className="px-4 py-3 font-semibold text-green-500">Rs. {(((product.selling_price || 0) - (product.purchase_price || 0)) * (product.quantity || 0)).toLocaleString()}</td>
-                        <td className="px-4 py-3 text-sm">{product.date_added ? new Date(product.date_added).toLocaleDateString() : 'N/A'}</td>
+                    currentItems.map((item, idx) => (
+                      <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
+                        <td className="px-4 py-3 text-sm">{new Date(item.inv.date).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 font-mono text-sm">{item.inv.invoiceNo}</td>
+                        <td className="px-4 py-3">{item.inv.customer}</td>
+                        <td className="px-4 py-3">{item.service_name}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs ${item.isProduct ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                            {item.isProduct ? 'Product' : 'Service'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">{item.quantity}</td>
+                        <td className="px-4 py-3 text-right">{item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}</td>
+                        <td className="px-4 py-3 text-right">Rs. {item.price.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right text-green-500">+ Rs. {item.unitProfit.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right text-green-500">Rs. {(item.unitProfit * item.quantity).toLocaleString()}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
-                {yearProducts.length > 0 && (
-                  <tfoot className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                    <tr>
-                      <td colSpan="4" className="px-4 py-3 text-right font-bold">Total:</td>
-                      <td className="px-4 py-3 font-bold">Rs. {(yearProducts.reduce((sum, p) => sum + ((p.purchase_price || 0) * (p.quantity || 0)), 0)).toLocaleString()}</td>
-                      <td className="px-4 py-3 font-bold text-red-500">Rs. {selectedYearData.total.toLocaleString()}</td>
-                      <td className="px-4 py-3 font-bold text-green-500">Rs. {selectedYearData.profit.toLocaleString()}</td>
-                      <td className="px-4 py-3"></td>
-                    </tr>
-                  </tfoot>
-                )}
+                <tfoot className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
+                  <tr>
+                    <td colSpan="9" className="px-4 py-3 text-right font-bold">Total Profit:</td>
+                    <td className="px-4 py-3 text-right font-bold text-green-500">Rs. {selectedYearData.profit.toLocaleString()}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="text-sm text-gray-500">
+                  Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, totalItems)} of {totalItems} items
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={goToPrevPage}
+                    disabled={currentPage === 1}
+                    className={`px-3 py-1 rounded-lg flex items-center gap-1 transition ${
+                      currentPage === 1
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    <FiChevronLeft /> Previous
+                  </button>
+                  
+                  <div className="flex gap-1">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => paginate(pageNum)}
+                          className={`w-8 h-8 rounded-lg transition ${
+                            currentPage === pageNum
+                              ? 'bg-red-500 text-white'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  <button
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                    className={`px-3 py-1 rounded-lg flex items-center gap-1 transition ${
+                      currentPage === totalPages
+                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    Next <FiChevronRight />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Error Message */}
-      {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-center border border-red-200 dark:border-red-800">
-          <p className="text-sm text-red-700 dark:text-red-400">⚠️ {error}</p>
-        </div>
-      )}
+      {error && (<div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-center"><p className="text-sm text-red-700">⚠️ {error}</p></div>)}
     </div>
   );
 };

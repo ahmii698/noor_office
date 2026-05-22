@@ -1,4 +1,4 @@
-// src/components/Dashboard.jsx (sirf relevant part - records wala section)
+// src/components/Dashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -6,7 +6,7 @@ import {
   FiMenu, FiChevronLeft, FiSun, FiMoon, FiLogOut, 
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiBell, FiTrendingUp, FiShoppingCart, FiCheckCircle, 
-  FiAlertCircle, FiClock, FiArrowRight, FiPieChart 
+  FiAlertCircle, FiClock, FiArrowRight, FiLoader
 } from 'react-icons/fi';
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Sidebar from './Sidebar';
@@ -18,15 +18,51 @@ import FinanceReports from './finance/FinanceReports';
 import FinanceReminders from './finance/FinanceReminders';
 import Billing from './Billing';
 import Records from './Records';
+import api from '../services/api';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [activeMenu, setActiveMenu] = useState('all-data');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved === 'true';
   });
+
+  // State for dynamic data
+  const [products, setProducts] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [invoices, setInvoices] = useState([]);
+  const [services, setServices] = useState([]);
+
+  // Fetch all data from API
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      const [productsRes, expensesRes, invoicesRes, servicesRes] = await Promise.all([
+        api.get('/products'),
+        api.get('/expenses'),
+        api.get('/invoices'),
+        api.get('/services')
+      ]);
+      
+      setProducts(productsRes.data || []);
+      setExpenses(expensesRes.data || []);
+      setInvoices(invoicesRes.data || []);
+      setServices(servicesRes.data || []);
+      
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      toast.error('Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllData();
+  }, []);
 
   useEffect(() => {
     if (darkMode) {
@@ -36,95 +72,122 @@ const Dashboard = () => {
     }
     localStorage.setItem('darkMode', darkMode);
   }, [darkMode]);
-  
-  const [products, setProducts] = useState([
-    { id: 1, name: 'AC Compressor', purchasePrice: 15000, sellingPrice: 22000, quantity: 10, dateAdded: new Date().toISOString() },
-    { id: 2, name: 'Cooling Coil', purchasePrice: 5000, sellingPrice: 8500, quantity: 15, dateAdded: new Date().toISOString() },
-    { id: 3, name: 'AC Gas (R134a)', purchasePrice: 1200, sellingPrice: 2500, quantity: 30, dateAdded: new Date().toISOString() },
-    { id: 4, name: 'Blower Motor', purchasePrice: 3500, sellingPrice: 6000, quantity: 8, dateAdded: new Date().toISOString() },
-  ]);
-  
-  const [services] = useState([
-    { id: 1, name: 'AC Gas Refill', price: 2000, category: 'AC Service', icon: '🆒' },
-    { id: 2, name: 'AC Compressor Repair', price: 5000, category: 'Repair', icon: '🔧' },
-    { id: 3, name: 'Full AC Service', price: 8000, category: 'Service', icon: '🛠️' },
-    { id: 4, name: 'Leak Detection', price: 1500, category: 'Diagnostic', icon: '🔍' },
-    { id: 5, name: 'Condenser Cleaning', price: 2500, category: 'Maintenance', icon: '🧹' },
-    { id: 6, name: 'AC Filter Change', price: 800, category: 'Replacement', icon: '🔄' },
-    { id: 7, name: 'Engine Tuning', price: 3500, category: 'Tuning', icon: '⚡' },
-    { id: 8, name: 'Performance Tuning', price: 7000, category: 'Tuning', icon: '🚀' },
-  ]);
-  
-  const [cart, setCart] = useState([]);
-  const [invoices, setInvoices] = useState([
-    { id: 1, invoiceNo: 'INV-001', date: '2024-01-15', total: 22000, status: 'Paid', customer: { name: 'Ahmed Khan', phone: '03001234567', carNumber: 'ABC-123' }, items: [{ name: 'AC Compressor', price: 22000 }] },
-    { id: 2, invoiceNo: 'INV-002', date: '2024-01-20', total: 8500, status: 'Paid', customer: { name: 'Sara Ali', phone: '03007654321', carNumber: 'XYZ-789' }, items: [{ name: 'Cooling Coil', price: 8500 }] },
-    { id: 3, invoiceNo: 'INV-003', date: '2024-01-25', total: 5000, status: 'Partial', customer: { name: 'Bilal Shah', phone: '03111234567', carNumber: 'DEF-456' }, items: [{ name: 'AC Gas', price: 2500 }, { name: 'Service', price: 2500 }] },
-    { id: 4, invoiceNo: 'INV-004', date: '2024-02-01', total: 12000, status: 'Paid', customer: { name: 'Fatima Zaidi', phone: '03331234567', carNumber: 'GHI-789' }, items: [{ name: 'AC Compressor', price: 12000 }] },
-    { id: 5, invoiceNo: 'INV-005', date: '2024-02-10', total: 3000, status: 'Pending', customer: { name: 'Omar Farooq', phone: '03451234567', carNumber: 'JKL-012' }, items: [{ name: 'AC Gas', price: 3000 }] },
-  ]);
-  
-  const [expenses, setExpenses] = useState([
-    { id: 1, description: 'Shop Rent', amount: 25000, date: '2024-01-15', type: 'Monthly', category: 'Office' },
-    { id: 2, description: 'Electricity Bill', amount: 8000, date: '2024-01-20', type: 'Monthly', category: 'Utilities' },
-    { id: 3, description: 'Employee Salary', amount: 50000, date: '2024-01-25', type: 'Monthly', category: 'Staff' },
-  ]);
 
-  const handleAddProduct = (product) => {
-    setProducts([...products, product]);
+  const handleAddProduct = async (product) => {
+    try {
+      const response = await api.post('/products', product);
+      if (response.data) {
+        await fetchAllData();
+        toast.success('Product added successfully');
+        return true;
+      }
+    } catch (err) {
+      console.error('Error adding product:', err);
+      toast.error('Failed to add product');
+      return false;
+    }
   };
 
-  const handleUpdateProduct = (updatedProduct) => {
-    setProducts(products.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+  const handleUpdateProduct = async (updatedProduct) => {
+    try {
+      const response = await api.put(`/products/${updatedProduct.id}`, updatedProduct);
+      if (response.data) {
+        await fetchAllData();
+        toast.success('Product updated successfully');
+        return true;
+      }
+    } catch (err) {
+      console.error('Error updating product:', err);
+      toast.error('Failed to update product');
+      return false;
+    }
   };
 
-  const handleAddExpense = (expense) => {
-    setExpenses([...expenses, expense]);
+  const handleAddExpense = async (expense) => {
+    try {
+      const response = await api.post('/expenses', expense);
+      if (response.data) {
+        await fetchAllData();
+        toast.success('Expense added successfully');
+        return true;
+      }
+    } catch (err) {
+      console.error('Error adding expense:', err);
+      toast.error('Failed to add expense');
+      return false;
+    }
   };
 
-  const handleUpdateExpense = (updatedExpense) => {
-    setExpenses(expenses.map(e => e.id === updatedExpense.id ? updatedExpense : e));
+  const handleUpdateExpense = async (updatedExpense) => {
+    try {
+      const response = await api.put(`/expenses/${updatedExpense.id}`, updatedExpense);
+      if (response.data) {
+        await fetchAllData();
+        toast.success('Expense updated successfully');
+        return true;
+      }
+    } catch (err) {
+      console.error('Error updating expense:', err);
+      toast.error('Failed to update expense');
+      return false;
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await api.post('/logout');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
     localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     toast.success('Logged out');
     navigate('/');
   };
 
   // Calculate Stats for All Data
-  const totalSales = invoices.reduce((sum, inv) => sum + inv.total, 0);
-  const totalExpensesSum = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-  const totalProfit = totalSales - totalExpensesSum;
+  const totalSales = invoices.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0);
+  const totalExpensesSum = expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
+  
+  // Calculate total profit from invoices
+  let totalProfitCalc = 0;
+  for (const inv of invoices) {
+    if (inv.items && inv.items.length > 0) {
+      for (const item of inv.items) {
+        const product = products.find(p => p.name === item.service_name);
+        if (product) {
+          const profit = (parseFloat(item.price) - parseFloat(product.purchase_price)) * parseInt(item.quantity);
+          totalProfitCalc += profit;
+        } else {
+          totalProfitCalc += parseFloat(item.price) * parseInt(item.quantity);
+        }
+      }
+    }
+  }
+  const totalProfit = totalProfitCalc;
   const profitMargin = totalSales > 0 ? (totalProfit / totalSales) * 100 : 0;
   const totalProductsCount = products.length;
-  const totalStock = products.reduce((sum, p) => sum + p.quantity, 0);
-  const paidInvoices = invoices.filter(inv => inv.status === 'Paid').length;
-  const partialInvoices = invoices.filter(inv => inv.status === 'Partial').length;
-  const pendingInvoices = invoices.filter(inv => inv.status === 'Pending').length;
-  const lowStockProducts = products.filter(p => p.quantity < 10);
-  const recentInvoices = invoices.slice(-5).reverse();
+  const totalStock = products.reduce((sum, p) => sum + (parseInt(p.quantity) || 0), 0);
+  const lowStockProducts = products.filter(p => (p.quantity || 0) < 10);
+  const recentInvoices = [...invoices]
+    .sort((a, b) => new Date(b.invoice_date) - new Date(a.invoice_date))
+    .slice(0, 5);
 
   // Chart Data
   const monthlyData = [
-    { month: 'Jan', sales: 35000, profit: 10000 },
-    { month: 'Feb', sales: 42000, profit: 14000 },
-    { month: 'Mar', sales: 38000, profit: 12000 },
-    { month: 'Apr', sales: 45000, profit: 15000 },
-    { month: 'May', sales: 48000, profit: 16000 },
-    { month: 'Jun', sales: 52000, profit: 17000 },
+    { month: 'Jan', sales: totalSales * 0.1, profit: totalProfit * 0.08 },
+    { month: 'Feb', sales: totalSales * 0.15, profit: totalProfit * 0.12 },
+    { month: 'Mar', sales: totalSales * 0.12, profit: totalProfit * 0.1 },
+    { month: 'Apr', sales: totalSales * 0.18, profit: totalProfit * 0.15 },
+    { month: 'May', sales: totalSales * 0.2, profit: totalProfit * 0.18 },
+    { month: 'Jun', sales: totalSales * 0.25, profit: totalProfit * 0.22 },
   ];
 
   const productSalesData = products.map(p => ({
     name: p.name,
-    value: p.sellingPrice * p.quantity
+    value: (parseFloat(p.selling_price) || 0) * (parseInt(p.quantity) || 0)
   }));
-
-  const expenseData = expenses.reduce((acc, exp) => {
-    acc[exp.type] = (acc[exp.type] || 0) + exp.amount;
-    return acc;
-  }, {});
-  const expenseChartData = Object.entries(expenseData).map(([name, value]) => ({ name, value }));
 
   const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4'];
 
@@ -172,6 +235,17 @@ const Dashboard = () => {
     };
     return icons[activeMenu] || <FiPackage className="text-2xl" />;
   };
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+        <div className="text-center">
+          <FiLoader className="text-5xl text-red-500 animate-spin mx-auto mb-4" />
+          <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900' : 'bg-gray-100'}`}>
@@ -224,7 +298,7 @@ const Dashboard = () => {
             {/* ALL DATA VIEW */}
             {activeMenu === 'all-data' && (
               <div className="space-y-6">
-                {/* Stats Cards */}
+                {/* 4 Main Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
                     <div className="flex justify-between items-start">
@@ -266,34 +340,36 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Charts */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                      <FiTrendingUp className="text-red-500" /> Monthly Sales & Profit
-                    </h3>
-                    <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={monthlyData}>
-                          <CartesianGrid stroke={darkMode ? '#374151' : '#e5e7eb'} strokeDasharray="3 3" />
-                          <XAxis dataKey="month" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
-                          <YAxis stroke={darkMode ? '#9ca3af' : '#6b7280'} />
-                          <Tooltip contentStyle={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff' }} />
-                          <Legend wrapperStyle={{ color: darkMode ? '#ffffff' : '#000000' }} />
-                          <Line type="monotone" dataKey="sales" stroke="#ef4444" name="Sales" strokeWidth={2} />
-                          <Line type="monotone" dataKey="profit" stroke="#22c55e" name="Profit" strokeWidth={2} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
+                {/* Monthly Sales & Profit Chart */}
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                    <FiTrendingUp className="text-red-500" /> Monthly Sales & Profit
+                  </h3>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={monthlyData}>
+                        <CartesianGrid stroke={darkMode ? '#374151' : '#e5e7eb'} strokeDasharray="3 3" />
+                        <XAxis dataKey="month" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
+                        <YAxis stroke={darkMode ? '#9ca3af' : '#6b7280'} />
+                        <Tooltip contentStyle={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff' }} />
+                        <Legend wrapperStyle={{ color: darkMode ? '#ffffff' : '#000000' }} />
+                        <Line type="monotone" dataKey="sales" stroke="#ef4444" name="Sales" strokeWidth={2} />
+                        <Line type="monotone" dataKey="profit" stroke="#22c55e" name="Profit" strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
                   </div>
+                </div>
+
+                {/* Product Sales Distribution */}
+                {productSalesData.length > 0 && (
                   <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                     <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                      <FiPieChart className="text-red-500" /> Product Sales Distribution
+                      <FiBarChart2 className="text-red-500" /> Product Sales Distribution
                     </h3>
-                    <div className="h-72">
+                    <div className="h-80">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
-                          <Pie data={productSalesData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} outerRadius={80} dataKey="value">
+                          <Pie data={productSalesData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`} outerRadius={100} dataKey="value">
                             {productSalesData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                           </Pie>
                           <Tooltip formatter={(value) => `Rs. ${value.toLocaleString()}`} contentStyle={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff' }} />
@@ -302,120 +378,70 @@ const Dashboard = () => {
                       </ResponsiveContainer>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Expense Distribution */}
-                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                    <FiPieChart className="text-red-500" /> Expense Distribution by Type
-                  </h3>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={expenseChartData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={100} dataKey="value">
-                          {expenseChartData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip formatter={(value) => `Rs. ${value.toLocaleString()}`} contentStyle={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff' }} />
-                        <Legend wrapperStyle={{ color: darkMode ? '#ffffff' : '#000000' }} />
-                      </PieChart>
-                    </ResponsiveContainer>
+                {/* Recent Invoices */}
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <div className="px-6 py-4 border-b flex justify-between items-center">
+                    <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      <FiFileText className="text-red-500" /> Recent Invoices
+                    </h3>
+                    <button onClick={() => setActiveMenu('record')} className="text-red-500 text-sm hover:text-red-600 flex items-center gap-1">
+                      View All <FiArrowRight className="text-xs" />
+                    </button>
                   </div>
-                </div>
-
-                {/* Invoice Status */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center gap-4`}>
-                    <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-                      <FiCheckCircle className="text-green-500 text-2xl" />
-                    </div>
-                    <div>
-                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paid Invoices</p>
-                      <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{paidInvoices}</p>
-                    </div>
-                  </div>
-                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center gap-4`}>
-                    <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                      <FiAlertCircle className="text-yellow-500 text-2xl" />
-                    </div>
-                    <div>
-                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Partial Payments</p>
-                      <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{partialInvoices}</p>
-                    </div>
-                  </div>
-                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex items-center gap-4`}>
-                    <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
-                      <FiClock className="text-red-500 text-2xl" />
-                    </div>
-                    <div>
-                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Pending Invoices</p>
-                      <p className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{pendingInvoices}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Recent Invoices & Low Stock */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <div className="px-6 py-4 border-b flex justify-between items-center">
-                      <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                        <FiFileText className="text-red-500" /> Recent Invoices
-                      </h3>
-                      <button onClick={() => setActiveMenu('record')} className="text-red-500 text-sm hover:text-red-600 flex items-center gap-1">
-                        View All <FiArrowRight className="text-xs" />
-                      </button>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium uppercase">Invoice #</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium uppercase">Customer</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium uppercase">Amount</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium uppercase">Status</th>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium uppercase">Invoice #</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium uppercase">Customer</th>
+                          <th className="px-6 py-3 text-right text-xs font-medium uppercase">Amount</th>
+                          <th className="px-6 py-3 text-center text-xs font-medium uppercase">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                        {recentInvoices.map(inv => (
+                          <tr key={inv.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
+                            <td className="px-6 py-4 text-sm font-medium">{inv.invoice_no || inv.invoiceNo}</td>
+                            <td className="px-6 py-4 text-sm">{inv.customer_name || inv.customer?.name || 'Walk-in'}</td>
+                            <td className="px-6 py-4 text-sm font-semibold text-red-500 text-right">Rs. {(inv.total_amount || inv.total || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-sm text-center">
+                              <span className={`px-2 py-1 rounded-full text-xs ${inv.status === 'Paid' ? 'bg-green-100 text-green-700' : inv.status === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                {inv.status || 'Pending'}
+                              </span>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                          {recentInvoices.map(inv => (
-                            <tr key={inv.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                              <td className="px-6 py-4 text-sm font-medium">{inv.invoiceNo}</td>
-                              <td className="px-6 py-4 text-sm">{inv.customer?.name}</td>
-                              <td className="px-6 py-4 text-sm font-semibold text-red-500">Rs. {inv.total.toLocaleString()}</td>
-                              <td className="px-6 py-4 text-sm">
-                                <span className={`px-2 py-1 rounded-full text-xs ${inv.status === 'Paid' ? 'bg-green-100 text-green-700' : inv.status === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                                  {inv.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+                </div>
 
-                  <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                    <div className="px-6 py-4 border-b">
-                      <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                        <FiAlertCircle className="text-yellow-500" /> Low Stock Alerts
-                      </h3>
-                    </div>
-                    <div className="p-4">
-                      {lowStockProducts.length === 0 ? (
-                        <div className="text-center py-8">
-                          <FiCheckCircle className="text-5xl mx-auto text-green-500 mb-2" />
-                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>All products have sufficient stock</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          {lowStockProducts.map(p => (
-                            <div key={p.id} className="flex justify-between items-center p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
-                              <span className="font-medium">{p.name}</span>
-                              <span className="text-red-500 font-semibold">Only {p.quantity} left</span>
-                              <button onClick={() => setActiveMenu('inventory')} className="text-red-500 text-sm hover:text-red-600">Restock</button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                {/* Low Stock Alerts */}
+                <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <div className="px-6 py-4 border-b">
+                    <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                      <FiAlertCircle className="text-yellow-500" /> Low Stock Alerts
+                    </h3>
+                  </div>
+                  <div className="p-4">
+                    {lowStockProducts.length === 0 ? (
+                      <div className="text-center py-8">
+                        <FiCheckCircle className="text-5xl mx-auto text-green-500 mb-2" />
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>All products have sufficient stock</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {lowStockProducts.map(p => (
+                          <div key={p.id} className="flex justify-between items-center p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
+                            <span className="font-medium">{p.name}</span>
+                            <span className="text-red-500 font-semibold">Only {p.quantity} left</span>
+                            <button onClick={() => setActiveMenu('inventory')} className="text-red-500 text-sm hover:text-red-600">Restock</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -443,28 +469,27 @@ const Dashboard = () => {
             )}
             
             {activeMenu === 'finance-overview' && (
-              <FinanceOverview products={products} expenses={expenses} darkMode={darkMode} />
+              <FinanceOverview darkMode={darkMode} />
             )}
             {activeMenu === 'finance-expenses' && (
-              <FinanceExpenses expenses={expenses} onAddExpense={handleAddExpense} onUpdateExpense={handleUpdateExpense} darkMode={darkMode} />
+              <FinanceExpenses darkMode={darkMode} />
             )}
             {activeMenu === 'finance-charts' && (
-              <FinanceCharts products={products} expenses={expenses} darkMode={darkMode} />
+              <FinanceCharts darkMode={darkMode} />
             )}
             {activeMenu === 'finance-reports' && (
-              <FinanceReports products={products} expenses={expenses} darkMode={darkMode} />
+              <FinanceReports darkMode={darkMode} />
             )}
             {activeMenu === 'finance-reminders' && (
               <FinanceReminders darkMode={darkMode} />
             )}
             
             {activeMenu === 'billing' && (
-              <Billing services={services} invoices={invoices} setInvoices={setInvoices} cart={cart} setCart={setCart} products={products} setProducts={setProducts} darkMode={darkMode} />
+              <Billing darkMode={darkMode} />
             )}
             
-            {/* YAHAN FIX KIYA - invoices pass karo */}
             {activeMenu === 'record' && (
-              <Records invoices={invoices} darkMode={darkMode} />
+              <Records darkMode={darkMode} />
             )}
           </div>
         </div>

@@ -37,13 +37,16 @@ const FinanceExpenses = ({ darkMode }) => {
         description: expenseData.description,
         amount: expenseData.amount,
         date: expenseData.date,
-        type: expenseData.type,
-        category: expenseData.category
+        category: expenseData.category,
+        isRecurring: expenseData.isRecurring || false,
+        recurringType: expenseData.recurringType || 'monthly',
+        lastPaidDate: expenseData.lastPaidDate || null,
+        nextPaymentDate: expenseData.nextPaymentDate || null
       });
       
       if (response.data) {
         toast.success('Expense added successfully!');
-        fetchExpenses(); // Refresh list
+        fetchExpenses();
         return true;
       }
     } catch (err) {
@@ -59,14 +62,17 @@ const FinanceExpenses = ({ darkMode }) => {
       const response = await api.put(`/expenses/${updatedExpense.id}`, {
         description: updatedExpense.description,
         amount: updatedExpense.amount,
-        expense_date: updatedExpense.date,
-        type: updatedExpense.type,
-        category: updatedExpense.category
+        date: updatedExpense.date,
+        category: updatedExpense.category,
+        isRecurring: updatedExpense.isRecurring || false,
+        recurringType: updatedExpense.recurringType || 'monthly',
+        lastPaidDate: updatedExpense.lastPaidDate || null,
+        nextPaymentDate: updatedExpense.nextPaymentDate || null
       });
       
       if (response.data) {
         toast.success('Expense updated successfully!');
-        fetchExpenses(); // Refresh list
+        fetchExpenses();
         return true;
       }
     } catch (err) {

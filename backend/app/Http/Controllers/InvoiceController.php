@@ -9,6 +9,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class InvoiceController extends Controller
 {
@@ -17,7 +18,6 @@ class InvoiceController extends Controller
         try {
             $invoices = Invoice::with('items')->orderBy('id', 'desc')->get();
             
-            // Transform data to match frontend expected format
             $transformedInvoices = $invoices->map(function($invoice) {
                 return [
                     'id' => $invoice->id,
@@ -98,91 +98,83 @@ class InvoiceController extends Controller
         try {
             DB::beginTransaction();
 
-            $request->validate([
-                'customer' => 'required|array',
-                'customer.name' => 'required|string|max:255',
-                'customer.phone' => 'required|string|max:20',
-                'customer.carNumber' => 'required|string|max:50',
-                'customer.carModel' => 'nullable|string|max:100',
-                'customer.date' => 'required|date',
+            Log::info('Invoice store request received:', $request->all());
+
+            // UPDATED VALIDATION - Frontend ke format ke hisaab se
+            $validated = $request->validate([
+                'invoice_no' => 'required|string|max:50',
+                'customer_name' => 'required|string|max:255',
+                'customer_phone' => 'nullable|string|max:20',
+                'customer_email' => 'nullable|email|max:255',
+                'customer_car_number' => 'nullable|string|max:50',
+                'customer_car_model' => 'nullable|string|max:100',
+                'total_amount' => 'required|numeric|min:0',
+                'paid_amount' => 'nullable|numeric|min:0',
+                'remaining_amount' => 'nullable|numeric|min:0',
+                'payment_method' => 'nullable|string|max:50',
+                'status' => 'nullable|string|max:20',
                 'items' => 'required|array|min:1',
-                'items.*.id' => 'required|integer',
-                'items.*.name' => 'required|string',
+                'items.*.service_name' => 'required|string',
+                'items.*.service_category' => 'nullable|string',
                 'items.*.price' => 'required|numeric|min:0',
-                'items.*.quantity' => 'required|integer|min:1',
-                'total' => 'required|numeric|min:0',
-                'paidAmount' => 'required|numeric|min:0',
-                'paymentMethod' => 'required|string|in:cash,card,bank,online'
+                'items.*.quantity' => 'required|integer|min:1'
             ]);
 
-            // Create or get customer
-            $customer = Customer::firstOrCreate(
-                ['phone' => $request->customer['phone']],
-                [
-                    'name' => $request->customer['name'],
-                    'car_number' => $request->customer['carNumber'],
-                    'car_model' => $request->customer['carModel'] ?? null
-                ]
-            );
-
-            // Update customer info
-            $customer->update([
-                'name' => $request->customer['name'],
-                'car_number' => $request->customer['carNumber'],
-                'car_model' => $request->customer['carModel'] ?? null
-            ]);
-
-            // Calculate remaining amount
-            $remainingAmount = $request->total - $request->paidAmount;
+            // Set default values
+            $paidAmount = $validated['paid_amount'] ?? 0;
+            $totalAmount = $validated['total_amount'];
+            $remainingAmount = $validated['remaining_amount'] ?? ($totalAmount - $paidAmount);
             
             // Determine status
-            if ($request->paidAmount >= $request->total) {
+            if ($paidAmount >= $totalAmount) {
                 $status = 'Paid';
-            } elseif ($request->paidAmount > 0) {
+            } elseif ($paidAmount > 0) {
                 $status = 'Partial';
             } else {
                 $status = 'Pending';
             }
 
-            // Create invoice
-            $invoice = Invoice::create([
-                'invoice_no' => 'INV-' . time(),
-                'customer_id' => $customer->id,
-                'customer_name' => $request->customer['name'],
-                'customer_phone' => $request->customer['phone'],
-                'customer_car_number' => $request->customer['carNumber'],
-                'customer_car_model' => $request->customer['carModel'] ?? null,
-                'invoice_date' => $request->customer['date'],
-                'total_amount' => $request->total,
-                'paid_amount' => $request->paidAmount,
+            // Create invoice - Using direct DB insert to avoid model validation issues
+            $invoiceId = DB::table('invoices')->insertGetId([
+                'invoice_no' => $validated['invoice_no'],
+                'customer_name' => $validated['customer_name'],
+                'customer_phone' => $validated['customer_phone'] ?? null,
+                'customer_email' => $validated['customer_email'] ?? null,
+                'customer_car_number' => $validated['customer_car_number'] ?? null,
+                'customer_car_model' => $validated['customer_car_model'] ?? null,
+                'total_amount' => $totalAmount,
+                'paid_amount' => $paidAmount,
                 'remaining_amount' => $remainingAmount,
-                'payment_method' => $request->paymentMethod,
-                'status' => $status
+                'payment_method' => $validated['payment_method'] ?? 'cash',
+                'status' => $status,
+                'invoice_date' => Carbon::now(),
+                'created_at' => Carbon::now(),
+                'updated_at' => Carbon::now()
             ]);
 
-            // Create invoice items - NO PRODUCT STOCK UPDATE HERE
-            foreach ($request->items as $item) {
-                InvoiceItem::create([
-                    'invoice_id' => $invoice->id,
-                    'service_id' => $item['id'],
-                    'service_name' => $item['name'],
-                    'service_category' => $item['category'] ?? 'Service',
+            // Create invoice items
+            foreach ($validated['items'] as $item) {
+                DB::table('invoice_items')->insert([
+                    'invoice_id' => $invoiceId,
+                    'service_name' => $item['service_name'],
+                    'service_category' => $item['service_category'] ?? 'Service',
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
-                    'total' => $item['price'] * $item['quantity']
+                    'total' => $item['price'] * $item['quantity'],
+                    'created_at' => Carbon::now(),
+                    'updated_at' => Carbon::now()
                 ]);
-
-                // ❌ PRODUCT STOCK UPDATE REMOVED - BillingInvoice already handles this
-                // Stock is updated by BillingInvoice component before calling this API
             }
 
             DB::commit();
 
-            // Load the invoice with its items
-            $invoice->load('items');
-            
-            $transformedInvoice = [
-                'id' => $invoice->id,
+            // Fetch the created invoice with items
+            $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
+            $items = DB::table('invoice_items')->where('invoice_id', $invoiceId)->get();
+
+            return response()->json([
+                'success' => true,
+                'id' => $invoiceId,
                 'invoice_no' => $invoice->invoice_no,
                 'invoice_date' => $invoice->invoice_date,
                 'total_amount' => $invoice->total_amount,
@@ -192,12 +184,12 @@ class InvoiceController extends Controller
                 'status' => $invoice->status,
                 'customer_name' => $invoice->customer_name,
                 'customer_phone' => $invoice->customer_phone,
+                'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
-                'items' => $invoice->items->map(function($item) {
+                'items' => $items->map(function($item) {
                     return [
                         'id' => $item->id,
-                        'service_id' => $item->service_id,
                         'service_name' => $item->service_name,
                         'service_category' => $item->service_category,
                         'quantity' => $item->quantity,
@@ -205,21 +197,22 @@ class InvoiceController extends Controller
                         'total' => $item->total
                     ];
                 })
-            ];
-
-            return response()->json($transformedInvoice, 201);
+            ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
+            Log::error('Validation error:', $e->errors());
             return response()->json([
-                'error' => 'Validation failed',
+                'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Invoice creation error: ' . $e->getMessage());
             return response()->json([
-                'error' => 'Failed to create invoice: ' . $e->getMessage()
+                'success' => false,
+                'message' => 'Failed to create invoice: ' . $e->getMessage()
             ], 500);
         }
     }

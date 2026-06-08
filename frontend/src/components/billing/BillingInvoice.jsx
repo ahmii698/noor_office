@@ -18,7 +18,7 @@ import {
 } from 'react-icons/fi';
 import api from '../../services/api';
 
-// Icon list for dropdown - USING ONLY EXISTING REACT ICONS
+// Icon list for dropdown
 const iconOptions = [
   { name: 'Tool', icon: <FiTool size={24} />, value: 'tool' },
   { name: 'Zap', icon: <FiZap size={24} />, value: 'zap' },
@@ -39,16 +39,6 @@ const iconOptions = [
   { name: 'Home', icon: <FiHome size={24} />, value: 'home' },
   { name: 'Briefcase', icon: <FiBriefcase size={24} />, value: 'briefcase' },
   { name: 'Coffee', icon: <FiCoffee size={24} />, value: 'coffee' },
-  { name: 'Music', icon: <FiMusic size={24} />, value: 'music' },
-  { name: 'Film', icon: <FiFilm size={24} />, value: 'film' },
-  { name: 'Book', icon: <FiBook size={24} />, value: 'book' },
-  { name: 'Camera', icon: <FiCamera size={24} />, value: 'camera' },
-  { name: 'Code', icon: <FiCode size={24} />, value: 'code' },
-  { name: 'Database', icon: <FiDatabase size={24} />, value: 'database' },
-  { name: 'Server', icon: <FiServer size={24} />, value: 'server' },
-  { name: 'CPU', icon: <FiCpu size={24} />, value: 'cpu' },
-  { name: 'Hard Drive', icon: <FiHardDrive size={24} />, value: 'hard-drive' },
-  { name: 'Monitor', icon: <FiMonitor size={24} />, value: 'monitor' },
   { name: 'Package', icon: <FiPackage size={24} />, value: 'package' },
   { name: 'Box', icon: <FiBox size={24} />, value: 'box' },
   { name: 'Tag', icon: <FiTag size={24} />, value: 'tag' },
@@ -56,18 +46,9 @@ const iconOptions = [
   { name: 'Clock', icon: <FiClock size={24} />, value: 'clock' },
   { name: 'Calendar', icon: <FiCalendar size={24} />, value: 'calendar' },
   { name: 'Dollar', icon: <FiDollarSign size={24} />, value: 'dollar' },
-  { name: 'Credit Card', icon: <FiCreditCard size={24} />, value: 'credit-card' },
-  { name: 'Shopping Cart', icon: <FiShoppingCart size={24} />, value: 'shopping-cart' },
-  { name: 'User', icon: <FiUser size={24} />, value: 'user' },
-  { name: 'Search', icon: <FiSearch size={24} />, value: 'search' },
-  { name: 'Grid', icon: <FiGrid size={24} />, value: 'grid' },
-  { name: 'List', icon: <FiListIcon size={24} />, value: 'list' },
-  { name: 'Trash', icon: <FiTrash2 size={24} />, value: 'trash' },
-  { name: 'Edit', icon: <FiEdit2 size={24} />, value: 'edit' },
-  { name: 'Save', icon: <FiSave size={24} />, value: 'save' }
+  { name: 'Credit Card', icon: <FiCreditCard size={24} />, value: 'credit-card' }
 ];
 
-// Function to get icon component by value
 const getIconComponent = (iconValue) => {
   const found = iconOptions.find(opt => opt.value === iconValue);
   return found ? found.icon : <FiTool size={24} />;
@@ -294,6 +275,47 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
   const remainingAmount = billTotal - paidAmount;
   const isFullyPaid = remainingAmount <= 0;
 
+  // ✅ UPDATED: Function to add service reminder for 6 months later (Email optional)
+  const addServiceReminder = async (invoiceNo, serviceItems) => {
+    try {
+      // Service types that need reminders
+      const reminderServices = [
+        'oil', 'tuning', 'engine', 'performance', 
+        'ac service', 'compressor', 'filter', 'gas refill',
+        'ac repair', 'cooling', 'service'
+      ];
+      
+      // Check if any service needs reminder
+      const needsReminder = serviceItems.some(item => 
+        reminderServices.some(service => 
+          item.name?.toLowerCase().includes(service)
+        )
+      );
+      
+      if (needsReminder) {
+        // ✅ Email optional - agar nahi hai to null bhejo
+        const customerEmail = customerDetails.email || null;
+        
+        const response = await api.post('/reminders/add', {
+          invoice_no: invoiceNo,
+          customer_name: customerDetails.name,
+          customer_phone: customerDetails.phone,
+          customer_email: customerEmail,
+          car_number: customerDetails.carNumber,
+          service_type: 'service'
+        });
+        
+        if (response.data.success) {
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error adding reminder:', error);
+      return false;
+    }
+  };
+
   const printBill = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
     
@@ -324,7 +346,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
             body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #eef2f5; }
             .invoice-container { max-width: 800px; margin: 0 auto; background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden; }
             .header { background: linear-gradient(135deg, #111827 0%, #1f2937 100%); color: white; padding: 25px; text-align: center; }
-            .logo-img { width: 70px; height: 70px; border-radius: 50%; margin-bottom: 12px; border: 3px solid #ef4444; object-fit: cover; }
             .shop-name { font-size: 24px; font-weight: bold; letter-spacing: 1px; }
             .subtitle { opacity: 0.8; margin-top: 5px; font-size: 12px; }
             .contact-info { font-size: 11px; margin-top: 8px; opacity: 0.7; }
@@ -351,7 +372,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         <body>
           <div class="invoice-container">
             <div class="header">
-              <img src="/logo.jpg" alt="Noorani Logo" class="logo-img" onerror="this.style.display='none'" />
               <div class="shop-name">❄️ NOORANI CAR A/C & AUTOS</div>
               <p class="subtitle">Professional Auto Care Service</p>
               <p class="contact-info">123 Main Street, City | Phone: +92 300 1234567</p>
@@ -360,6 +380,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
               <h4>📋 CUSTOMER INFORMATION</h4>
               <p><strong>Name:</strong> ${customerDetails.name}</p>
               <p><strong>Phone:</strong> ${customerDetails.phone}</p>
+              <p><strong>Email:</strong> ${customerDetails.email || 'N/A'}</p>
               <p><strong>Car Number:</strong> ${customerDetails.carNumber}</p>
               <p><strong>Car Model:</strong> ${customerDetails.carModel || 'N/A'}</p>
             </div>
@@ -410,6 +431,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         'Date': customerDetails.date,
         'Customer Name': customerDetails.name,
         'Phone': customerDetails.phone,
+        'Email': customerDetails.email || 'N/A',
         'Car Number': customerDetails.carNumber,
         'Car Model': customerDetails.carModel || 'N/A',
         'Total Amount': `Rs. ${billTotal.toLocaleString()}`,
@@ -454,6 +476,8 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     yPos += 7;
     doc.text(`Phone: ${customerDetails.phone}`, 14, yPos);
     yPos += 7;
+    doc.text(`Email: ${customerDetails.email || 'N/A'}`, 14, yPos);
+    yPos += 7;
     doc.text(`Car Number: ${customerDetails.carNumber}`, 14, yPos);
     yPos += 7;
     doc.text(`Date: ${customerDetails.date}`, 14, yPos);
@@ -484,6 +508,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     toast.success('Exported to PDF');
   };
 
+  // ✅ UPDATED: handlePayment function with reminder always added
   const handlePayment = async () => {
     if (isProcessingRef.current || paymentExecutedRef.current) {
       console.log('Payment already processing or executed');
@@ -510,10 +535,10 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     setIsProcessing(true);
     
     const cartSnapshot = [...cart];
-    
-    console.log('Processing payment for:', cartSnapshot.map(i => `${i.name} x${i.quantity}`));
+    const invoiceNo = `INV-${Date.now()}`;
     
     try {
+      // Update product stocks
       for (const item of cartSnapshot) {
         if (item.type === 'product') {
           const currentProduct = products.find(p => p.id === item.id);
@@ -522,8 +547,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
             const newQuantity = currentProduct.quantity - item.quantity;
             const finalQuantity = Math.max(0, newQuantity);
             
-            console.log(`Updating ${item.name}: ${currentProduct.quantity} -> ${finalQuantity} (${item.quantity} sold)`);
-            
             await api.put(`/products/${item.id}`, {
               quantity: finalQuantity
             });
@@ -531,34 +554,48 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         }
       }
       
+      // Save invoice to database
       await api.post('/invoices', {
-        customer: {
-          name: customerDetails.name,
-          phone: customerDetails.phone,
-          carNumber: customerDetails.carNumber,
-          carModel: customerDetails.carModel,
-          date: customerDetails.date
-        },
+        invoice_no: invoiceNo,
+        customer_name: customerDetails.name,
+        customer_phone: customerDetails.phone,
+        customer_email: customerDetails.email,
+        customer_car_number: customerDetails.carNumber,
+        customer_car_model: customerDetails.carModel,
+        total_amount: billTotal,
+        paid_amount: paidAmount,
+        remaining_amount: remainingAmount,
+        payment_method: paymentMethod,
+        status: isFullyPaid ? 'Paid' : 'Partial',
         items: cartSnapshot.map(item => ({
-          id: item.id,
-          name: item.name,
+          service_name: item.name,
+          service_category: item.type === 'service' ? (item.category || 'Service') : 'Product',
           price: item.price,
-          quantity: item.quantity,
-          type: item.type
-        })),
-        total: billTotal,
-        paidAmount: paidAmount,
-        paymentMethod: paymentMethod
+          quantity: item.quantity
+        }))
       });
       
-      toast.success('Payment successful!');
+      // ✅ UPDATED: Always try to add service reminder (email optional)
+      const reminderAdded = await addServiceReminder(invoiceNo, cartSnapshot);
+      
+      if (reminderAdded) {
+        if (customerDetails.email) {
+          toast.success('✅ Payment successful! 6-month reminder scheduled!');
+        } else {
+          toast.success('✅ Payment successful! Reminder saved (add email later for notifications)');
+        }
+      } else {
+        toast.success('✅ Payment successful!');
+      }
+      
       setCart([]);
       setPaymentAmount('');
       await fetchProducts();
       
     } catch (err) {
       console.error('Payment error:', err);
-      toast.error('Payment failed: ' + (err.response?.data?.message || 'Unknown error'));
+      const errorMsg = err.response?.data?.message || err.response?.data?.error || 'Unknown error';
+      toast.error(`Payment failed: ${errorMsg}`);
     } finally {
       setTimeout(() => {
         isProcessingRef.current = false;
@@ -604,6 +641,16 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
               <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Phone</p>
               <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{customerDetails.phone}</p>
             </div>
+            {customerDetails.email && (
+              <>
+                <div className="w-px h-10 bg-gray-300 dark:bg-gray-700"></div>
+                <div className="text-right">
+                  <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Email</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{customerDetails.email}</p>
+                  <p className="text-xs text-green-500">✅ Reminder will be sent after 6 months</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -826,9 +873,8 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
           </div>
         </div>
 
-        {/* Bill Section - Same as before - keeping it short */}
+        {/* Bill Section */}
         <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          {/* Bill content remains same as your existing code */}
           <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600">
             <div className="flex items-center gap-2">
               <FiShoppingCart className="text-white text-xl" />
@@ -994,7 +1040,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         </div>
       </div>
 
-      {/* Service Add/Edit Modal with React Icons Dropdown */}
+      {/* Service Add/Edit Modal */}
       {isServiceModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

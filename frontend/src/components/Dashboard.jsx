@@ -21,6 +21,7 @@ const FinanceReports = lazy(() => import('./finance/FinanceReports'));
 const FinanceReminders = lazy(() => import('./finance/FinanceReminders'));
 const Billing = lazy(() => import('./Billing'));
 const Records = lazy(() => import('./Records'));
+const ReminderChecker = lazy(() => import('./ReminderChecker'));
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -547,6 +548,11 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+      
+      {/* Reminder Checker - Shows pending reminders */}
+      <Suspense fallback={null}>
+        <ReminderChecker darkMode={darkMode} />
+      </Suspense>
     </div>
   );
 };

@@ -27,8 +27,21 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 Route::get('/services', [ServiceController::class, 'index']);
 Route::get('/services/{id}', [ServiceController::class, 'show']);
 Route::post('/services', [ServiceController::class, 'store']);
-Route::put('/services/{id}', [ServiceController::class, 'update']);      // ✅ ADDED: Update service
-Route::delete('/services/{id}', [ServiceController::class, 'destroy']);   // ✅ ADDED: Delete service
+Route::put('/services/{id}', [ServiceController::class, 'update']);
+Route::delete('/services/{id}', [ServiceController::class, 'destroy']);
+
+// ✅ REMINDER ROUTES - Made PUBLIC so they work without login
+Route::get('/reminders', [ReminderController::class, 'index']);
+Route::get('/reminders/{id}', [ReminderController::class, 'show']);
+Route::post('/reminders', [ReminderController::class, 'store']);
+Route::put('/reminders/{id}', [ReminderController::class, 'update']);
+Route::delete('/reminders/{id}', [ReminderController::class, 'destroy']);
+Route::get('/reminders/pending', [ReminderController::class, 'getPendingReminders']);
+Route::post('/reminders/add', [ReminderController::class, 'addReminder']);
+Route::post('/reminders/send-email', [ReminderController::class, 'sendReminderEmail']);
+Route::get('/reminders/invoice/{invoiceNo}', [ReminderController::class, 'getByInvoiceNo']);
+Route::patch('/reminders/{id}/mark-sent', [ReminderController::class, 'markAsSent']);
+Route::get('/reminders/due/today', [ReminderController::class, 'getTodayDueReminders']);
 
 // Test Route (to check if API is working)
 Route::get('/test', function() {
@@ -68,13 +81,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/expenses', [ExpenseController::class, 'store']);
     Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
-    
-    // Reminders Routes - Full CRUD
-    Route::get('/reminders', [ReminderController::class, 'index']);
-    Route::get('/reminders/{id}', [ReminderController::class, 'show']);
-    Route::post('/reminders', [ReminderController::class, 'store']);
-    Route::put('/reminders/{id}', [ReminderController::class, 'update']);
-    Route::delete('/reminders/{id}', [ReminderController::class, 'destroy']);
     
     // Invoices Routes (Billing & Records)
     Route::prefix('invoices')->group(function () {

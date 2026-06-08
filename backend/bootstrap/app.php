@@ -3,6 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Console\Scheduling\Schedule;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -39,4 +40,12 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
-    })->create();
+    })
+    ->withSchedule(function (Schedule $schedule) {
+        // ✅ Send service reminder emails to admin every day at 9 AM
+        $schedule->command('reminders:send')->dailyAt('09:00');
+        
+        // Optional: Also run every hour for testing (comment out in production)
+        // $schedule->command('reminders:send')->hourly();
+    })
+    ->create();

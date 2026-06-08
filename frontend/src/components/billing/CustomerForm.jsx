@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FiUser, FiPhone, FiCalendar, FiClock, FiTool, FiPackage, 
-  FiCheckCircle, FiAlertCircle, FiX, FiArrowRight, FiLoader
+  FiCheckCircle, FiAlertCircle, FiX, FiArrowRight, FiLoader, FiMail
 } from 'react-icons/fi';
 import api from '../../services/api';
 
@@ -11,6 +11,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   const [customerDetails, setCustomerDetails] = useState(initialData || {
     name: '',
     phone: '',
+    email: '',
     carNumber: '',
     carModel: '',
     date: new Date().toISOString().split('T')[0]
@@ -40,6 +41,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               const lastInvoice = history[0];
               if (!customerDetails.name && lastInvoice.customer_name) {
                 setCustomerDetails(prev => ({ ...prev, name: lastInvoice.customer_name || '' }));
+              }
+              if (!customerDetails.email && lastInvoice.customer_email) {
+                setCustomerDetails(prev => ({ ...prev, email: lastInvoice.customer_email || '' }));
               }
               if (!customerDetails.carNumber && lastInvoice.customer_car_number) {
                 setCustomerDetails(prev => ({ ...prev, carNumber: lastInvoice.customer_car_number || '' }));
@@ -77,7 +81,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
 
   const updateField = (field, value) => {
     if (field === 'phone') {
-      setCustomerDetails({ ...customerDetails, phone: value, name: '', carNumber: '', carModel: '' });
+      setCustomerDetails({ ...customerDetails, phone: value, name: '', email: '', carNumber: '', carModel: '' });
     } else {
       setCustomerDetails({ ...customerDetails, [field]: value });
     }
@@ -145,6 +149,27 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               }`}
               required
             />
+          </div>
+          
+          {/* ✅ NEW: Email Field for 6-month reminders */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <FiMail className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Email Address (Optional)
+            </label>
+            <div className="relative">
+              <input
+                type="email"
+                value={customerDetails.email}
+                onChange={(e) => updateField('email', e.target.value)}
+                placeholder="customer@example.com"
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
+                }`}
+              />
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
+                <FiClock className="text-xs" /> We'll send a service reminder after 6 months
+              </p>
+            </div>
           </div>
           
           <div>
@@ -241,6 +266,14 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
           >
             Continue to Billing <FiArrowRight className="text-lg" />
           </button>
+        </div>
+        
+        {/* Info Box about email reminder */}
+        <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
+          <p className="flex items-center gap-2">
+            <FiClock className="text-red-500" />
+            <strong>Note:</strong> If you provide an email address, we'll automatically send a service reminder after 6 months!
+          </p>
         </div>
       </form>
     </div>

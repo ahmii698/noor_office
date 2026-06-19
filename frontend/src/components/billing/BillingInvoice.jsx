@@ -205,14 +205,13 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     setIsServiceModalOpen(true);
   };
 
-  // ==================== PRODUCT FUNCTIONS (FIXED - CAMELCASE) ====================
+  // ==================== PRODUCT FUNCTIONS ====================
   const handleAddProduct = async () => {
     if (!productFormData.name || !productFormData.purchase_price || !productFormData.selling_price || !productFormData.quantity) {
       toast.error('Please fill all fields');
       return;
     }
     try {
-      // ✅ BACKEND CAMELCASE EXPECT KAR RAHA HAI
       const payload = {
         name: productFormData.name,
         purchasePrice: parseFloat(productFormData.purchase_price),
@@ -247,7 +246,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       return;
     }
     try {
-      // ✅ BACKEND CAMELCASE EXPECT KAR RAHA HAI
       const payload = {
         name: productFormData.name,
         purchasePrice: parseFloat(productFormData.purchase_price),
@@ -471,6 +469,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
               <p><strong>Email:</strong> ${customerDetails.email || 'N/A'}</p>
               <p><strong>Car Number:</strong> ${customerDetails.carNumber}</p>
               <p><strong>Car Model:</strong> ${customerDetails.carModel || 'N/A'}</p>
+              <p><strong>Birthday:</strong> ${customerDetails.birthday ? new Date(customerDetails.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not Provided'}</p>
             </div>
             <div class="invoice-details">
               <p><strong>Invoice #:</strong> INV-${Date.now()}</p>
@@ -541,6 +540,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         'Email': customerDetails.email || 'N/A',
         'Car Number': customerDetails.carNumber,
         'Car Model': customerDetails.carModel || 'N/A',
+        'Birthday': customerDetails.birthday || 'N/A',
         'Total Amount': `Rs. ${billTotal.toLocaleString()}`,
         'Paid Amount': `Rs. ${paidAmount.toLocaleString()}`,
         'Remaining': `Rs. ${remainingAmount.toLocaleString()}`,
@@ -600,7 +600,11 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     yPos += 7;
     doc.text(`Car Number: ${customerDetails.carNumber}`, 14, yPos);
     yPos += 7;
+    doc.text(`Car Model: ${customerDetails.carModel || 'N/A'}`, 14, yPos);
+    yPos += 7;
     doc.text(`Date: ${customerDetails.date}`, 14, yPos);
+    yPos += 7;
+    doc.text(`Birthday: ${customerDetails.birthday || 'N/A'}`, 14, yPos);
     yPos += 15;
     
     doc.autoTable({
@@ -669,6 +673,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         customer_email: customerDetails.email,
         customer_car_number: customerDetails.carNumber,
         customer_car_model: customerDetails.carModel,
+        customer_birthday: customerDetails.birthday || null,
         total_amount: billTotal,
         paid_amount: paidAmount,
         remaining_amount: remainingAmount,
@@ -732,16 +737,32 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         </div>
       </div>
 
-      {/* Customer Info - No Pink Background */}
+      {/* Customer Info - ✅ BIRTHDAY ADDED */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-5 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Customer Information</h3>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}><span className="font-semibold">Name:</span> {customerDetails.name}</p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}><span className="font-semibold">Phone:</span> {customerDetails.phone}</p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}><span className="font-semibold">Email:</span> {customerDetails.email || 'N/A'}</p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}><span className="font-semibold">Car Number:</span> {customerDetails.carNumber}</p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}><span className="font-semibold">Car Model:</span> {customerDetails.carModel || 'N/A'}</p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}><span className="font-semibold">Date:</span> {customerDetails.date}</p>
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="font-semibold">Name:</span> {customerDetails.name}
+          </p>
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="font-semibold">Phone:</span> {customerDetails.phone}
+          </p>
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="font-semibold">Email:</span> {customerDetails.email || 'N/A'}
+          </p>
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="font-semibold">Car Number:</span> {customerDetails.carNumber}
+          </p>
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="font-semibold">Car Model:</span> {customerDetails.carModel || 'N/A'}
+          </p>
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="font-semibold">Date:</span> {customerDetails.date}
+          </p>
+          {/* ✅ BIRTHDAY FIELD - OPTIONAL */}
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className="font-semibold">Birthday:</span> {customerDetails.birthday ? new Date(customerDetails.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not Provided'}
+          </p>
         </div>
       </div>
 
@@ -762,7 +783,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Items Section */}
+        {/* Items Section - Same as before */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600">
             <div className="flex justify-between items-center">

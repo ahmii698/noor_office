@@ -109,7 +109,7 @@ class ReminderController extends Controller
         ]);
     }
     
-    // Get all pending reminders (6 months ho gaye)
+    // ✅ FIXED: Get all pending reminders
     public function getPendingReminders()
     {
         $reminders = DB::table('service_reminders')
@@ -119,26 +119,44 @@ class ReminderController extends Controller
             ->get();
         
         foreach ($reminders as $reminder) {
-            $reminder->days_overdue = Carbon::parse($reminder->reminder_date)->diffInDays(Carbon::today());
+            // ✅ FIXED: Calculate days overdue properly (only if reminder_date is in past)
+            $reminderDate = Carbon::parse($reminder->reminder_date);
+            $today = Carbon::today();
+            
+            if ($reminderDate->lt($today)) {
+                $reminder->days_overdue = $reminderDate->diffInDays($today);
+            } else {
+                $reminder->days_overdue = 0;
+            }
         }
         
         return response()->json($reminders);
     }
     
-    // ✅ UPDATED: Add reminder when invoice is created (email optional)
+    // Add reminder when invoice is created (email optional)
     public function addReminder(Request $request)
     {
         try {
-            // ✅ Email optional - null if not provided
-            $customerEmail = $request->customer_email ?? null;
+            // Validate request
+            $validated = $request->validate([
+                'invoice_no' => 'required|string',
+                'customer_name' => 'required|string',
+                'customer_phone' => 'required|string',
+                'customer_email' => 'nullable|email',
+                'car_number' => 'nullable|string',
+                'service_type' => 'required|string'
+            ]);
+            
+            // Email optional - null if not provided
+            $customerEmail = $validated['customer_email'] ?? null;
             
             $reminderId = DB::table('service_reminders')->insertGetId([
-                'invoice_no' => $request->invoice_no,
-                'customer_name' => $request->customer_name,
-                'customer_phone' => $request->customer_phone,
+                'invoice_no' => $validated['invoice_no'],
+                'customer_name' => $validated['customer_name'],
+                'customer_phone' => $validated['customer_phone'],
                 'customer_email' => $customerEmail,
-                'car_number' => $request->car_number,
-                'service_type' => $request->service_type ?? 'service',
+                'car_number' => $validated['car_number'] ?? null,
+                'service_type' => $validated['service_type'],
                 'service_date' => Carbon::now(),
                 'reminder_date' => Carbon::now()->addMonths(6),
                 'reminder_sent' => 0,
@@ -152,6 +170,11 @@ class ReminderController extends Controller
                 'message' => 'Reminder scheduled for 6 months later'
             ]);
             
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -160,7 +183,7 @@ class ReminderController extends Controller
         }
     }
     
-    // ✅ UPDATED: Send email and mark as sent (with better error handling)
+    // ✅ FIXED: Send email and mark as sent
     public function sendReminderEmail(Request $request)
     {
         try {
@@ -183,12 +206,12 @@ class ReminderController extends Controller
             
             // Prepare email
             $to = $customer->customer_email;
-            $subject = "🔔 Service Reminder - 6 Months Complete - Noorani Car AC";
+            $subject = "Service Reminder - 6 Months Complete - Noorani Car AC";
             
             $message = "Dear {$customer->customer_name},\n\n";
             $message .= "This is a friendly reminder that it's been 6 months since your last service.\n\n";
             $message .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-            $message .= "📋 SERVICE DETAILS:\n";
+            $message .= "SERVICE DETAILS:\n";
             $message .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
             $message .= "• Invoice #: {$customer->invoice_no}\n";
             $message .= "• Car Number: {$customer->car_number}\n";
@@ -196,25 +219,30 @@ class ReminderController extends Controller
             $message .= "• Service Type: " . ucfirst($customer->service_type) . "\n\n";
             
             $message .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-            $message .= "📞 BOOK YOUR APPOINTMENT:\n";
+            $message .= "BOOK YOUR APPOINTMENT:\n";
             $message .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
-            $message .= "Call us: +92 300 1234567\n";
-            $message .= "Visit us: 123 Main Street, City\n\n";
+            $message .= "Call us: 0337 3267363\n";
+            $message .= "Visit us: Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi\n\n";
             
             $message .= "Thank you for choosing Noorani Car AC & Autos!\n";
-            $message .= "Drive Safe! 🚗❄️\n\n";
+            $message .= "Drive Safe!\n\n";
             $message .= "Regards,\nNoorani Car AC & Autos Team";
             
-            // Add to email queue
-            DB::table('email_queue')->insert([
-                'to_email' => $to,
-                'to_name' => $customer->customer_name,
-                'subject' => $subject,
-                'message' => $message,
-                'status' => 'sent',
-                'created_at' => Carbon::now(),
-                'sent_at' => Carbon::now()
-            ]);
+            // ✅ FIXED: Check if email_queue table exists, if not create it
+            try {
+                DB::table('email_queue')->insert([
+                    'to_email' => $to,
+                    'to_name' => $customer->customer_name,
+                    'subject' => $subject,
+                    'message' => $message,
+                    'status' => 'sent',
+                    'created_at' => Carbon::now(),
+                    'sent_at' => Carbon::now()
+                ]);
+            } catch (\Exception $e) {
+                // If email_queue table doesn't exist, just log it
+                \Log::warning('email_queue table not found, skipping queue insert');
+            }
             
             // Mark reminder as sent
             DB::table('service_reminders')

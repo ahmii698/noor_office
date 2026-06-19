@@ -8,6 +8,8 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ReminderController;
+use App\Http\Controllers\BirthdayReminderController;
+use App\Http\Controllers\CustomerController;
 
 /*
 |--------------------------------------------------------------------------
@@ -30,7 +32,23 @@ Route::post('/services', [ServiceController::class, 'store']);
 Route::put('/services/{id}', [ServiceController::class, 'update']);
 Route::delete('/services/{id}', [ServiceController::class, 'destroy']);
 
-// ✅ REMINDER ROUTES - Made PUBLIC so they work without login
+// ✅ PRODUCTS - Made PUBLIC so they work without login
+Route::get('/products', [ProductController::class, 'index']);
+Route::get('/products/{id}', [ProductController::class, 'show']);
+Route::post('/products', [ProductController::class, 'store']);
+Route::put('/products/{id}', [ProductController::class, 'update']);
+Route::patch('/products/{id}', [ProductController::class, 'patch']);
+Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+
+// ✅ CUSTOMER ROUTES - Made PUBLIC so they work without login
+Route::get('/customers', [CustomerController::class, 'index']);
+Route::get('/customers/{id}', [CustomerController::class, 'show']);
+Route::post('/customers', [CustomerController::class, 'store']);
+Route::put('/customers/{id}', [CustomerController::class, 'update']);
+Route::delete('/customers/{id}', [CustomerController::class, 'destroy']);
+Route::put('/customers/{id}/birthday', [CustomerController::class, 'updateBirthday']);
+
+// ✅ SERVICE REMINDER ROUTES - Made PUBLIC so they work without login
 Route::get('/reminders', [ReminderController::class, 'index']);
 Route::get('/reminders/{id}', [ReminderController::class, 'show']);
 Route::post('/reminders', [ReminderController::class, 'store']);
@@ -42,6 +60,18 @@ Route::post('/reminders/send-email', [ReminderController::class, 'sendReminderEm
 Route::get('/reminders/invoice/{invoiceNo}', [ReminderController::class, 'getByInvoiceNo']);
 Route::patch('/reminders/{id}/mark-sent', [ReminderController::class, 'markAsSent']);
 Route::get('/reminders/due/today', [ReminderController::class, 'getTodayDueReminders']);
+
+// ✅ BIRTHDAY REMINDER ROUTES - Made PUBLIC so they work without login
+Route::prefix('birthday-reminders')->group(function () {
+    Route::get('/today', [BirthdayReminderController::class, 'getTodayReminders']);
+    Route::post('/add', [BirthdayReminderController::class, 'addReminder']);
+    Route::post('/sync', [BirthdayReminderController::class, 'syncBirthdayReminders']);
+    Route::put('/notify/{id}', [BirthdayReminderController::class, 'markNotified']);
+    Route::delete('/delete/{id}', [BirthdayReminderController::class, 'deleteReminder']);
+    Route::get('/all', [BirthdayReminderController::class, 'index']);
+    // ✅ ADDED: Pending birthday reminders route
+    Route::get('/pending', [BirthdayReminderController::class, 'getPendingReminders']);
+});
 
 // Test Route (to check if API is working)
 Route::get('/test', function() {
@@ -67,27 +97,19 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/low-stock', [DashboardController::class, 'lowStockProducts']);
     });
     
-    // Products Routes (Inventory) - Full CRUD
-    Route::get('/products', [ProductController::class, 'index']);
-    Route::get('/products/{id}', [ProductController::class, 'show']);
-    Route::post('/products', [ProductController::class, 'store']);
-    Route::put('/products/{id}', [ProductController::class, 'update']);
-    Route::patch('/products/{id}', [ProductController::class, 'patch']);
-    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
-    
-    // Expenses Routes (Finance) - Full CRUD
-    Route::get('/expenses', [ExpenseController::class, 'index']);
-    Route::get('/expenses/{id}', [ExpenseController::class, 'show']);
-    Route::post('/expenses', [ExpenseController::class, 'store']);
-    Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
-    Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
-    
-    // Invoices Routes (Billing & Records)
+    // Invoices Routes (Billing & Records) - Protected
     Route::prefix('invoices')->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/{id}', [InvoiceController::class, 'show']);
         Route::post('/', [InvoiceController::class, 'store']);
     });
+    
+    // Expenses Routes (Finance) - Protected
+    Route::get('/expenses', [ExpenseController::class, 'index']);
+    Route::get('/expenses/{id}', [ExpenseController::class, 'show']);
+    Route::post('/expenses', [ExpenseController::class, 'store']);
+    Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
+    Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
     
     // Additional Stats Routes
     Route::get('/sales/stats', function() {

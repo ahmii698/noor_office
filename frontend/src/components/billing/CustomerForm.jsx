@@ -14,6 +14,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     email: '',
     carNumber: '',
     carModel: '',
+    birthday: '', // ✅ NEW FIELD
     date: new Date().toISOString().split('T')[0]
   });
   
@@ -51,6 +52,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               if (!customerDetails.carModel && lastInvoice.customer_car_model) {
                 setCustomerDetails(prev => ({ ...prev, carModel: lastInvoice.customer_car_model || '' }));
               }
+              if (!customerDetails.birthday && lastInvoice.customer_birthday) {
+                setCustomerDetails(prev => ({ ...prev, birthday: lastInvoice.customer_birthday || '' }));
+              }
               if (lastInvoice.customer_name) {
                 toast.success(`Welcome back ${lastInvoice.customer_name}!`, { duration: 2000 });
               }
@@ -81,7 +85,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
 
   const updateField = (field, value) => {
     if (field === 'phone') {
-      setCustomerDetails({ ...customerDetails, phone: value, name: '', email: '', carNumber: '', carModel: '' });
+      setCustomerDetails({ ...customerDetails, phone: value, name: '', email: '', carNumber: '', carModel: '', birthday: '' });
     } else {
       setCustomerDetails({ ...customerDetails, [field]: value });
     }
@@ -151,7 +155,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             />
           </div>
           
-          {/* ✅ NEW: Email Field for 6-month reminders */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiMail className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Email Address (Optional)
@@ -201,6 +204,26 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
               }`}
             />
+          </div>
+
+          {/* ✅ BIRTHDAY FIELD - OPTIONAL */}
+          <div>
+            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <FiCalendar className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Birthday (Optional)
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={customerDetails.birthday}
+                onChange={(e) => updateField('birthday', e.target.value)}
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
+                }`}
+              />
+              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
+                <FiCalendar className="text-xs" /> We'll show a birthday reminder on this day
+              </p>
+            </div>
           </div>
         </div>
         

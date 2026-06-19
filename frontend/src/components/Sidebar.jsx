@@ -1,6 +1,6 @@
 // src/components/Sidebar.jsx
 import React, { useState, useEffect } from 'react';
-import { FiPackage, FiDollarSign, FiFileText, FiBarChart2, FiChevronDown, FiChevronUp, FiList, FiPieChart, FiTrendingUp, FiHome } from 'react-icons/fi';
+import { FiPackage, FiDollarSign, FiFileText, FiBarChart2, FiChevronDown, FiChevronUp, FiList, FiPieChart, FiTrendingUp, FiHome, FiBell } from 'react-icons/fi';
 import { HiMenu, HiX } from 'react-icons/hi';
 
 const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => {
@@ -14,9 +14,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
+    { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders' }, // ✅ NEW
   ];
 
-  // Finance Submenu - Reports REMOVED
+  // Finance Submenu
   const financeSubmenu = [
     { id: 'finance-overview', label: 'Overview', icon: FiTrendingUp, path: '/finance' },
     { id: 'finance-expenses', label: 'Expenses', icon: FiList, path: '/finance-expenses' },
@@ -122,7 +123,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   )}
                 </button>
                 
-                {/* Finance Submenu - Reports Removed */}
+                {/* Finance Submenu */}
                 {isOpen && item.hasSubmenu && isFinanceOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {financeSubmenu.map((subItem) => {

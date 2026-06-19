@@ -9,11 +9,20 @@ class Customer extends Model
 {
     use HasFactory;
 
-    protected $table = 'customers';
-    protected $fillable = ['name', 'phone', 'car_number', 'car_model'];
+    protected $fillable = [
+        'name',
+        'phone',
+        'car_number',
+        'car_model',
+        'birthday'  // ✅ New field
+    ];
 
-    public function invoices()
+    protected $casts = [
+        'birthday' => 'date',
+    ];
+
+    public function birthdayReminders()
     {
-        return $this->hasMany(Invoice::class);
+        return $this->hasMany(BirthdayReminder::class);
     }
 }

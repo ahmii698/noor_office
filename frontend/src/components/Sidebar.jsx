@@ -2,19 +2,21 @@
 import React, { useState, useEffect } from 'react';
 import { FiPackage, FiDollarSign, FiFileText, FiBarChart2, FiChevronDown, FiChevronUp, FiList, FiPieChart, FiTrendingUp, FiHome, FiBell } from 'react-icons/fi';
 import { HiMenu, HiX } from 'react-icons/hi';
+import api from '../services/api';
 
 const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => {
   const [logoExists, setLogoExists] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  
+  const [reminderCount, setReminderCount] = useState(0);
+
   const menuItems = [
     { id: 'all-data', label: 'Dashboard', icon: FiHome, path: '/dashboard' },
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
-    { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders' }, // ✅ NEW
+    { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
   ];
 
   // Finance Submenu
@@ -24,15 +26,33 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'finance-charts', label: 'Charts', icon: FiPieChart, path: '/finance-charts' },
   ];
 
+  // ✅ Fetch reminder count
+  const fetchReminderCount = async () => {
+    try {
+      // Fetch birthday count from customers table
+      const birthdayRes = await api.get('/birthday-reminders/today');
+      const birthdayCount = birthdayRes.data.birthday_customers?.length || 0;
+      
+      // Fetch service reminders count (tuning + oil change)
+      const serviceRes = await api.get('/service-reminders/all');
+      const tuningCount = serviceRes.data.tuning?.length || 0;
+      const oilChangeCount = serviceRes.data.oil_change?.length || 0;
+      
+      const total = birthdayCount + tuningCount + oilChangeCount;
+      setReminderCount(total);
+    } catch (error) {
+      // Silent fail - don't show error to user
+      console.error('Error fetching reminder count:', error);
+    }
+  };
+
   // Check window size for mobile detection
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 1024);
-      // Auto close sidebar on mobile when resizing to mobile
       if (window.innerWidth < 1024 && isOpen) {
         setIsOpen(false);
       }
-      // Auto open sidebar on desktop when resizing from mobile
       if (window.innerWidth >= 1024 && !isOpen) {
         setIsOpen(true);
       }
@@ -47,6 +67,23 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     img.src = '/logo.jpg';
     img.onload = () => setLogoExists(true);
     img.onerror = () => setLogoExists(false);
+  }, []);
+
+  // ✅ Fetch reminder count on mount and every 60 seconds
+  useEffect(() => {
+    fetchReminderCount();
+    const interval = setInterval(fetchReminderCount, 60000);
+    
+    // ✅ Event listener for manual update from Reminders page
+    const handleReminderUpdate = () => {
+      fetchReminderCount();
+    };
+    window.addEventListener('reminder-update', handleReminderUpdate);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('reminder-update', handleReminderUpdate);
+    };
   }, []);
 
   const isFinanceActive = () => {
@@ -67,7 +104,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
       }
     } else {
       setActiveMenu(item.id);
-      // On mobile, close sidebar after clicking a menu item
       if (isMobile) {
         setIsOpen(false);
       }
@@ -103,6 +139,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
             const Icon = item.icon;
             const isFinanceMenuItem = item.id === 'finance';
             const isActive = activeMenu === item.id || (isFinanceMenuItem && isFinanceActive());
+            const showBadge = item.badge > 0;
             
             return (
               <div key={item.id}>
@@ -118,8 +155,23 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                     <Icon className="text-2xl shrink-0" />
                     {isOpen && <span className="font-medium">{item.label}</span>}
                   </div>
-                  {isOpen && item.hasSubmenu && (
-                    <span>{isFinanceOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />}</span>
+                  {isOpen && (
+                    <div className="flex items-center gap-2">
+                      {showBadge && (
+                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center animate-pulse">
+                          {item.badge}
+                        </span>
+                      )}
+                      {item.hasSubmenu && (
+                        <span>{isFinanceOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />}</span>
+                      )}
+                    </div>
+                  )}
+                  {/* Badge show when sidebar is closed */}
+                  {!isOpen && showBadge && (
+                    <span className="absolute right-0 top-0 -mr-1 -mt-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {item.badge}
+                    </span>
                   )}
                 </button>
                 

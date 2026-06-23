@@ -30,6 +30,7 @@ class InvoiceController extends Controller
                     'status' => $invoice->status,
                     'customer_name' => $invoice->customer_name,
                     'customer_phone' => $invoice->customer_phone,
+                    'customer_email' => $invoice->customer_email,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
                     'items' => $invoice->items->map(function($item) {
@@ -71,6 +72,7 @@ class InvoiceController extends Controller
                 'status' => $invoice->status,
                 'customer_name' => $invoice->customer_name,
                 'customer_phone' => $invoice->customer_phone,
+                'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
                 'items' => $invoice->items->map(function($item) {
@@ -100,7 +102,7 @@ class InvoiceController extends Controller
 
             Log::info('Invoice store request received:', $request->all());
 
-            // UPDATED VALIDATION - Frontend ke format ke hisaab se
+            // ✅ UPDATED VALIDATION - Added customer_birthday
             $validated = $request->validate([
                 'invoice_no' => 'required|string|max:50',
                 'customer_name' => 'required|string|max:255',
@@ -108,6 +110,7 @@ class InvoiceController extends Controller
                 'customer_email' => 'nullable|email|max:255',
                 'customer_car_number' => 'nullable|string|max:50',
                 'customer_car_model' => 'nullable|string|max:100',
+                'customer_birthday' => 'nullable|date', // ✅ ADDED
                 'total_amount' => 'required|numeric|min:0',
                 'paid_amount' => 'nullable|numeric|min:0',
                 'remaining_amount' => 'nullable|numeric|min:0',
@@ -119,6 +122,35 @@ class InvoiceController extends Controller
                 'items.*.price' => 'required|numeric|min:0',
                 'items.*.quantity' => 'required|integer|min:1'
             ]);
+
+            // ✅ 1. SAVE OR UPDATE CUSTOMER
+            $customer = null;
+            if (!empty($validated['customer_phone'])) {
+                $customer = Customer::where('phone', $validated['customer_phone'])->first();
+                
+                if (!$customer) {
+                    // ✅ Create new customer
+                    $customer = Customer::create([
+                        'name' => $validated['customer_name'],
+                        'phone' => $validated['customer_phone'],
+                        'email' => $validated['customer_email'] ?? null,
+                        'car_number' => $validated['customer_car_number'] ?? null,
+                        'car_model' => $validated['customer_car_model'] ?? null,
+                        'birthday' => $validated['customer_birthday'] ?? null
+                    ]);
+                    Log::info('✅ New customer created: ID ' . $customer->id);
+                } else {
+                    // ✅ Update existing customer
+                    $customer->update([
+                        'name' => $validated['customer_name'] ?? $customer->name,
+                        'email' => $validated['customer_email'] ?? $customer->email,
+                        'car_number' => $validated['customer_car_number'] ?? $customer->car_number,
+                        'car_model' => $validated['customer_car_model'] ?? $customer->car_model,
+                        'birthday' => $validated['customer_birthday'] ?? $customer->birthday
+                    ]);
+                    Log::info('✅ Customer updated: ID ' . $customer->id);
+                }
+            }
 
             // Set default values
             $paidAmount = $validated['paid_amount'] ?? 0;
@@ -134,9 +166,10 @@ class InvoiceController extends Controller
                 $status = 'Pending';
             }
 
-            // Create invoice - Using direct DB insert to avoid model validation issues
+            // ✅ 2. Create invoice with customer_id
             $invoiceId = DB::table('invoices')->insertGetId([
                 'invoice_no' => $validated['invoice_no'],
+                'customer_id' => $customer ? $customer->id : null, // ✅ ADDED
                 'customer_name' => $validated['customer_name'],
                 'customer_phone' => $validated['customer_phone'] ?? null,
                 'customer_email' => $validated['customer_email'] ?? null,
@@ -152,7 +185,9 @@ class InvoiceController extends Controller
                 'updated_at' => Carbon::now()
             ]);
 
-            // Create invoice items
+            Log::info('✅ Invoice created: ID ' . $invoiceId);
+
+            // ✅ 3. Create invoice items
             foreach ($validated['items'] as $item) {
                 DB::table('invoice_items')->insert([
                     'invoice_id' => $invoiceId,
@@ -182,6 +217,7 @@ class InvoiceController extends Controller
                 'remaining_amount' => $invoice->remaining_amount,
                 'payment_method' => $invoice->payment_method,
                 'status' => $invoice->status,
+                'customer_id' => $customer ? $customer->id : null, // ✅ ADDED
                 'customer_name' => $invoice->customer_name,
                 'customer_phone' => $invoice->customer_phone,
                 'customer_email' => $invoice->customer_email,
@@ -201,7 +237,7 @@ class InvoiceController extends Controller
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             DB::rollBack();
-            Log::error('Validation error:', $e->errors());
+            Log::error('❌ Validation error:', $e->errors());
             return response()->json([
                 'success' => false,
                 'message' => 'Validation failed',
@@ -209,7 +245,7 @@ class InvoiceController extends Controller
             ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Invoice creation error: ' . $e->getMessage());
+            Log::error('❌ Invoice creation error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create invoice: ' . $e->getMessage()
@@ -263,6 +299,7 @@ class InvoiceController extends Controller
                     'status' => $invoice->status,
                     'customer_name' => $invoice->customer_name,
                     'customer_phone' => $invoice->customer_phone,
+                    'customer_email' => $invoice->customer_email,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
                     'items' => $invoice->items->map(function($item) {

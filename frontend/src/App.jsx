@@ -4,7 +4,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
-import ReminderChecker from './components/ReminderChecker';
+// ❌ Removed: import ReminderChecker from './components/ReminderChecker';
 
 function App() {
   const [darkMode, setDarkMode] = React.useState(false);
@@ -12,7 +12,7 @@ function App() {
   return (
     <Router>
       <Toaster position="top-right" />
-      <ReminderChecker darkMode={darkMode} />
+      {/* ❌ Removed: <ReminderChecker darkMode={darkMode} /> */}
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/dashboard" element={<Dashboard />} />

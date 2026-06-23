@@ -10,6 +10,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ReminderController;
 use App\Http\Controllers\BirthdayReminderController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\ServiceReminderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -61,16 +62,23 @@ Route::get('/reminders/invoice/{invoiceNo}', [ReminderController::class, 'getByI
 Route::patch('/reminders/{id}/mark-sent', [ReminderController::class, 'markAsSent']);
 Route::get('/reminders/due/today', [ReminderController::class, 'getTodayDueReminders']);
 
-// ✅ BIRTHDAY REMINDER ROUTES - Made PUBLIC so they work without login
+// ✅ BIRTHDAY REMINDER ROUTES - Now directly from customers table
 Route::prefix('birthday-reminders')->group(function () {
+    // ✅ Only these routes are needed now
     Route::get('/today', [BirthdayReminderController::class, 'getTodayReminders']);
-    Route::post('/add', [BirthdayReminderController::class, 'addReminder']);
-    Route::post('/sync', [BirthdayReminderController::class, 'syncBirthdayReminders']);
-    Route::put('/notify/{id}', [BirthdayReminderController::class, 'markNotified']);
-    Route::delete('/delete/{id}', [BirthdayReminderController::class, 'deleteReminder']);
-    Route::get('/all', [BirthdayReminderController::class, 'index']);
-    // ✅ ADDED: Pending birthday reminders route
     Route::get('/pending', [BirthdayReminderController::class, 'getPendingReminders']);
+    Route::get('/all', [BirthdayReminderController::class, 'index']);
+    Route::delete('/{id}', [BirthdayReminderController::class, 'destroy']); // ✅ ADDED for clear
+});
+
+// ✅ SERVICE REMINDER ROUTES (for Tuning & Oil Change from invoice_items)
+Route::prefix('service-reminders')->group(function () {
+    Route::get('/all', [ServiceReminderController::class, 'getAllReminders']);
+    Route::get('/customer/{customerId}', [ServiceReminderController::class, 'getCustomerReminders']); // ✅ ADDED
+    Route::put('/mark-sent/{id}', [ServiceReminderController::class, 'markAsSent']);
+    Route::get('/message/{type}', [ServiceReminderController::class, 'getMessage']);
+    Route::post('/message/{type}', [ServiceReminderController::class, 'updateMessage']);
+    Route::delete('/{id}', [ServiceReminderController::class, 'destroy']); // ✅ ADDED for clear
 });
 
 // Test Route (to check if API is working)
@@ -102,6 +110,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/{id}', [InvoiceController::class, 'show']);
         Route::post('/', [InvoiceController::class, 'store']);
+        Route::delete('/{id}', [InvoiceController::class, 'destroy']); // ✅ ADDED
     });
     
     // Expenses Routes (Finance) - Protected

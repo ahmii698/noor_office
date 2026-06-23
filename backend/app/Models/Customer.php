@@ -12,17 +12,18 @@ class Customer extends Model
     protected $fillable = [
         'name',
         'phone',
+        'email',
         'car_number',
         'car_model',
-        'birthday'  // ✅ New field
+        'birthday'
     ];
 
     protected $casts = [
         'birthday' => 'date',
     ];
 
-    public function birthdayReminders()
+    public function invoices()
     {
-        return $this->hasMany(BirthdayReminder::class);
+        return $this->hasMany(Invoice::class);
     }
 }

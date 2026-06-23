@@ -21,7 +21,8 @@ const FinanceReports = lazy(() => import('./finance/FinanceReports'));
 const FinanceReminders = lazy(() => import('./finance/FinanceReminders'));
 const Billing = lazy(() => import('./Billing'));
 const Records = lazy(() => import('./Records'));
-const ReminderChecker = lazy(() => import('./ReminderChecker'));
+const Reminders = lazy(() => import('./Reminders'));
+// ❌ Removed: const ReminderChecker = lazy(() => import('./ReminderChecker'));
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -57,13 +58,11 @@ const Dashboard = () => {
     return saved === 'true';
   });
 
-  // State for dynamic data
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
 
-  // Memoized calculations - sirf tab calculate hoga jab data change hoga
   const totalSales = useMemo(() => 
     invoices.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0),
     [invoices]
@@ -115,9 +114,7 @@ const Dashboard = () => {
     [invoices]
   );
 
-  // Chart Data - based on real data
   const monthlyData = useMemo(() => {
-    // Group invoices by month
     const monthly = {};
     invoices.forEach(inv => {
       if (inv.invoice_date) {
@@ -128,7 +125,6 @@ const Dashboard = () => {
         }
         monthly[month].sales += parseFloat(inv.total_amount) || 0;
         
-        // Calculate profit for this invoice
         if (inv.items && inv.items.length > 0) {
           inv.items.forEach(item => {
             const product = products.find(p => p.name === item.service_name);
@@ -160,7 +156,6 @@ const Dashboard = () => {
 
   const COLORS = useMemo(() => ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4'], []);
 
-  // Fetch all data from API
   const fetchAllData = useCallback(async () => {
     const abortController = new AbortController();
     setLoading(true);
@@ -287,7 +282,8 @@ const Dashboard = () => {
       'finance-reports': 'Finance Reports & Distribution',
       'finance-reminders': 'Upcoming Payments & Reminders',
       billing: 'Billing System',
-      record: 'Records Archive'
+      record: 'Records Archive',
+      reminders: 'Reminders'
     };
     return titles[activeMenu] || 'Dashboard';
   }, [activeMenu]);
@@ -302,7 +298,8 @@ const Dashboard = () => {
       'finance-reports': 'Analyze expense distribution and generate reports',
       'finance-reminders': 'Track upcoming bills, salaries and payments',
       billing: 'Create bills, print invoices, export data',
-      record: 'View all transaction history'
+      record: 'View all transaction history',
+      reminders: 'Birthday, Tuning & Oil Change reminders'
     };
     return descriptions[activeMenu] || '';
   }, [activeMenu]);
@@ -317,7 +314,8 @@ const Dashboard = () => {
       'finance-reports': <FiBarChart2 className="text-2xl" />,
       'finance-reminders': <FiBell className="text-2xl" />,
       billing: <FiFileText className="text-2xl" />,
-      record: <FiBarChart2 className="text-2xl" />
+      record: <FiBarChart2 className="text-2xl" />,
+      reminders: <FiBell className="text-2xl" />
     };
     return icons[activeMenu] || <FiPackage className="text-2xl" />;
   }, [activeMenu]);
@@ -368,11 +366,10 @@ const Dashboard = () => {
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className={`p-2 rounded-full transition ${darkMode ? 'text-yellow-400 hover:text-yellow-300' : 'text-gray-600 hover:text-gray-800'}`}
-                title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
               >
                 {darkMode ? <FiSun className="text-xl" /> : <FiMoon className="text-xl" />}
               </button>
-              <button onClick={handleLogout} className={`p-2 rounded-full transition ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}`} title="Logout">
+              <button onClick={handleLogout} className={`p-2 rounded-full transition ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}`}>
                 <FiLogOut className="text-xl" />
               </button>
             </div>
@@ -544,15 +541,16 @@ const Dashboard = () => {
               {activeMenu === 'record' && (
                 <Records darkMode={darkMode} />
               )}
+
+              {activeMenu === 'reminders' && (
+                <Reminders darkMode={darkMode} />
+              )}
             </Suspense>
           </div>
         </div>
       </div>
       
-      {/* Reminder Checker - Shows pending reminders */}
-      <Suspense fallback={null}>
-        <ReminderChecker darkMode={darkMode} />
-      </Suspense>
+      {/* ❌ Removed: ReminderChecker */}
     </div>
   );
 };

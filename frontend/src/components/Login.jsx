@@ -38,7 +38,14 @@ const Login = () => {
         localStorage.setItem('isLoggedIn', 'true');
         
         toast.success(response.data.message || 'Login Successful!');
-        navigate('/dashboard');
+        
+        // ✅ Role-based redirect
+        const userRole = response.data.user?.role;
+        if (userRole === 'employee') {
+          navigate('/billing');
+        } else {
+          navigate('/dashboard');
+        }
       } else {
         toast.error(response.data.message || 'Login failed');
       }

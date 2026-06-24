@@ -1,9 +1,6 @@
 // src/services/api.js
 import axios from 'axios';
-
-// Get base URL from environment or use default
-const API_URL = import.meta.env.VITE_API_URL;
-// const API_URL = import.meta.env.VITE_API_URL || 'https://nooranibackend.fusixtech.com/api';
+import { API_URL } from '../../config'; // ✅ Import from root config
 
 const api = axios.create({
     baseURL: API_URL,
@@ -13,13 +10,12 @@ const api = axios.create({
         'X-Requested-With': 'XMLHttpRequest'
     },
     timeout: 30000,
-    withCredentials: false  // Changed to false for localhost (prevents CORS issues)
+    withCredentials: false
 });
 
 // Request interceptor - Add token to requests
 api.interceptors.request.use(
     (config) => {
-        // Log request for debugging
         console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
         
         const token = localStorage.getItem('token');
@@ -38,14 +34,11 @@ api.interceptors.request.use(
 // Response interceptor - Handle responses and errors
 api.interceptors.response.use(
     (response) => {
-        // Log response for debugging
         console.log(`[API Response] ${response.status} ${response.config.url}`);
         return response;
     },
     (error) => {
-        // Handle different error scenarios
         if (error.response) {
-            // Server responded with error status
             const status = error.response.status;
             const data = error.response.data;
             
@@ -56,33 +49,26 @@ api.interceptors.response.use(
                 data: data
             });
             
-            // Handle authentication errors
             if (status === 401) {
-                // Token expired or invalid
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 localStorage.removeItem('isLoggedIn');
                 
-                // Don't redirect on login endpoint
                 if (!error.config?.url?.includes('/login')) {
                     window.location.href = '/';
                 }
             }
             
-            // Handle server errors
             if (status === 500) {
                 console.error('[Server Error]', data?.message || 'Internal server error');
             }
             
-            // Handle validation errors
             if (status === 422) {
                 console.error('[Validation Error]', data?.errors);
             }
         } else if (error.request) {
-            // Request was made but no response received
             console.error('[Network Error] No response from server. Make sure backend is running on port 8000');
         } else {
-            // Something else happened
             console.error('[Error]', error.message);
         }
         

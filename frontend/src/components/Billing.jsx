@@ -13,13 +13,11 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
   // Function to add service reminder for 6 months later
   const addServiceReminder = async (invoiceData, serviceItems) => {
     try {
-      // Service types that need reminders
       const reminderServices = [
         'oil', 'tuning', 'engine', 'performance', 
         'ac service', 'compressor', 'filter', 'gas refill'
       ];
       
-      // Check if any service needs reminder
       const needsReminder = serviceItems.some(item => 
         reminderServices.some(service => 
           item.service_name?.toLowerCase().includes(service)
@@ -42,12 +40,26 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
       }
     } catch (error) {
       console.error('Error adding reminder:', error);
-      // Don't show error to user, just log it
     }
   };
 
+  // ✅ Handle customer submit - Ensure birthday is passed
   const handleCustomerSubmit = async (details) => {
-    setCustomerDetails(details);
+    console.log('📝 Customer details received in Billing:', details); // Debug
+    
+    // ✅ Ensure all fields are set, especially birthday
+    const customerData = {
+      name: details.name || '',
+      phone: details.phone || '',
+      email: details.email || '',
+      carNumber: details.carNumber || '',
+      carModel: details.carModel || '',
+      birthday: details.birthday || '', // ✅ Birthday properly passed
+      date: details.date || new Date().toISOString().split('T')[0]
+    };
+    
+    console.log('✅ Setting customer details with birthday:', customerData); // Debug
+    setCustomerDetails(customerData);
     setStep(2);
   };
 
@@ -55,7 +67,6 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
   const handleInvoiceComplete = async (invoiceData, serviceItems) => {
     setLoading(true);
     try {
-      // First save the invoice to database
       const response = await api.post('/invoices', {
         invoice_no: invoiceData.invoice_no,
         customer_name: invoiceData.customer_name,
@@ -63,6 +74,7 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
         customer_email: invoiceData.customer_email,
         customer_car_number: invoiceData.customer_car_number,
         customer_car_model: invoiceData.customer_car_model,
+        customer_birthday: customerDetails?.birthday || null, // ✅ Send birthday
         total_amount: invoiceData.total_amount,
         paid_amount: invoiceData.paid_amount,
         remaining_amount: invoiceData.remaining_amount,
@@ -73,12 +85,8 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
       });
       
       if (response.data) {
-        // Add to local state
         setInvoices(prev => [response.data, ...prev]);
-        
-        // Add service reminder for 6 months later
         await addServiceReminder(invoiceData, serviceItems);
-        
         toast.success('Invoice created successfully!');
         return true;
       }

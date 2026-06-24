@@ -1,5 +1,5 @@
 // src/components/billing/BillingInvoice.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -57,6 +57,11 @@ const getIconComponent = (iconValue) => {
   return found ? found.icon : <FiTool size={24} />;
 };
 
+// ✅ Helper function to round to 2 decimal places
+const roundToTwo = (num) => {
+  return Math.round((num || 0) * 100) / 100;
+};
+
 const BillingInvoice = ({ customerDetails, darkMode }) => {
   const [cart, setCart] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -69,6 +74,8 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showIconDropdown, setShowIconDropdown] = useState(false);
+  
+  const [customerBirthday, setCustomerBirthday] = useState('');
   
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState(null);
@@ -90,6 +97,35 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
   
   const isProcessingRef = useRef(false);
   const paymentExecutedRef = useRef(false);
+
+  // ✅ FIXED: Calculate billTotal with rounding
+  const billTotal = useMemo(() => {
+    const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    return roundToTwo(total);
+  }, [cart]);
+
+  // ✅ FIXED: Calculate paidAmount with rounding
+  const paidAmount = useMemo(() => {
+    return roundToTwo(parseFloat(paymentAmount) || 0);
+  }, [paymentAmount]);
+
+  // ✅ FIXED: Calculate remainingAmount with rounding
+  const remainingAmount = useMemo(() => {
+    return roundToTwo(billTotal - paidAmount);
+  }, [billTotal, paidAmount]);
+
+  // ✅ FIXED: Check if fully paid (allow 0.01 error)
+  const isFullyPaid = useMemo(() => {
+    return remainingAmount <= 0.01;
+  }, [remainingAmount]);
+
+  useEffect(() => {
+    if (customerDetails?.birthday) {
+      setCustomerBirthday(customerDetails.birthday);
+    } else {
+      setCustomerBirthday('');
+    }
+  }, [customerDetails]);
 
   const fetchServices = async () => {
     try {
@@ -218,7 +254,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         sellingPrice: parseFloat(productFormData.selling_price),
         quantity: parseInt(productFormData.quantity)
       };
-      console.log('Sending product payload:', payload);
       const response = await api.post('/products', payload);
       if (response.data) {
         toast.success('Product added successfully!');
@@ -361,11 +396,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     toast.success('Removed from bill');
   };
 
-  const billTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const paidAmount = parseFloat(paymentAmount) || 0;
-  const remainingAmount = billTotal - paidAmount;
-  const isFullyPaid = remainingAmount <= 0;
-
   const addServiceReminder = async (invoiceNo, serviceItems) => {
     try {
       const reminderServices = [
@@ -409,8 +439,8 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${item.name}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${item.type === 'service' ? 'Service' : 'Part'}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${item.price.toLocaleString()}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${(item.price * item.quantity).toLocaleString()}</td>
+        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price).toLocaleString()}</td>
+        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}</td>
       </tr>
     `).join('');
 
@@ -469,7 +499,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
               <p><strong>Email:</strong> ${customerDetails.email || 'N/A'}</p>
               <p><strong>Car Number:</strong> ${customerDetails.carNumber}</p>
               <p><strong>Car Model:</strong> ${customerDetails.carModel || 'N/A'}</p>
-              <p><strong>Birthday:</strong> ${customerDetails.birthday ? new Date(customerDetails.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not Provided'}</p>
+              <p><strong>Birthday:</strong> ${customerBirthday ? new Date(customerBirthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not Provided'}</p>
             </div>
             <div class="invoice-details">
               <p><strong>Invoice #:</strong> INV-${Date.now()}</p>
@@ -483,13 +513,13 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
             </table>
             <div class="payment-details">
               <h4>PAYMENT DETAILS</h4>
-              <p><strong>Subtotal:</strong> Rs. ${billTotal.toLocaleString()}</p>
-              <p><strong>Paid Amount:</strong> Rs. ${paidAmount.toLocaleString()}</p>
+              <p><strong>Subtotal:</strong> Rs. ${roundToTwo(billTotal).toLocaleString()}</p>
+              <p><strong>Paid Amount:</strong> Rs. ${roundToTwo(paidAmount).toLocaleString()}</p>
               <p><strong>Payment Method:</strong> ${paymentMethod.toUpperCase()}</p>
-              <p><strong>Remaining Balance:</strong> Rs. ${remainingAmount.toLocaleString()}</p>
+              <p><strong>Remaining Balance:</strong> Rs. ${roundToTwo(remainingAmount).toLocaleString()}</p>
               <p><strong>Payment Status:</strong> ${isFullyPaid ? 'FULLY PAID' : 'PENDING'}</p>
             </div>
-            <div class="total-row">Total: Rs. ${billTotal.toLocaleString()}</div>
+            <div class="total-row">Total: Rs. ${roundToTwo(billTotal).toLocaleString()}</div>
             <div class="signature">
               <p>Customer Signature: _________________</p>
               <p>Authorized Signature: _________________</p>
@@ -540,10 +570,10 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         'Email': customerDetails.email || 'N/A',
         'Car Number': customerDetails.carNumber,
         'Car Model': customerDetails.carModel || 'N/A',
-        'Birthday': customerDetails.birthday || 'N/A',
-        'Total Amount': `Rs. ${billTotal.toLocaleString()}`,
-        'Paid Amount': `Rs. ${paidAmount.toLocaleString()}`,
-        'Remaining': `Rs. ${remainingAmount.toLocaleString()}`,
+        'Birthday': customerBirthday || 'N/A',
+        'Total Amount': `Rs. ${roundToTwo(billTotal).toLocaleString()}`,
+        'Paid Amount': `Rs. ${roundToTwo(paidAmount).toLocaleString()}`,
+        'Remaining': `Rs. ${roundToTwo(remainingAmount).toLocaleString()}`,
         'Payment Method': paymentMethod.toUpperCase(),
         'Status': isFullyPaid ? 'FULLY PAID' : 'PENDING'
       },
@@ -552,8 +582,8 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         'Item': item.name,
         'Type': item.type === 'service' ? 'Service' : 'Part',
         'Quantity': item.quantity,
-        'Price': `Rs. ${item.price.toLocaleString()}`,
-        'Total': `Rs. ${(item.price * item.quantity).toLocaleString()}`
+        'Price': `Rs. ${roundToTwo(item.price).toLocaleString()}`,
+        'Total': `Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}`
       }))
     ];
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -604,7 +634,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     yPos += 7;
     doc.text(`Date: ${customerDetails.date}`, 14, yPos);
     yPos += 7;
-    doc.text(`Birthday: ${customerDetails.birthday || 'N/A'}`, 14, yPos);
+    doc.text(`Birthday: ${customerBirthday || 'N/A'}`, 14, yPos);
     yPos += 15;
     
     doc.autoTable({
@@ -615,23 +645,24 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         item.name,
         item.type === 'service' ? 'Service' : 'Part',
         item.quantity,
-        `Rs. ${item.price.toLocaleString()}`,
-        `Rs. ${(item.price * item.quantity).toLocaleString()}`
+        `Rs. ${roundToTwo(item.price).toLocaleString()}`,
+        `Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}`
       ]),
       theme: 'striped',
       headStyles: { fillColor: [26, 26, 46] }
     });
     
     const finalY = doc.lastAutoTable.finalY + 10;
-    doc.text(`Total Amount: Rs. ${billTotal.toLocaleString()}`, 14, finalY);
-    doc.text(`Paid Amount: Rs. ${paidAmount.toLocaleString()}`, 14, finalY + 7);
-    doc.text(`Remaining: Rs. ${remainingAmount.toLocaleString()}`, 14, finalY + 14);
+    doc.text(`Total Amount: Rs. ${roundToTwo(billTotal).toLocaleString()}`, 14, finalY);
+    doc.text(`Paid Amount: Rs. ${roundToTwo(paidAmount).toLocaleString()}`, 14, finalY + 7);
+    doc.text(`Remaining: Rs. ${roundToTwo(remainingAmount).toLocaleString()}`, 14, finalY + 14);
     doc.text(`Status: ${isFullyPaid ? 'FULLY PAID' : 'PENDING'}`, 14, finalY + 21);
     
     doc.save(`Bill_${customerDetails.name}_${Date.now()}.pdf`);
     toast.success('Exported to PDF');
   };
 
+  // ✅ FIXED: handlePayment with rounding
   const handlePayment = async () => {
     if (isProcessingRef.current || paymentExecutedRef.current) return;
     if (cart.length === 0) {
@@ -642,7 +673,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       toast.error('Please enter payment amount');
       return;
     }
-    if (paidAmount > billTotal) {
+    if (paidAmount > billTotal + 0.01) {
       toast.error('Payment amount cannot exceed total amount');
       return;
     }
@@ -653,6 +684,12 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     
     const cartSnapshot = [...cart];
     const invoiceNo = `INV-${Date.now()}`;
+    
+    // ✅ Round all amounts before sending to backend
+    const roundedBillTotal = roundToTwo(billTotal);
+    const roundedPaidAmount = roundToTwo(paidAmount);
+    const roundedRemainingAmount = roundToTwo(remainingAmount);
+    const finalStatus = roundedRemainingAmount <= 0.01 ? 'Paid' : 'Partial';
     
     try {
       for (const item of cartSnapshot) {
@@ -666,6 +703,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         }
       }
       
+      // ✅ Send rounded amounts to backend
       await api.post('/invoices', {
         invoice_no: invoiceNo,
         customer_name: customerDetails.name,
@@ -673,16 +711,16 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         customer_email: customerDetails.email,
         customer_car_number: customerDetails.carNumber,
         customer_car_model: customerDetails.carModel,
-        customer_birthday: customerDetails.birthday || null,
-        total_amount: billTotal,
-        paid_amount: paidAmount,
-        remaining_amount: remainingAmount,
+        customer_birthday: customerBirthday || null,
+        total_amount: roundedBillTotal,
+        paid_amount: roundedPaidAmount,
+        remaining_amount: roundedRemainingAmount,
         payment_method: paymentMethod,
-        status: isFullyPaid ? 'Paid' : 'Partial',
+        status: finalStatus,
         items: cartSnapshot.map(item => ({
           service_name: item.name,
           service_category: item.type === 'service' ? (item.category || 'Service') : 'Product',
-          price: item.price,
+          price: roundToTwo(item.price),
           quantity: item.quantity
         }))
       });
@@ -722,7 +760,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
 
   return (
     <div className="space-y-6">
-      {/* Header with Logo Circle Left + Company Name Center */}
+      {/* Header */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-5 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="flex items-center gap-4">
           <img 
@@ -737,32 +775,114 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         </div>
       </div>
 
-      {/* Customer Info - ✅ BIRTHDAY ADDED */}
+      {/* Customer Info */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-5 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Customer Information</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <span className="font-semibold">Name:</span> {customerDetails.name}
-          </p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <span className="font-semibold">Phone:</span> {customerDetails.phone}
-          </p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <span className="font-semibold">Email:</span> {customerDetails.email || 'N/A'}
-          </p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <span className="font-semibold">Car Number:</span> {customerDetails.carNumber}
-          </p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <span className="font-semibold">Car Model:</span> {customerDetails.carModel || 'N/A'}
-          </p>
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <span className="font-semibold">Date:</span> {customerDetails.date}
-          </p>
-          {/* ✅ BIRTHDAY FIELD - OPTIONAL */}
-          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-            <span className="font-semibold">Birthday:</span> {customerDetails.birthday ? new Date(customerDetails.birthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not Provided'}
-          </p>
+        <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+          Step 1: Customer Details
+        </h3>
+        <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          Enter customer information - Phone number auto-searches history
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Phone Number <span className="text-red-500">*</span>
+              <span className="text-xs text-gray-400 block">Type to search history</span>
+            </label>
+            <input
+              type="text"
+              value={customerDetails.phone || ''}
+              readOnly
+              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Customer Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={customerDetails.name || ''}
+              readOnly
+              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Email Address <span className="text-xs text-gray-400">(Optional)</span>
+              <span className="text-xs text-gray-400 block">We'll send a service reminder after 6 months</span>
+            </label>
+            <input
+              type="email"
+              value={customerDetails.email || ''}
+              readOnly
+              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Car Number Plate <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={customerDetails.carNumber || ''}
+              readOnly
+              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Car Model <span className="text-xs text-gray-400">(Optional)</span>
+            </label>
+            <input
+              type="text"
+              value={customerDetails.carModel || ''}
+              readOnly
+              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
+              }`}
+            />
+          </div>
+
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              Birthday <span className="text-xs text-gray-400">(Optional)</span>
+              <span className="text-xs text-gray-400 block">We'll show a birthday reminder on this day</span>
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={customerBirthday || ''}
+                onChange={(e) => setCustomerBirthday(e.target.value)}
+                className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                  darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                } ${customerBirthday ? 'border-green-500' : ''}`}
+              />
+              {customerBirthday && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✅ Auto</span>
+                </div>
+              )}
+            </div>
+            {customerBirthday && (
+              <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                ✅ Auto-filled from customer records: {new Date(customerBirthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -783,7 +903,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Items Section - Same as before */}
+        {/* Items Section */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="px-6 py-4 bg-gradient-to-r from-red-500 to-red-600">
             <div className="flex justify-between items-center">
@@ -923,6 +1043,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
               <span className="ml-auto bg-white/20 px-3 py-1 rounded-full text-sm text-white">{cart.length} items</span>
             </div>
           </div>
+          
           <div className="p-4">
             {cart.length === 0 ? (
               <div className="text-center py-16">
@@ -934,6 +1055,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
               </div>
             ) : (
               <>
+                {/* Cart Items List */}
                 <div className="space-y-3 max-h-[350px] overflow-y-auto mb-4 pr-2">
                   {cart.map((item, idx) => (
                     <div key={`${item.id}-${item.type}`} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} border ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
@@ -943,33 +1065,57 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                         </div>
                         <div>
                           <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</p>
-                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.type === 'service' ? 'Service' : 'Part'} • Rs. {item.price.toLocaleString()} each</p>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.type === 'service' ? 'Service' : 'Part'} • Rs. {roundToTwo(item.price).toLocaleString()} each</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-2 bg-gray-200 dark:bg-gray-600 rounded-lg px-2 py-1">
-                          <button onClick={() => updateQuantity(item.id, item.quantity - 1, item.type)} className="w-6 h-6 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 flex items-center justify-center" disabled={isProcessing}>-</button>
+                          <button 
+                            onClick={() => updateQuantity(item.id, item.quantity - 1, item.type)} 
+                            className="w-6 h-6 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 flex items-center justify-center"
+                            disabled={isProcessing}
+                          >
+                            -
+                          </button>
                           <span className={`w-8 text-center font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.id, item.quantity + 1, item.type)} className="w-6 h-6 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 flex items-center justify-center" disabled={isProcessing}>+</button>
+                          <button 
+                            onClick={() => updateQuantity(item.id, item.quantity + 1, item.type)} 
+                            className="w-6 h-6 rounded-md hover:bg-gray-300 dark:hover:bg-gray-500 flex items-center justify-center"
+                            disabled={isProcessing}
+                          >
+                            +
+                          </button>
                         </div>
-                        <p className={`font-bold text-red-500 min-w-[80px] text-right`}>Rs. {(item.price * item.quantity).toLocaleString()}</p>
-                        <button onClick={() => removeFromBill(item.id, item.type)} className="w-8 h-8 rounded-lg bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition flex items-center justify-center" disabled={isProcessing}><FiTrash2 className="text-sm" /></button>
+                        <p className={`font-bold text-red-500 min-w-[80px] text-right`}>
+                          Rs. {roundToTwo(item.price * item.quantity).toLocaleString()}
+                        </p>
+                        <button 
+                          onClick={() => removeFromBill(item.id, item.type)} 
+                          className="w-8 h-8 rounded-lg bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition flex items-center justify-center"
+                          disabled={isProcessing}
+                        >
+                          <FiTrash2 className="text-sm" />
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
 
+                {/* Bill Totals */}
                 <div className="mt-4 pt-4 border-t-2 dark:border-gray-600 space-y-3">
                   <div className="flex justify-between items-center py-2">
                     <span className={`text-lg font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Total Items:</span>
-                    <span className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{cart.reduce((sum, i) => sum + i.quantity, 0)}</span>
+                    <span className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {cart.reduce((sum, i) => sum + i.quantity, 0)}
+                    </span>
                   </div>
                   
                   <div className="flex justify-between items-center py-2 border-t dark:border-gray-600">
                     <span className={`text-2xl font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Total Amount:</span>
-                    <span className="text-3xl font-bold text-red-500">Rs. {billTotal.toLocaleString()}</span>
+                    <span className="text-3xl font-bold text-red-500">Rs. {roundToTwo(billTotal).toLocaleString()}</span>
                   </div>
 
+                  {/* Payment Details */}
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} mt-4`}>
                     <h4 className={`font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                       <FiCreditCard className="text-red-500" /> Payment Details
@@ -977,11 +1123,23 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Amount (Rs.)</label>
-                        <input type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="Enter amount" className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} disabled={isProcessing} />
+                        <input 
+                          type="number" 
+                          value={paymentAmount} 
+                          onChange={(e) => setPaymentAmount(e.target.value)} 
+                          placeholder="Enter amount" 
+                          className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} 
+                          disabled={isProcessing} 
+                        />
                       </div>
                       <div>
                         <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Payment Method</label>
-                        <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} disabled={isProcessing}>
+                        <select 
+                          value={paymentMethod} 
+                          onChange={(e) => setPaymentMethod(e.target.value)} 
+                          className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} 
+                          disabled={isProcessing}
+                        >
                           <option value="cash">Cash</option>
                           <option value="card">Credit/Debit Card</option>
                           <option value="bank">Bank Transfer</option>
@@ -992,20 +1150,55 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                     
                     {paidAmount > 0 && (
                       <div className="mt-4 pt-4 border-t dark:border-gray-600">
-                        <div className="flex justify-between py-2"><span>Paid Amount:</span><span className="text-green-600 font-semibold text-lg">Rs. {paidAmount.toLocaleString()}</span></div>
-                        <div className="flex justify-between py-2"><span>Remaining:</span><span className={`font-semibold text-lg ${remainingAmount > 0 ? 'text-red-500' : 'text-green-600'}`}>Rs. {remainingAmount.toLocaleString()}</span></div>
-                        <div className="flex justify-between py-2"><span>Status:</span><span className={`font-semibold flex items-center gap-2 ${isFullyPaid ? 'text-green-600' : 'text-orange-500'}`}>{isFullyPaid ? <FiCheckCircle /> : <FiAlertCircle />}{isFullyPaid ? 'FULLY PAID' : 'PARTIAL PAYMENT'}</span></div>
+                        <div className="flex justify-between py-2">
+                          <span>Paid Amount:</span>
+                          <span className="text-green-600 font-semibold text-lg">Rs. {roundToTwo(paidAmount).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between py-2">
+                          <span>Remaining:</span>
+                          <span className={`font-semibold text-lg ${remainingAmount > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                            Rs. {roundToTwo(remainingAmount).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex justify-between py-2">
+                          <span>Status:</span>
+                          <span className={`font-semibold flex items-center gap-2 ${isFullyPaid ? 'text-green-600' : 'text-orange-500'}`}>
+                            {isFullyPaid ? <FiCheckCircle /> : <FiAlertCircle />}
+                            {isFullyPaid ? 'FULLY PAID' : 'PARTIAL PAYMENT'}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
 
+                  {/* Action Buttons */}
                   <div className="grid grid-cols-2 gap-3 pt-2">
-                    <button onClick={handlePayment} disabled={isProcessing} className={`px-4 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 ${isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'}`}>
-                      {isProcessing ? <FiLoader className="animate-spin" /> : <FiDollarSign />} {isProcessing ? 'PROCESSING...' : 'PAY NOW'}
+                    <button 
+                      onClick={handlePayment} 
+                      disabled={isProcessing} 
+                      className={`px-4 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 ${isProcessing ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'}`}
+                    >
+                      {isProcessing ? <FiLoader className="animate-spin" /> : <FiDollarSign />} 
+                      {isProcessing ? 'PROCESSING...' : 'PAY NOW'}
                     </button>
-                    <button onClick={printBill} className="px-4 py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-lg flex items-center justify-center gap-2"><FiPrinter /> PRINT</button>
-                    <button onClick={exportToExcel} className="px-4 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition shadow-lg flex items-center justify-center gap-2"><FiFileText /> EXCEL</button>
-                    <button onClick={exportToPDF} className="px-4 py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-lg flex items-center justify-center gap-2"><FiDownload /> PDF</button>
+                    <button 
+                      onClick={printBill} 
+                      className="px-4 py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <FiPrinter /> PRINT
+                    </button>
+                    <button 
+                      onClick={exportToExcel} 
+                      className="px-4 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <FiFileText /> EXCEL
+                    </button>
+                    <button 
+                      onClick={exportToPDF} 
+                      className="px-4 py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <FiDownload /> PDF
+                    </button>
                   </div>
                 </div>
               </>

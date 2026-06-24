@@ -44,6 +44,7 @@ Route::delete('/products/{id}', [ProductController::class, 'destroy']);
 // ✅ CUSTOMER ROUTES - Made PUBLIC so they work without login
 Route::get('/customers', [CustomerController::class, 'index']);
 Route::get('/customers/{id}', [CustomerController::class, 'show']);
+Route::get('/customers/phone/{phone}', [CustomerController::class, 'getByPhone']); // ✅ ADDED - Get customer by phone
 Route::post('/customers', [CustomerController::class, 'store']);
 Route::put('/customers/{id}', [CustomerController::class, 'update']);
 Route::delete('/customers/{id}', [CustomerController::class, 'destroy']);
@@ -64,21 +65,20 @@ Route::get('/reminders/due/today', [ReminderController::class, 'getTodayDueRemin
 
 // ✅ BIRTHDAY REMINDER ROUTES - Now directly from customers table
 Route::prefix('birthday-reminders')->group(function () {
-    // ✅ Only these routes are needed now
     Route::get('/today', [BirthdayReminderController::class, 'getTodayReminders']);
     Route::get('/pending', [BirthdayReminderController::class, 'getPendingReminders']);
     Route::get('/all', [BirthdayReminderController::class, 'index']);
-    Route::delete('/{id}', [BirthdayReminderController::class, 'destroy']); // ✅ ADDED for clear
+    Route::delete('/{id}', [BirthdayReminderController::class, 'destroy']);
 });
 
 // ✅ SERVICE REMINDER ROUTES (for Tuning & Oil Change from invoice_items)
 Route::prefix('service-reminders')->group(function () {
     Route::get('/all', [ServiceReminderController::class, 'getAllReminders']);
-    Route::get('/customer/{customerId}', [ServiceReminderController::class, 'getCustomerReminders']); // ✅ ADDED
+    Route::get('/customer/{customerId}', [ServiceReminderController::class, 'getCustomerReminders']);
     Route::put('/mark-sent/{id}', [ServiceReminderController::class, 'markAsSent']);
     Route::get('/message/{type}', [ServiceReminderController::class, 'getMessage']);
     Route::post('/message/{type}', [ServiceReminderController::class, 'updateMessage']);
-    Route::delete('/{id}', [ServiceReminderController::class, 'destroy']); // ✅ ADDED for clear
+    Route::delete('/{id}', [ServiceReminderController::class, 'destroy']);
 });
 
 // Test Route (to check if API is working)
@@ -94,9 +94,17 @@ Route::get('/test', function() {
 
 Route::middleware(['auth:sanctum'])->group(function () {
     
-    // User Authentication
+    // ✅ User Authentication
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    
+    // ✅ USER MANAGEMENT ROUTES (Admin only)
+    Route::prefix('users')->group(function () {
+        Route::get('/', [AuthController::class, 'getUsers']);           // Get all users
+        Route::post('/', [AuthController::class, 'createUser']);        // Create new user
+        Route::put('/{id}', [AuthController::class, 'updateUser']);     // Update user
+        Route::delete('/{id}', [AuthController::class, 'deleteUser']);  // Delete user
+    });
     
     // Dashboard Routes
     Route::prefix('dashboard')->group(function () {
@@ -110,7 +118,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/{id}', [InvoiceController::class, 'show']);
         Route::post('/', [InvoiceController::class, 'store']);
-        Route::delete('/{id}', [InvoiceController::class, 'destroy']); // ✅ ADDED
+        Route::delete('/{id}', [InvoiceController::class, 'destroy']);
+    });
+    
+    // ✅ PENDING PAYMENTS ROUTES
+    Route::prefix('pending-payments')->group(function () {
+        Route::get('/', [InvoiceController::class, 'getPendingPayments']);        // Get all pending payments
+        Route::put('/{id}', [InvoiceController::class, 'updatePendingPayment']);  // Update payment
     });
     
     // Expenses Routes (Finance) - Protected

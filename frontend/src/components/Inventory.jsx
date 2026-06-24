@@ -8,7 +8,7 @@ import {
   FiSearch, FiX, FiPlus, FiFileText, FiDownload, 
   FiEdit2, FiPackage, FiDollarSign, FiTrendingUp,
   FiShoppingCart, FiBarChart2, FiCheckCircle, FiAlertCircle,
-  FiLoader
+  FiLoader, FiUser
 } from 'react-icons/fi';
 import api from '../services/api';
 
@@ -22,7 +22,7 @@ const debounce = (func, delay) => {
 };
 
 // Product Row Component with memoization
-const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, onSaveEdit, onKeyPress, onEditProduct, formatPrice }) => {
+const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, onSaveEdit, onKeyPress, onEditProduct, formatPrice, isAdmin }) => {
   const isEditingName = editingCell.productId === product.id && editingCell.field === 'name';
   const isEditingPurchase = editingCell.productId === product.id && editingCell.field === 'purchasePrice';
   const isEditingSelling = editingCell.productId === product.id && editingCell.field === 'sellingPrice';
@@ -43,60 +43,69 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
           />
         ) : (
           <div 
-            onDoubleClick={() => onStartEdit({ productId: product.id, field: 'name', value: product.name })} 
-            className={`cursor-pointer font-medium ${darkMode ? 'text-white' : 'text-gray-900'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
-            title="Double-click to edit product name"
+            onDoubleClick={() => isAdmin && onStartEdit({ productId: product.id, field: 'name', value: product.name })} 
+            className={`${isAdmin ? 'cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20' : 'cursor-default'} font-medium ${darkMode ? 'text-white' : 'text-gray-900'} px-2 py-1 rounded transition`} 
+            title={isAdmin ? "Double-click to edit product name" : ""}
           >
             {product.name}
           </div>
         )}
       </td>
-      <td className="px-6 py-4">
-        {isEditingPurchase ? (
-          <input
-            type="number"
-            value={editingCell.value}
-            onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
-            onBlur={() => onSaveEdit(product.id, 'purchasePrice')}
-            onKeyDown={(e) => onKeyPress(e, product.id, 'purchasePrice')}
-            className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-            autoFocus
-            step="0.01"
-            min="0"
-          />
-        ) : (
-          <div 
-            onDoubleClick={() => onStartEdit({ productId: product.id, field: 'purchasePrice', value: product.purchase_price })} 
-            className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
-            title="Double-click to edit purchase price"
-          >
-            {formatPrice(product.purchase_price)}
-          </div>
-        )}
-      </td>
-      <td className="px-6 py-4">
-        {isEditingSelling ? (
-          <input
-            type="number"
-            value={editingCell.value}
-            onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
-            onBlur={() => onSaveEdit(product.id, 'sellingPrice')}
-            onKeyDown={(e) => onKeyPress(e, product.id, 'sellingPrice')}
-            className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-            autoFocus
-            step="0.01"
-            min="0"
-          />
-        ) : (
-          <div 
-            onDoubleClick={() => onStartEdit({ productId: product.id, field: 'sellingPrice', value: product.selling_price })} 
-            className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
-            title="Double-click to edit selling price"
-          >
-            {formatPrice(product.selling_price)}
-          </div>
-        )}
-      </td>
+      
+      {/* ✅ Purchase Price - Admin only */}
+      {isAdmin && (
+        <td className="px-6 py-4">
+          {isEditingPurchase ? (
+            <input
+              type="number"
+              value={editingCell.value}
+              onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
+              onBlur={() => onSaveEdit(product.id, 'purchasePrice')}
+              onKeyDown={(e) => onKeyPress(e, product.id, 'purchasePrice')}
+              className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+              autoFocus
+              step="0.01"
+              min="0"
+            />
+          ) : (
+            <div 
+              onDoubleClick={() => isAdmin && onStartEdit({ productId: product.id, field: 'purchasePrice', value: product.purchase_price })} 
+              className={`${isAdmin ? 'cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20' : 'cursor-default'} ${darkMode ? 'text-gray-300' : 'text-gray-600'} px-2 py-1 rounded transition`} 
+              title={isAdmin ? "Double-click to edit purchase price" : ""}
+            >
+              {formatPrice(product.purchase_price)}
+            </div>
+          )}
+        </td>
+      )}
+      
+      {/* ✅ Selling Price - Admin only */}
+      {isAdmin && (
+        <td className="px-6 py-4">
+          {isEditingSelling ? (
+            <input
+              type="number"
+              value={editingCell.value}
+              onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
+              onBlur={() => onSaveEdit(product.id, 'sellingPrice')}
+              onKeyDown={(e) => onKeyPress(e, product.id, 'sellingPrice')}
+              className={`w-32 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+              autoFocus
+              step="0.01"
+              min="0"
+            />
+          ) : (
+            <div 
+              onDoubleClick={() => isAdmin && onStartEdit({ productId: product.id, field: 'sellingPrice', value: product.selling_price })} 
+              className={`${isAdmin ? 'cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/20' : 'cursor-default'} ${darkMode ? 'text-gray-300' : 'text-gray-600'} px-2 py-1 rounded transition`} 
+              title={isAdmin ? "Double-click to edit selling price" : ""}
+            >
+              {formatPrice(product.selling_price)}
+            </div>
+          )}
+        </td>
+      )}
+
       <td className="px-6 py-4">
         {isEditingQuantity ? (
           <input
@@ -143,6 +152,8 @@ const Inventory = ({ darkMode }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState([]);
+  const [userRole, setUserRole] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [weeklyStats, setWeeklyStats] = useState({
     totalPurchase: 0,
     totalSelling: 0,
@@ -156,6 +167,16 @@ const Inventory = ({ darkMode }) => {
   });
   
   const [editingCell, setEditingCell] = useState({ productId: null, field: null, value: '' });
+
+  // ✅ Check user role on mount
+  useEffect(() => {
+    const user = localStorage.getItem('user');
+    if (user) {
+      const userData = JSON.parse(user);
+      setUserRole(userData.role);
+      setIsAdmin(userData.role === 'admin');
+    }
+  }, []);
 
   // Memoized filtered products
   const filteredProducts = useMemo(() => {
@@ -226,8 +247,12 @@ const Inventory = ({ darkMode }) => {
     debouncedSearch(e.target.value);
   };
 
-  // Add new product
+  // Add new product - Admin only
   const handleAddProduct = useCallback(async (productData) => {
+    if (!isAdmin) {
+      toast.error('Only admin can add products');
+      return false;
+    }
     try {
       const response = await api.post('/products', productData);
       if (response.data) {
@@ -240,9 +265,9 @@ const Inventory = ({ darkMode }) => {
       toast.error(error.response?.data?.message || 'Failed to add product');
       return false;
     }
-  }, [fetchProducts]);
+  }, [fetchProducts, isAdmin]);
 
-  // Update product
+  // Update product - Admin can update all, Employee only stock
   const handleUpdateProduct = useCallback(async (id, productData) => {
     try {
       const response = await api.put(`/products/${id}`, productData);
@@ -267,8 +292,8 @@ const Inventory = ({ darkMode }) => {
   const exportToExcel = useCallback((data, filename) => {
     const exportData = data.map(p => ({
       'Product': p.name,
-      'Purchase Price': `Rs. ${(p.purchase_price || 0).toLocaleString()}`,
-      'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}`,
+      ...(isAdmin && { 'Purchase Price': `Rs. ${(p.purchase_price || 0).toLocaleString()}` }),
+      ...(isAdmin && { 'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}` }),
       'Stock': p.quantity || 0
     }));
     
@@ -277,24 +302,31 @@ const Inventory = ({ darkMode }) => {
     XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
     XLSX.writeFile(wb, `${filename}.xlsx`);
     toast.success('Exported to Excel');
-  }, []);
+  }, [isAdmin]);
 
   const exportToPDF = useCallback((data, title) => {
     const doc = new jsPDF('landscape');
     doc.text(title, 14, 10);
+    
+    const head = ['Product'];
+    if (isAdmin) head.push('Purchase Price', 'Selling Price');
+    head.push('Stock');
+    
+    const body = data.map(p => {
+      const row = [p.name || ''];
+      if (isAdmin) row.push(`Rs. ${(p.purchase_price || 0).toLocaleString()}`, `Rs. ${(p.selling_price || 0).toLocaleString()}`);
+      row.push(p.quantity || 0);
+      return row;
+    });
+    
     doc.autoTable({
-      head: [['Product', 'Purchase Price', 'Selling Price', 'Stock']],
-      body: data.map(p => [
-        p.name || '',
-        `Rs. ${(p.purchase_price || 0).toLocaleString()}`,
-        `Rs. ${(p.selling_price || 0).toLocaleString()}`,
-        p.quantity || 0
-      ]),
+      head: [head],
+      body: body,
       startY: 20,
     });
     doc.save(`${title}.pdf`);
     toast.success('Exported to PDF');
-  }, []);
+  }, [isAdmin]);
 
   const handleInputChange = useCallback((e) => {
     setFormData(prev => ({
@@ -305,6 +337,11 @@ const Inventory = ({ darkMode }) => {
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+    
+    if (!isAdmin) {
+      toast.error('Only admin can add products');
+      return;
+    }
     
     if (!formData.name || !formData.purchasePrice || !formData.sellingPrice || !formData.quantity) {
       toast.error('Please fill all fields');
@@ -336,7 +373,7 @@ const Inventory = ({ darkMode }) => {
       setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
       setIsModalOpen(false);
     }
-  }, [formData, handleAddProduct]);
+  }, [formData, handleAddProduct, isAdmin]);
 
   const handleEditProduct = useCallback((product) => {
     setEditingProduct(product);
@@ -352,6 +389,32 @@ const Inventory = ({ darkMode }) => {
   const handleUpdateSubmit = useCallback(async (e) => {
     e.preventDefault();
     
+    // ✅ Employee can only update stock
+    if (!isAdmin) {
+      // Employee: only stock update
+      if (!formData.quantity) {
+        toast.error('Please enter stock quantity');
+        return;
+      }
+      const quantityNum = parseInt(formData.quantity);
+      if (isNaN(quantityNum) || quantityNum < 0) {
+        toast.error('Please enter a valid positive number');
+        return;
+      }
+      
+      const success = await handleUpdateProduct(editingProduct.id, {
+        quantity: quantityNum
+      });
+      
+      if (success) {
+        setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
+        setEditingProduct(null);
+        setIsModalOpen(false);
+      }
+      return;
+    }
+    
+    // ✅ Admin: full update
     if (!formData.name || !formData.purchasePrice || !formData.sellingPrice || !formData.quantity) {
       toast.error('Please fill all fields');
       return;
@@ -378,7 +441,7 @@ const Inventory = ({ darkMode }) => {
       setEditingProduct(null);
       setIsModalOpen(false);
     }
-  }, [formData, editingProduct, handleUpdateProduct]);
+  }, [formData, editingProduct, handleUpdateProduct, isAdmin]);
 
   const startInlineEdit = useCallback(({ productId, field, value }) => {
     setEditingCell({ productId, field, value });
@@ -387,6 +450,13 @@ const Inventory = ({ darkMode }) => {
   const saveInlineEdit = useCallback(async (productId, field) => {
     let newValue;
     const productToUpdate = products.find(p => p.id === productId);
+    
+    // ✅ Employee can only edit quantity
+    if (!isAdmin && field !== 'quantity') {
+      toast.error('You can only update stock quantity');
+      setEditingCell({ productId: null, field: null, value: '' });
+      return;
+    }
     
     if (field === 'name') {
       newValue = editingCell.value.trim();
@@ -440,7 +510,7 @@ const Inventory = ({ darkMode }) => {
       toast.error('Failed to update product');
     }
     setEditingCell({ productId: null, field: null, value: '' });
-  }, [editingCell, products, fetchProducts]);
+  }, [editingCell, products, fetchProducts, isAdmin]);
 
   const handleKeyPress = useCallback((e, productId, field) => {
     if (e.key === 'Enter') {
@@ -467,41 +537,43 @@ const Inventory = ({ darkMode }) => {
 
   return (
     <div className="space-y-6">
-      {/* Weekly Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Weekly Purchase Total</p>
-              <p className="text-3xl font-bold mt-2">Rs. {weeklyStats.totalPurchase.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-2">This week's purchases</p>
+      {/* ✅ Weekly Stats Cards - Admin only */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm opacity-90">Weekly Purchase Total</p>
+                <p className="text-3xl font-bold mt-2">Rs. {weeklyStats.totalPurchase.toLocaleString()}</p>
+                <p className="text-xs opacity-75 mt-2">This week's purchases</p>
+              </div>
+              <FiShoppingCart className="text-3xl opacity-50" />
             </div>
-            <FiShoppingCart className="text-3xl opacity-50" />
+          </div>
+          
+          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm opacity-90">Weekly Selling Value</p>
+                <p className="text-3xl font-bold mt-2">Rs. {weeklyStats.totalSelling.toLocaleString()}</p>
+                <p className="text-xs opacity-75 mt-2">This week's sales</p>
+              </div>
+              <FiDollarSign className="text-3xl opacity-50" />
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm opacity-90">Weekly Profit</p>
+                <p className="text-3xl font-bold mt-2">Rs. {weeklyStats.totalProfit.toLocaleString()}</p>
+                <p className="text-xs opacity-75 mt-2">This week's profit</p>
+              </div>
+              <FiTrendingUp className="text-3xl opacity-50" />
+            </div>
           </div>
         </div>
-        
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Weekly Selling Value</p>
-              <p className="text-3xl font-bold mt-2">Rs. {weeklyStats.totalSelling.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-2">This week's sales</p>
-            </div>
-            <FiDollarSign className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Weekly Profit</p>
-              <p className="text-3xl font-bold mt-2">Rs. {weeklyStats.totalProfit.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-2">This week's profit</p>
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* Products Table */}
       <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -511,7 +583,7 @@ const Inventory = ({ darkMode }) => {
               <FiPackage className="text-xl text-red-500" />
               Products Inventory
             </h3>
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
               <div className="relative">
                 <input
                   type="text"
@@ -530,9 +602,13 @@ const Inventory = ({ darkMode }) => {
                 )}
               </div>
               
-              <button onClick={() => setIsModalOpen(true)} className="px-3 py-2 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-2 shadow-md">
-                <FiPlus className="text-sm" /> Add Product
-              </button>
+              {/* ✅ Add Product - Admin only */}
+              {isAdmin && (
+                <button onClick={() => setIsModalOpen(true)} className="px-3 py-2 bg-gray-800 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-2 shadow-md">
+                  <FiPlus className="text-sm" /> Add Product
+                </button>
+              )}
+              
               <button onClick={() => exportToExcel(filteredProducts, 'Inventory_Report')} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition flex items-center gap-2 shadow-md">
                 <FiFileText className="text-sm" /> Excel
               </button>
@@ -554,8 +630,14 @@ const Inventory = ({ darkMode }) => {
             <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
               <tr>
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Product</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Purchase Price</th>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Selling Price</th>
+                {/* ✅ Purchase Price - Admin only */}
+                {isAdmin && (
+                  <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Purchase Price</th>
+                )}
+                {/* ✅ Selling Price - Admin only */}
+                {isAdmin && (
+                  <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Selling Price</th>
+                )}
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Stock</th>
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Actions</th>
               </tr>
@@ -563,11 +645,11 @@ const Inventory = ({ darkMode }) => {
             <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="px-6 py-12 text-center">
+                  <td colSpan={isAdmin ? 5 : 3} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <FiPackage className="text-5xl text-gray-400" />
                       <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {searchTerm ? `No products found matching "${searchTerm}"` : 'No products added yet. Click "Add Product" to get started!'}
+                        {searchTerm ? `No products found matching "${searchTerm}"` : 'No products added yet.'}
                       </p>
                     </div>
                   </td>
@@ -584,6 +666,7 @@ const Inventory = ({ darkMode }) => {
                     onKeyPress={handleKeyPress}
                     onEditProduct={handleEditProduct}
                     formatPrice={formatPrice}
+                    isAdmin={isAdmin}
                   />
                 ))
               )}
@@ -597,33 +680,102 @@ const Inventory = ({ darkMode }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-              <h3 className="text-xl font-semibold">{editingProduct ? 'Edit Product' : 'Add New Product'}</h3>
+              <h3 className="text-xl font-semibold">
+                {editingProduct ? (isAdmin ? 'Edit Product' : 'Update Stock') : 'Add New Product'}
+              </h3>
               <button onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' }); }} className="text-gray-500 hover:text-gray-700 text-2xl">
                 <FiX />
               </button>
             </div>
             
             <form onSubmit={editingProduct ? handleUpdateSubmit : handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Product Name *</label>
-                <input type="text" name="name" value={formData.name} onChange={handleInputChange} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} placeholder="Enter product name" required />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Purchase Price * (Rs.)</label>
-                <input type="number" name="purchasePrice" value={formData.purchasePrice} onChange={handleInputChange} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} placeholder="Enter purchase price" min="0" step="0.01" required />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Selling Price * (Rs.)</label>
-                <input type="number" name="sellingPrice" value={formData.sellingPrice} onChange={handleInputChange} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} placeholder="Enter selling price" min="0" step="0.01" required />
-              </div>
+              {/* ✅ Product Name - Admin only (for editing) */}
+              {(isAdmin || !editingProduct) && (
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Product Name *</label>
+                  <input 
+                    type="text" 
+                    name="name" 
+                    value={formData.name} 
+                    onChange={handleInputChange} 
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} 
+                    placeholder="Enter product name" 
+                    required={isAdmin}
+                    readOnly={!isAdmin && editingProduct}
+                    disabled={!isAdmin && editingProduct}
+                  />
+                </div>
+              )}
+              
+              {/* ✅ Purchase Price - Admin only */}
+              {isAdmin && (
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Purchase Price * (Rs.)</label>
+                  <input 
+                    type="number" 
+                    name="purchasePrice" 
+                    value={formData.purchasePrice} 
+                    onChange={handleInputChange} 
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} 
+                    placeholder="Enter purchase price" 
+                    min="0" 
+                    step="0.01" 
+                    required={isAdmin}
+                    readOnly={!isAdmin}
+                    disabled={!isAdmin}
+                  />
+                </div>
+              )}
+              
+              {/* ✅ Selling Price - Admin only */}
+              {isAdmin && (
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Selling Price * (Rs.)</label>
+                  <input 
+                    type="number" 
+                    name="sellingPrice" 
+                    value={formData.sellingPrice} 
+                    onChange={handleInputChange} 
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} 
+                    placeholder="Enter selling price" 
+                    min="0" 
+                    step="0.01" 
+                    required={isAdmin}
+                    readOnly={!isAdmin}
+                    disabled={!isAdmin}
+                  />
+                </div>
+              )}
+              
+              {/* ✅ Stock Quantity - Everyone can update */}
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Stock Quantity *</label>
-                <input type="number" name="quantity" value={formData.quantity} onChange={handleInputChange} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} placeholder="Enter stock quantity" min="0" required />
+                <input 
+                  type="number" 
+                  name="quantity" 
+                  value={formData.quantity} 
+                  onChange={handleInputChange} 
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} 
+                  placeholder="Enter stock quantity" 
+                  min="0" 
+                  required 
+                />
               </div>
+              
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' }); }} className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center gap-2 shadow-md">
-                  <FiCheckCircle className="text-sm" /> {editingProduct ? 'Update Product' : 'Add Product'}
+                <button 
+                  type="button" 
+                  onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' }); }} 
+                  className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center gap-2 shadow-md"
+                >
+                  <FiCheckCircle className="text-sm" /> 
+                  {editingProduct ? (isAdmin ? 'Update Product' : 'Update Stock') : 'Add Product'}
                 </button>
               </div>
             </form>

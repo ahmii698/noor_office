@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Mail;
 
 class AuthController extends Controller
 {
+    // ✅ LOGIN
     public function login(Request $request)
     {
         try {
@@ -45,18 +46,61 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
-                    'role' => $user->role
+                    'role' => $user->role,
+                    'is_admin' => $user->isAdmin(),
                 ],
                 'token' => $token
             ]);
         } catch (\Exception $e) {
+            Log::error('Login error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Login failed'
+                'message' => 'Login failed: ' . $e->getMessage()
             ], 500);
         }
     }
 
+    // ✅ GET CURRENT USER
+    public function me(Request $request)
+    {
+        try {
+            $user = $request->user();
+            return response()->json([
+                'success' => true,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'is_admin' => $user->isAdmin(),
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get user data'
+            ], 500);
+        }
+    }
+
+    // ✅ LOGOUT
+    public function logout(Request $request)
+    {
+        try {
+            $request->user()->currentAccessToken()->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Logged out successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Logout failed'
+            ], 500);
+        }
+    }
+
+    // ✅ FORGOT PASSWORD - Send OTP
     public function forgotPassword(Request $request)
     {
         try {
@@ -75,10 +119,8 @@ class AuthController extends Controller
             $otp = rand(100000, 999999);
             $token = Str::random(60);
 
-            // Delete old reset requests
             DB::table('password_resets')->where('email', $request->email)->delete();
             
-            // Create new reset request
             DB::table('password_resets')->insert([
                 'email' => $request->email,
                 'token' => $token,
@@ -87,7 +129,6 @@ class AuthController extends Controller
                 'created_at' => now()
             ]);
 
-            // Send email with OTP
             $this->sendOtpEmail($request->email, $user->name, $otp);
 
             return response()->json([
@@ -105,6 +146,7 @@ class AuthController extends Controller
         }
     }
 
+    // ✅ SEND OTP EMAIL
     private function sendOtpEmail($email, $name, $otp)
     {
         try {
@@ -144,6 +186,7 @@ class AuthController extends Controller
         }
     }
 
+    // ✅ VERIFY OTP
     public function verifyOtp(Request $request)
     {
         try {
@@ -178,6 +221,7 @@ class AuthController extends Controller
         }
     }
 
+    // ✅ RESET PASSWORD
     public function resetPassword(Request $request)
     {
         try {
@@ -215,6 +259,200 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Password reset failed'
+            ], 500);
+        }
+    }
+
+    // ✅ ==================== USER MANAGEMENT (ADMIN ONLY) ====================
+
+    // ✅ GET ALL USERS
+    public function getUsers(Request $request)
+    {
+        try {
+            // Check if user is admin
+            if (!$request->user()->isAdmin()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - Admin only'
+                ], 403);
+            }
+
+            $users = User::select('id', 'name', 'email', 'role', 'created_at', 'updated_at')
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $users
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Get users error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch users'
+            ], 500);
+        }
+    }
+
+    // ✅ CREATE NEW USER (Admin only)
+    public function createUser(Request $request)
+    {
+        try {
+            // Check if user is admin
+            if (!$request->user()->isAdmin()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - Admin only'
+                ], 403);
+            }
+
+            $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|unique:users,email',
+                'password' => 'required|min:6',
+                'role' => 'required|in:admin,employee'
+            ]);
+
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'role' => $request->role,
+            ]);
+
+            Log::info('New user created: ' . $user->email . ' by admin: ' . $request->user()->email);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'User created successfully',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                ]
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Create user error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create user: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ✅ UPDATE USER (Admin only)
+    public function updateUser(Request $request, $id)
+    {
+        try {
+            // Check if user is admin
+            if (!$request->user()->isAdmin()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - Admin only'
+                ], 403);
+            }
+
+            $user = User::findOrFail($id);
+
+            $request->validate([
+                'name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email|unique:users,email,' . $id,
+                'password' => 'sometimes|min:6',
+                'role' => 'sometimes|in:admin,employee'
+            ]);
+
+            if ($request->has('name')) {
+                $user->name = $request->name;
+            }
+            if ($request->has('email')) {
+                $user->email = $request->email;
+            }
+            if ($request->has('password') && !empty($request->password)) {
+                $user->password = Hash::make($request->password);
+            }
+            if ($request->has('role')) {
+                $user->role = $request->role;
+            }
+            $user->save();
+
+            Log::info('User updated: ' . $user->email . ' by admin: ' . $request->user()->email);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'User updated successfully',
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                ]
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found'
+            ], 404);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Update user error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update user: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ✅ DELETE USER (Admin only)
+    public function deleteUser(Request $request, $id)
+    {
+        try {
+            // Check if user is admin
+            if (!$request->user()->isAdmin()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - Admin only'
+                ], 403);
+            }
+
+            $user = User::findOrFail($id);
+
+           
+            if ($user->id === $request->user()->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot delete your own account'
+                ], 400);
+            }
+
+            $userEmail = $user->email;
+            $user->delete();
+
+            Log::info('User deleted: ' . $userEmail . ' by admin: ' . $request->user()->email);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'User deleted successfully'
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found'
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Delete user error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete user: ' . $e->getMessage()
             ], 500);
         }
     }

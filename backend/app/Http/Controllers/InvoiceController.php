@@ -102,7 +102,6 @@ class InvoiceController extends Controller
 
             Log::info('Invoice store request received:', $request->all());
 
-            // ✅ UPDATED VALIDATION - Added customer_birthday
             $validated = $request->validate([
                 'invoice_no' => 'required|string|max:50',
                 'customer_name' => 'required|string|max:255',
@@ -110,7 +109,7 @@ class InvoiceController extends Controller
                 'customer_email' => 'nullable|email|max:255',
                 'customer_car_number' => 'nullable|string|max:50',
                 'customer_car_model' => 'nullable|string|max:100',
-                'customer_birthday' => 'nullable|date', // ✅ ADDED
+                'customer_birthday' => 'nullable|date',
                 'total_amount' => 'required|numeric|min:0',
                 'paid_amount' => 'nullable|numeric|min:0',
                 'remaining_amount' => 'nullable|numeric|min:0',
@@ -129,7 +128,6 @@ class InvoiceController extends Controller
                 $customer = Customer::where('phone', $validated['customer_phone'])->first();
                 
                 if (!$customer) {
-                    // ✅ Create new customer
                     $customer = Customer::create([
                         'name' => $validated['customer_name'],
                         'phone' => $validated['customer_phone'],
@@ -140,7 +138,6 @@ class InvoiceController extends Controller
                     ]);
                     Log::info('✅ New customer created: ID ' . $customer->id);
                 } else {
-                    // ✅ Update existing customer
                     $customer->update([
                         'name' => $validated['customer_name'] ?? $customer->name,
                         'email' => $validated['customer_email'] ?? $customer->email,
@@ -169,7 +166,7 @@ class InvoiceController extends Controller
             // ✅ 2. Create invoice with customer_id
             $invoiceId = DB::table('invoices')->insertGetId([
                 'invoice_no' => $validated['invoice_no'],
-                'customer_id' => $customer ? $customer->id : null, // ✅ ADDED
+                'customer_id' => $customer ? $customer->id : null,
                 'customer_name' => $validated['customer_name'],
                 'customer_phone' => $validated['customer_phone'] ?? null,
                 'customer_email' => $validated['customer_email'] ?? null,
@@ -217,7 +214,7 @@ class InvoiceController extends Controller
                 'remaining_amount' => $invoice->remaining_amount,
                 'payment_method' => $invoice->payment_method,
                 'status' => $invoice->status,
-                'customer_id' => $customer ? $customer->id : null, // ✅ ADDED
+                'customer_id' => $customer ? $customer->id : null,
                 'customer_name' => $invoice->customer_name,
                 'customer_phone' => $invoice->customer_phone,
                 'customer_email' => $invoice->customer_email,
@@ -258,7 +255,6 @@ class InvoiceController extends Controller
         try {
             $invoice = Invoice::findOrFail($id);
             
-            // Restore product quantities before deleting
             foreach ($invoice->items as $item) {
                 $product = Product::find($item->service_id);
                 if ($product) {
@@ -350,6 +346,136 @@ class InvoiceController extends Controller
             Log::error('Error fetching invoice stats: ' . $e->getMessage());
             return response()->json([
                 'error' => 'Failed to fetch statistics'
+            ], 500);
+        }
+    }
+
+    // ✅ ==================== PENDING PAYMENTS ====================
+
+    // ✅ FIXED: Get all pending payments (status = 'Partial' or 'Pending')
+    public function getPendingPayments()
+    {
+        try {
+            // ✅ Get invoices with Partial or Pending status (not just remaining_amount > 0)
+            $pendingInvoices = Invoice::whereIn('status', ['Partial', 'Pending'])
+                ->with('items')
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // ✅ Debug log
+            Log::info('Pending payments found: ' . $pendingInvoices->count());
+
+            $transformed = $pendingInvoices->map(function($invoice) {
+                // ✅ Ensure remaining_amount is properly set
+                $remaining = (float) $invoice->remaining_amount;
+                if ($remaining < 0) {
+                    $remaining = 0;
+                }
+                
+                return [
+                    'id' => $invoice->id,
+                    'invoice_no' => $invoice->invoice_no,
+                    'customer_name' => $invoice->customer_name,
+                    'customer_phone' => $invoice->customer_phone,
+                    'customer_car_number' => $invoice->customer_car_number,
+                    'customer_car_model' => $invoice->customer_car_model,
+                    'total_amount' => (float) $invoice->total_amount,
+                    'paid_amount' => (float) $invoice->paid_amount,
+                    'remaining_amount' => $remaining,
+                    'status' => $invoice->status,
+                    'invoice_date' => $invoice->invoice_date,
+                    'items' => $invoice->items->map(function($item) {
+                        return [
+                            'service_name' => $item->service_name,
+                            'price' => (float) $item->price,
+                            'quantity' => $item->quantity,
+                            'total' => (float) $item->total
+                        ];
+                    })
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $transformed
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching pending payments: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch pending payments: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ✅ Update pending payment (add payment)
+    public function updatePendingPayment(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'amount' => 'required|numeric|min:0.01'
+            ]);
+
+            $invoice = Invoice::findOrFail($id);
+            
+            // Check if amount is not more than remaining
+            if ($request->amount > $invoice->remaining_amount) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Amount cannot exceed remaining balance of Rs. ' . number_format($invoice->remaining_amount, 2)
+                ], 400);
+            }
+
+            // Update paid and remaining amounts
+            $newPaidAmount = $invoice->paid_amount + $request->amount;
+            $newRemainingAmount = $invoice->remaining_amount - $request->amount;
+            
+            // Update status if fully paid
+            if ($newRemainingAmount <= 0) {
+                $status = 'Paid';
+                $newRemainingAmount = 0;
+            } else {
+                $status = 'Partial';
+            }
+
+            $invoice->update([
+                'paid_amount' => $newPaidAmount,
+                'remaining_amount' => $newRemainingAmount,
+                'status' => $status,
+                'updated_at' => Carbon::now()
+            ]);
+
+            Log::info('✅ Payment updated for invoice: ' . $invoice->invoice_no . ' | Amount: ' . $request->amount . ' | Remaining: ' . $newRemainingAmount);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment recorded successfully!',
+                'data' => [
+                    'id' => $invoice->id,
+                    'invoice_no' => $invoice->invoice_no,
+                    'customer_name' => $invoice->customer_name,
+                    'total_amount' => $invoice->total_amount,
+                    'paid_amount' => $invoice->paid_amount,
+                    'remaining_amount' => $invoice->remaining_amount,
+                    'status' => $invoice->status
+                ]
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice not found'
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Error updating pending payment: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update payment: ' . $e->getMessage()
             ], 500);
         }
     }

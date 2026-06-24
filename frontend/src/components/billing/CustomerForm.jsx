@@ -14,7 +14,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     email: '',
     carNumber: '',
     carModel: '',
-    birthday: '', // ✅ NEW FIELD
+    birthday: '',
     date: new Date().toISOString().split('T')[0]
   });
   
@@ -22,12 +22,33 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [searching, setSearching] = useState(false);
 
+  // Format date for input field (YYYY-MM-DD)
+  const formatDateForInput = (date) => {
+    if (!date) return '';
+    if (date.includes('T')) {
+      return date.split('T')[0];
+    }
+    return date;
+  };
+
   // Search customer history when phone number changes
   useEffect(() => {
     const searchCustomerHistory = async () => {
       if (customerDetails.phone && customerDetails.phone.length >= 4) {
         setSearching(true);
         try {
+          // STEP 1: Get customer from customers table
+          let customerData = null;
+          try {
+            const customerRes = await api.get(`/customers/phone/${customerDetails.phone}`);
+            if (customerRes.data && customerRes.data.id) {
+              customerData = customerRes.data;
+            }
+          } catch (err) {
+            console.log('Customer not found in customers table, checking invoices...');
+          }
+
+          // STEP 2: Get invoice history
           const response = await api.get('/invoices');
           if (response.data && Array.isArray(response.data)) {
             const history = response.data
@@ -38,25 +59,24 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             setCustomerHistory(history);
             setShowHistory(history.length > 0);
             
-            if (history.length > 0) {
-              const lastInvoice = history[0];
-              if (!customerDetails.name && lastInvoice.customer_name) {
-                setCustomerDetails(prev => ({ ...prev, name: lastInvoice.customer_name || '' }));
-              }
-              if (!customerDetails.email && lastInvoice.customer_email) {
-                setCustomerDetails(prev => ({ ...prev, email: lastInvoice.customer_email || '' }));
-              }
-              if (!customerDetails.carNumber && lastInvoice.customer_car_number) {
-                setCustomerDetails(prev => ({ ...prev, carNumber: lastInvoice.customer_car_number || '' }));
-              }
-              if (!customerDetails.carModel && lastInvoice.customer_car_model) {
-                setCustomerDetails(prev => ({ ...prev, carModel: lastInvoice.customer_car_model || '' }));
-              }
-              if (!customerDetails.birthday && lastInvoice.customer_birthday) {
-                setCustomerDetails(prev => ({ ...prev, birthday: lastInvoice.customer_birthday || '' }));
-              }
-              if (lastInvoice.customer_name) {
-                toast.success(`Welcome back ${lastInvoice.customer_name}!`, { duration: 2000 });
+            if (customerData || history.length > 0) {
+              const lastInvoice = history[0] || {};
+              
+              const formattedBirthday = customerData?.birthday 
+                ? formatDateForInput(customerData.birthday) 
+                : '';
+              
+              setCustomerDetails(prev => ({
+                ...prev,
+                name: customerData?.name || lastInvoice.customer_name || prev.name,
+                email: customerData?.email || lastInvoice.customer_email || prev.email,
+                carNumber: customerData?.car_number || lastInvoice.customer_car_number || prev.carNumber,
+                carModel: customerData?.car_model || lastInvoice.customer_car_model || prev.carModel,
+                birthday: formattedBirthday || prev.birthday || '',
+              }));
+              
+              if (customerData?.name || lastInvoice.customer_name) {
+                toast.success(`Welcome back ${customerData?.name || lastInvoice.customer_name}!`, { duration: 2000 });
               }
             }
           }
@@ -80,7 +100,15 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       toast.error('Please fill all required fields (Name, Phone, Car Number)');
       return;
     }
-    onCustomerSubmit(customerDetails);
+    onCustomerSubmit({
+      name: customerDetails.name,
+      phone: customerDetails.phone,
+      email: customerDetails.email,
+      carNumber: customerDetails.carNumber,
+      carModel: customerDetails.carModel,
+      birthday: customerDetails.birthday,
+      date: customerDetails.date
+    });
   };
 
   const updateField = (field, value) => {
@@ -206,7 +234,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             />
           </div>
 
-          {/* ✅ BIRTHDAY FIELD - OPTIONAL */}
+          {/* ✅ BIRTHDAY FIELD - WITHOUT AUTO BADGE */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiCalendar className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Birthday (Optional)
@@ -214,11 +242,11 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             <div className="relative">
               <input
                 type="date"
-                value={customerDetails.birthday}
+                value={customerDetails.birthday || ''}
                 onChange={(e) => updateField('birthday', e.target.value)}
                 className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                   darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
-                }`}
+                } ${customerDetails.birthday ? 'border-green-500' : ''}`}
               />
               <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
                 <FiCalendar className="text-xs" /> We'll show a birthday reminder on this day
@@ -291,7 +319,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
           </button>
         </div>
         
-        {/* Info Box about email reminder */}
         <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
           <p className="flex items-center gap-2">
             <FiClock className="text-red-500" />

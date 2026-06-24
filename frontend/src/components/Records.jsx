@@ -12,103 +12,6 @@ import {
 } from 'react-icons/fi';
 import api from '../services/api';
 
-// Memoized Invoice Row Component
-const InvoiceRow = React.memo(({ invoice, darkMode, onView }) => (
-  <tr className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
-    <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{invoice.invoiceNo}</td>
-    <td className="text-gray-700 dark:text-gray-300 whitespace-nowrap">{new Date(invoice.date).toLocaleDateString()}</td>
-    <td className="text-gray-700 dark:text-gray-300">{invoice.customer?.name || 'Walk-in'}</td>
-    <td className="text-gray-700 dark:text-gray-300">{invoice.customer?.phone || 'N/A'}</td>
-    <td className="text-gray-700 dark:text-gray-300">{invoice.customer?.carNumber || 'N/A'}</td>
-    <td className="text-gray-700 dark:text-gray-300">
-      {invoice.items.slice(0, 2).map(i => i.name).join(', ')}
-      {invoice.items.length > 2 && ` +${invoice.items.length - 2} more`}
-    </td>
-    <td className="px-6 py-4 font-semibold text-red-500 whitespace-nowrap">Rs. {invoice.total.toLocaleString()}</td>
-    <td className="px-6 py-4">
-      <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit ${
-        invoice.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
-        invoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
-        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
-      }`}>
-        {invoice.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : invoice.status === 'Partial' ? <FiAlertCircle className="text-xs" /> : <FiClock className="text-xs" />}
-        {invoice.status === 'Paid' ? 'Paid' : invoice.status === 'Partial' ? 'Partial' : 'Pending'}
-      </span>
-    </td>
-    <td className="px-6 py-4">
-      <button onClick={() => onView(invoice)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
-        <FiEye className="text-sm" /> View
-      </button>
-    </td>
-  </tr>
-));
-
-// Memoized Pagination Component
-const Pagination = React.memo(({ currentPage, totalPages, onPageChange, totalItems, startIndex, endIndex, darkMode }) => {
-  if (totalPages <= 1) return null;
-  
-  const getPageNumbers = () => {
-    const pages = [];
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      if (currentPage <= 4) {
-        for (let i = 1; i <= 5; i++) pages.push(i);
-        pages.push('...');
-        pages.push(totalPages);
-      } else if (currentPage >= totalPages - 3) {
-        pages.push(1);
-        pages.push('...');
-        for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
-      } else {
-        pages.push(1);
-        pages.push('...');
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
-        pages.push('...');
-        pages.push(totalPages);
-      }
-    }
-    return pages;
-  };
-
-  return (
-    <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center flex-wrap gap-3">
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        Showing {startIndex + 1} to {Math.min(endIndex, totalItems)} of {totalItems} entries
-      </div>
-      <div className="flex gap-2 flex-wrap">
-        <button 
-          onClick={() => onPageChange(currentPage - 1)} 
-          disabled={currentPage === 1} 
-          className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <FiChevronLeft className="text-lg" />
-        </button>
-        {getPageNumbers().map((page, idx) => (
-          page === '...' ? 
-            <span key={`dots-${idx}`} className="px-2 py-1 text-gray-500">...</span> :
-            <button
-              key={page}
-              onClick={() => onPageChange(page)}
-              className={`w-8 h-8 rounded-lg text-sm transition ${
-                currentPage === page ? 'bg-red-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-              }`}
-            >
-              {page}
-            </button>
-        ))}
-        <button 
-          onClick={() => onPageChange(currentPage + 1)} 
-          disabled={currentPage === totalPages} 
-          className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <FiChevronRight className="text-lg" />
-        </button>
-      </div>
-    </div>
-  );
-});
-
 const Records = ({ darkMode }) => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -116,13 +19,11 @@ const Records = ({ darkMode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Search and Pagination States
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [filterStatus, setFilterStatus] = useState('all');
 
-  // Fetch invoices from API - optimized with useCallback
   const fetchInvoices = useCallback(async () => {
     const abortController = new AbortController();
     setLoading(true);
@@ -177,7 +78,6 @@ const Records = ({ darkMode }) => {
     };
   }, [fetchInvoices]);
 
-  // Memoized filtered invoices
   const filteredInvoices = useMemo(() => {
     let filtered = invoices;
     
@@ -200,7 +100,6 @@ const Records = ({ darkMode }) => {
     return filtered;
   }, [invoices, searchTerm, filterStatus]);
 
-  // Memoized pagination values
   const totalPages = useMemo(() => Math.ceil(filteredInvoices.length / itemsPerPage), [filteredInvoices.length, itemsPerPage]);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -224,7 +123,6 @@ const Records = ({ darkMode }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  // Memoized export functions
   const exportToExcel = useCallback(() => {
     const ws = XLSX.utils.json_to_sheet(filteredInvoices.map(inv => ({
       'Invoice #': inv.invoiceNo,
@@ -442,19 +340,20 @@ const Records = ({ darkMode }) => {
           </div>
         </div>
         
+        {/* ✅ TABLE WITH FIXED COLUMNS */}
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[900px]">
             <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Invoice #</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Customer</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Phone</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Car Number</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Services</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Total</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase">Action</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[120px]">Invoice #</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[100px]">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[130px]">Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[130px]">Phone</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[120px]">Car Number</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 min-w-[150px]">Services</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[100px]">Total</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[100px]">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[100px]">Action</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
@@ -470,7 +369,33 @@ const Records = ({ darkMode }) => {
                 </tr>
               ) : (
                 currentInvoices.map(inv => (
-                  <InvoiceRow key={inv.id} invoice={inv} darkMode={darkMode} onView={viewInvoiceDetails} />
+                  <tr key={inv.id} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">{inv.invoiceNo}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{new Date(inv.date).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.name || 'Walk-in'}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.phone || 'N/A'}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.carNumber || 'N/A'}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      {inv.items.slice(0, 2).map(i => i.name).join(', ')}
+                      {inv.items.length > 2 && ` +${inv.items.length - 2} more`}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-red-500 whitespace-nowrap">Rs. {inv.total.toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit ${
+                        inv.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
+                        inv.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
+                        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                      }`}>
+                        {inv.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : inv.status === 'Partial' ? <FiAlertCircle className="text-xs" /> : <FiClock className="text-xs" />}
+                        {inv.status === 'Paid' ? 'Paid' : inv.status === 'Partial' ? 'Partial' : 'Pending'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => viewInvoiceDetails(inv)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
+                        <FiEye className="text-sm" /> View
+                      </button>
+                    </td>
+                  </tr>
                 ))
               )}
             </tbody>
@@ -478,15 +403,58 @@ const Records = ({ darkMode }) => {
         </div>
         
         {/* Pagination */}
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          onPageChange={handlePageChange}
-          totalItems={filteredInvoices.length}
-          startIndex={indexOfFirstItem}
-          endIndex={indexOfLastItem}
-          darkMode={darkMode}
-        />
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center flex-wrap gap-3">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredInvoices.length)} of {filteredInvoices.length} entries
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button 
+              onClick={() => handlePageChange(currentPage - 1)} 
+              disabled={currentPage === 1} 
+              className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <FiChevronLeft className="text-lg" />
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              let pageNum;
+              if (totalPages <= 7) {
+                pageNum = i + 1;
+              } else if (currentPage <= 4) {
+                pageNum = i + 1;
+                if (i === 5) return <span key="dots1" className="px-2 py-1 text-gray-500">...</span>;
+                if (i === 6) return <button key={totalPages} onClick={() => handlePageChange(totalPages)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">{totalPages}</button>;
+              } else if (currentPage >= totalPages - 3) {
+                if (i === 0) return <button key={1} onClick={() => handlePageChange(1)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">1</button>;
+                if (i === 1) return <span key="dots1" className="px-2 py-1 text-gray-500">...</span>;
+                pageNum = totalPages - 5 + i;
+              } else {
+                if (i === 0) return <button key={1} onClick={() => handlePageChange(1)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">1</button>;
+                if (i === 1) return <span key="dots1" className="px-2 py-1 text-gray-500">...</span>;
+                if (i === 5) return <span key="dots2" className="px-2 py-1 text-gray-500">...</span>;
+                if (i === 6) return <button key={totalPages} onClick={() => handlePageChange(totalPages)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">{totalPages}</button>;
+                pageNum = currentPage - 1 + (i - 2);
+              }
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => handlePageChange(pageNum)}
+                  className={`w-8 h-8 rounded-lg text-sm transition ${
+                    currentPage === pageNum ? 'bg-red-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button 
+              onClick={() => handlePageChange(currentPage + 1)} 
+              disabled={currentPage === totalPages} 
+              className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <FiChevronRight className="text-lg" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Invoice Details Modal */}

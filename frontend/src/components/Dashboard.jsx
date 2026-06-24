@@ -6,7 +6,7 @@ import {
   FiMenu, FiChevronLeft, FiSun, FiMoon, FiLogOut, 
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiBell, FiTrendingUp, FiShoppingCart, FiCheckCircle, 
-  FiAlertCircle, FiClock, FiArrowRight, FiLoader
+  FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers
 } from 'react-icons/fi';
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import Sidebar from './Sidebar';
@@ -22,7 +22,7 @@ const FinanceReminders = lazy(() => import('./finance/FinanceReminders'));
 const Billing = lazy(() => import('./Billing'));
 const Records = lazy(() => import('./Records'));
 const Reminders = lazy(() => import('./Reminders'));
-// ❌ Removed: const ReminderChecker = lazy(() => import('./ReminderChecker'));
+const Users = lazy(() => import('./Users'));
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -50,7 +50,16 @@ const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkM
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [activeMenu, setActiveMenu] = useState('all-data');
+  const [userRole, setUserRole] = useState(null);
+  
+  // ✅ Set default menu based on role
+  const getDefaultMenu = () => {
+    const user = localStorage.getItem('user');
+    const role = user ? JSON.parse(user)?.role : null;
+    return role === 'employee' ? 'billing' : 'all-data';
+  };
+  
+  const [activeMenu, setActiveMenu] = useState(getDefaultMenu());
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(() => {
@@ -62,6 +71,22 @@ const Dashboard = () => {
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
+
+  // ✅ Check user role on mount
+  useEffect(() => {
+    const user = localStorage.getItem('user');
+    if (user) {
+      const userData = JSON.parse(user);
+      setUserRole(userData.role);
+      
+      // ✅ If employee, set default to billing
+      if (userData.role === 'employee') {
+        setActiveMenu('billing');
+      } else {
+        setActiveMenu('all-data');
+      }
+    }
+  }, []);
 
   const totalSales = useMemo(() => 
     invoices.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0),
@@ -283,7 +308,8 @@ const Dashboard = () => {
       'finance-reminders': 'Upcoming Payments & Reminders',
       billing: 'Billing System',
       record: 'Records Archive',
-      reminders: 'Reminders'
+      reminders: 'Reminders',
+      users: 'User Management'
     };
     return titles[activeMenu] || 'Dashboard';
   }, [activeMenu]);
@@ -299,7 +325,8 @@ const Dashboard = () => {
       'finance-reminders': 'Track upcoming bills, salaries and payments',
       billing: 'Create bills, print invoices, export data',
       record: 'View all transaction history',
-      reminders: 'Birthday, Tuning & Oil Change reminders'
+      reminders: 'Birthday, Tuning & Oil Change reminders',
+      users: 'Manage system users and employees'
     };
     return descriptions[activeMenu] || '';
   }, [activeMenu]);
@@ -315,7 +342,8 @@ const Dashboard = () => {
       'finance-reminders': <FiBell className="text-2xl" />,
       billing: <FiFileText className="text-2xl" />,
       record: <FiBarChart2 className="text-2xl" />,
-      reminders: <FiBell className="text-2xl" />
+      reminders: <FiBell className="text-2xl" />,
+      users: <FiUsers className="text-2xl" />
     };
     return icons[activeMenu] || <FiPackage className="text-2xl" />;
   }, [activeMenu]);
@@ -378,8 +406,8 @@ const Dashboard = () => {
           {/* Content */}
           <div className={`flex-1 overflow-y-auto p-8 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
             
-            {/* ALL DATA VIEW */}
-            {activeMenu === 'all-data' && (
+            {/* ALL DATA VIEW - Admin only */}
+            {activeMenu === 'all-data' && userRole !== 'employee' && (
               <div className="space-y-6">
                 {/* 4 Main Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -518,19 +546,19 @@ const Dashboard = () => {
                 <Inventory products={products} darkMode={darkMode} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} />
               )}
               
-              {activeMenu === 'finance-overview' && (
+              {activeMenu === 'finance-overview' && userRole !== 'employee' && (
                 <FinanceOverview darkMode={darkMode} />
               )}
-              {activeMenu === 'finance-expenses' && (
+              {activeMenu === 'finance-expenses' && userRole !== 'employee' && (
                 <FinanceExpenses darkMode={darkMode} />
               )}
-              {activeMenu === 'finance-charts' && (
+              {activeMenu === 'finance-charts' && userRole !== 'employee' && (
                 <FinanceCharts darkMode={darkMode} />
               )}
-              {activeMenu === 'finance-reports' && (
+              {activeMenu === 'finance-reports' && userRole !== 'employee' && (
                 <FinanceReports darkMode={darkMode} />
               )}
-              {activeMenu === 'finance-reminders' && (
+              {activeMenu === 'finance-reminders' && userRole !== 'employee' && (
                 <FinanceReminders darkMode={darkMode} />
               )}
               
@@ -538,19 +566,22 @@ const Dashboard = () => {
                 <Billing darkMode={darkMode} />
               )}
               
-              {activeMenu === 'record' && (
+              {activeMenu === 'record' && userRole !== 'employee' && (
                 <Records darkMode={darkMode} />
               )}
 
               {activeMenu === 'reminders' && (
                 <Reminders darkMode={darkMode} />
               )}
+
+              {/* ✅ USERS PAGE - Admin only */}
+              {activeMenu === 'users' && userRole === 'admin' && (
+                <Users darkMode={darkMode} />
+              )}
             </Suspense>
           </div>
         </div>
       </div>
-      
-      {/* ❌ Removed: ReminderChecker */}
     </div>
   );
 };

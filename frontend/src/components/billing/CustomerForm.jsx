@@ -21,6 +21,24 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   const [customerHistory, setCustomerHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [searching, setSearching] = useState(false);
+  
+  // ✅ Check if user is admin
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // ✅ Check user role on mount
+  useEffect(() => {
+    try {
+      const user = localStorage.getItem('user');
+      if (user) {
+        const userData = JSON.parse(user);
+        const role = userData?.role || 'employee';
+        setIsAdmin(role === 'admin');
+      }
+    } catch (e) {
+      console.error('Error parsing user data:', e);
+      setIsAdmin(false);
+    }
+  }, []);
 
   // Format date for input field (YYYY-MM-DD)
   const formatDateForInput = (date) => {
@@ -57,7 +75,13 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               .slice(0, 10);
             
             setCustomerHistory(history);
-            setShowHistory(history.length > 0);
+            
+            // ✅ Show history to EVERYONE (admin and employee both)
+            if (history.length > 0) {
+              setShowHistory(true);
+            } else {
+              setShowHistory(false);
+            }
             
             if (customerData || history.length > 0) {
               const lastInvoice = history[0] || {};
@@ -92,7 +116,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     };
     
     searchCustomerHistory();
-  }, [customerDetails.phone]);
+  }, [customerDetails.phone]); // ✅ Removed isAdmin dependency
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -234,7 +258,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             />
           </div>
 
-          {/* ✅ BIRTHDAY FIELD - WITHOUT AUTO BADGE */}
+          {/* Birthday Field */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiCalendar className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Birthday (Optional)
@@ -255,7 +279,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
           </div>
         </div>
         
-        {/* Customer History Section */}
+        {/* ✅ Customer History Section - SHOW TO EVERYONE, but different columns for admin/employee */}
         {showHistory && customerHistory.length > 0 && (
           <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-red-900/20 border border-red-800' : 'bg-red-50 border border-red-200'}`}>
             <div className="flex justify-between items-center mb-3">
@@ -272,13 +296,18 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                   <tr className={`border-b ${darkMode ? 'border-red-800' : 'border-red-200'}`}>
                     <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Date</th>
                     <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Services</th>
-                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total</th>
-                    <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Status</th>
+                    {/* ✅ Admin ko Total aur Status dikhega, Employee ko nahi */}
+                    {isAdmin && (
+                      <>
+                        <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total</th>
+                        <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Status</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {customerHistory.map((inv, idx) => (
-                    <tr key={inv.id}>
+                    <tr key={inv.id || idx}>
                       <td className={`py-2 px-2 text-xs ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {new Date(inv.invoice_date).toLocaleDateString()}
                       </td>
@@ -286,19 +315,24 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                         {inv.items?.map(i => i.service_name).slice(0, 2).join(', ') || 'N/A'}
                         {inv.items?.length > 2 && ` +${inv.items.length - 2}`}
                       </td>
-                      <td className={`py-2 px-2 font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                        Rs. {inv.total_amount?.toLocaleString() || 0}
-                      </td>
-                      <td className="py-2 px-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 w-fit ${
-                          inv.status === 'Paid' 
-                            ? darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'
-                            : darkMode ? 'bg-yellow-900/30 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {inv.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : <FiAlertCircle className="text-xs" />}
-                          {inv.status}
-                        </span>
-                      </td>
+                      {/* ✅ Admin ko Total aur Status dikhega, Employee ko nahi */}
+                      {isAdmin && (
+                        <>
+                          <td className={`py-2 px-2 font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                            Rs. {inv.total_amount?.toLocaleString() || 0}
+                          </td>
+                          <td className="py-2 px-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 w-fit ${
+                              inv.status === 'Paid' 
+                                ? darkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'
+                                : darkMode ? 'bg-yellow-900/30 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {inv.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : <FiAlertCircle className="text-xs" />}
+                              {inv.status}
+                            </span>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>

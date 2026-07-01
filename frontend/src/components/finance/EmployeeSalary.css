@@ -1,0 +1,1027 @@
+/* src/components/finance/EmployeeSalary.css */
+
+/* Container */
+.employee-salary-container {
+  padding: 1rem;
+  min-height: 100vh;
+}
+
+.employee-salary-container.dark {
+  background-color: #111827;
+}
+
+/* Card */
+.employee-salary-card {
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+.employee-salary-card.dark {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+/* Header - Red theme */
+.employee-salary-header {
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.employee-salary-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.employee-salary-header-icon {
+  color: white;
+  font-size: 1.5rem;
+}
+
+.employee-salary-header-title {
+  color: white;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.employee-salary-header-subtitle {
+  color: #fca5a5;
+  font-size: 0.75rem;
+  margin: 0.25rem 0 0 0;
+}
+
+.employee-salary-btn-add {
+  padding: 0.5rem 1rem;
+  background: white;
+  color: #dc2626;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.employee-salary-btn-add:hover {
+  background: #fef2f2;
+  transform: scale(1.02);
+}
+
+.employee-salary-btn-icon {
+  font-size: 0.875rem;
+}
+
+/* Search */
+.employee-salary-search-wrapper {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.employee-salary-card.dark .employee-salary-search-wrapper {
+  border-color: #374151;
+}
+
+.employee-salary-search-container {
+  position: relative;
+  max-width: 400px;
+}
+
+.employee-salary-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+}
+
+.employee-salary-search-icon.dark {
+  color: #9ca3af;
+}
+
+.employee-salary-search-input {
+  width: 100%;
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+  outline: none;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  background: white;
+  color: #111827;
+}
+
+.employee-salary-search-input:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
+.employee-salary-search-input.dark {
+  background: #1f2937;
+  border-color: #374151;
+  color: white;
+}
+
+.employee-salary-search-input.dark::placeholder {
+  color: #6b7280;
+}
+
+.employee-salary-search-input.dark:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
+/* Table */
+.employee-salary-table-wrapper {
+  overflow-x: auto;
+}
+
+.employee-salary-table {
+  width: 100%;
+  min-width: 800px;
+  border-collapse: collapse;
+}
+
+.employee-salary-table thead th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  background: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.employee-salary-table thead.dark th {
+  background: #1f2937;
+  color: #9ca3af;
+  border-color: #374151;
+}
+
+.employee-salary-table tbody tr {
+  transition: background 0.15s;
+}
+
+.employee-salary-table tbody tr:hover {
+  background: #f9fafb;
+}
+
+.employee-salary-table tbody tr.dark:hover {
+  background: #1f2937;
+}
+
+.employee-salary-table tbody td {
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid #e5e7eb;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.employee-salary-table tbody.dark td {
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+/* Employee Name */
+.employee-salary-name {
+  font-weight: 500;
+  color: #111827;
+}
+
+.employee-salary-table tbody.dark .employee-salary-name {
+  color: white;
+}
+
+.employee-salary-name .flex {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Amounts */
+.employee-salary-amount-total {
+  font-weight: 600;
+  color: #111827;
+}
+
+.employee-salary-table tbody.dark .employee-salary-amount-total {
+  color: white;
+}
+
+.employee-salary-amount-paid {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+/* Balance */
+.employee-salary-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+
+.employee-salary-balance.due {
+  color: #dc2626;
+}
+
+.employee-salary-balance.paid {
+  color: #16a34a;
+}
+
+/* Status Badges */
+.employee-salary-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.employee-salary-status-badge.paid {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.employee-salary-status-badge.partial {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.employee-salary-status-badge.pending {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Dark mode status badges */
+.employee-salary-card.dark .employee-salary-status-badge.paid {
+  background: rgba(22, 163, 74, 0.2);
+  color: #4ade80;
+}
+
+.employee-salary-card.dark .employee-salary-status-badge.partial {
+  background: rgba(217, 119, 6, 0.2);
+  color: #fbbf24;
+}
+
+.employee-salary-card.dark .employee-salary-status-badge.pending {
+  background: rgba(220, 38, 38, 0.2);
+  color: #f87171;
+}
+
+/* Actions */
+.employee-salary-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.employee-salary-btn-view,
+.employee-salary-btn-edit,
+.employee-salary-btn-delete {
+  padding: 0.375rem;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+}
+
+.employee-salary-btn-view {
+  background: #3b82f6;
+  color: white;
+}
+
+.employee-salary-btn-view:hover {
+  background: #2563eb;
+}
+
+.employee-salary-btn-edit {
+  background: #eab308;
+  color: white;
+}
+
+.employee-salary-btn-edit:hover {
+  background: #ca8a04;
+}
+
+.employee-salary-btn-delete {
+  background: #ef4444;
+  color: white;
+}
+
+.employee-salary-btn-delete:hover {
+  background: #dc2626;
+}
+
+.employee-salary-btn-pay {
+  padding: 0.25rem 0.75rem;
+  background: #22c55e;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.employee-salary-btn-pay:hover {
+  background: #16a34a;
+}
+
+/* Empty State */
+.employee-salary-empty {
+  text-align: center;
+  padding: 3rem 1.5rem !important;
+  color: #6b7280;
+}
+
+.employee-salary-empty-icon {
+  font-size: 3rem;
+  margin: 0 auto 0.5rem;
+  color: #9ca3af;
+}
+
+.employee-salary-empty-sub {
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  color: #9ca3af;
+}
+
+/* Pagination */
+.employee-salary-pagination {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.employee-salary-card.dark .employee-salary-pagination {
+  border-color: #374151;
+}
+
+.employee-salary-pagination-info {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.employee-salary-card.dark .employee-salary-pagination-info {
+  color: #9ca3af;
+}
+
+.employee-salary-pagination-buttons {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.employee-salary-pagination-btn {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.employee-salary-pagination-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+.employee-salary-pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.employee-salary-pagination-btn.active {
+  background: #dc2626;
+  color: white;
+}
+
+.employee-salary-pagination-dots {
+  padding: 0 0.25rem;
+  color: #6b7280;
+}
+
+.employee-salary-card.dark .employee-salary-pagination-btn {
+  color: #d1d5db;
+}
+
+.employee-salary-card.dark .employee-salary-pagination-btn:hover:not(:disabled) {
+  background: #374151;
+}
+
+.employee-salary-card.dark .employee-salary-pagination-dots {
+  color: #6b7280;
+}
+
+/* ==================== MODALS ==================== */
+.employee-salary-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.employee-salary-modal {
+  max-width: 42rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 1rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid #e5e7eb;
+  animation: slideIn 0.3s ease-out;
+}
+
+.employee-salary-modal.dark {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Modal Header */
+.employee-salary-modal-header {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: white;
+  border-radius: 1rem 1rem 0 0;
+  z-index: 10;
+}
+
+.employee-salary-modal-header.dark {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+.employee-salary-modal-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #111827;
+  margin: 0;
+}
+
+.employee-salary-modal.dark .employee-salary-modal-title {
+  color: white;
+}
+
+.employee-salary-modal-title-icon {
+  font-size: 1.25rem;
+}
+
+.employee-salary-modal-subtitle {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.employee-salary-modal.dark .employee-salary-modal-subtitle {
+  color: #9ca3af;
+}
+
+.employee-salary-modal-close {
+  padding: 0.5rem;
+  border: none;
+  background: transparent;
+  color: #ef4444;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 1.25rem;
+}
+
+.employee-salary-modal-close:hover {
+  background: #fef2f2;
+}
+
+.employee-salary-modal.dark .employee-salary-modal-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* Modal Body */
+.employee-salary-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+/* Summary */
+.employee-salary-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  padding: 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.employee-salary-modal.dark .employee-salary-summary {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: #7f1d1d;
+}
+
+.employee-salary-summary-item {
+  text-align: center;
+}
+
+.employee-salary-summary-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #6b7280;
+  margin: 0;
+}
+
+.employee-salary-modal.dark .employee-salary-summary-label {
+  color: #9ca3af;
+}
+
+.employee-salary-summary-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0.25rem 0 0;
+}
+
+.employee-salary-summary-value.total {
+  color: #111827;
+}
+
+.employee-salary-modal.dark .employee-salary-summary-value.total {
+  color: white;
+}
+
+.employee-salary-summary-value.paid {
+  color: #16a34a;
+}
+
+.employee-salary-summary-value.balance {
+  color: #dc2626;
+}
+
+/* History Table */
+.employee-salary-history-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #111827;
+  margin-bottom: 1rem;
+}
+
+.employee-salary-modal.dark .employee-salary-history-title {
+  color: white;
+}
+
+.employee-salary-history-icon {
+  color: #3b82f6;
+}
+
+.employee-salary-history-table-wrapper {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.employee-salary-history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.employee-salary-history-table thead th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.employee-salary-history-table thead.dark th {
+  background: #1f2937;
+  color: #9ca3af;
+  border-color: #374151;
+}
+
+.employee-salary-history-table tbody td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid #e5e7eb;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.employee-salary-modal.dark .employee-salary-history-table tbody td {
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+.employee-salary-history-table tfoot td {
+  padding: 0.75rem 0.75rem;
+  font-weight: 700;
+  border-top: 2px solid #e5e7eb;
+}
+
+.employee-salary-history-table tfoot.dark td {
+  border-color: #374151;
+}
+
+.employee-salary-text-right {
+  text-align: right;
+}
+
+.employee-salary-total-label {
+  color: #374151;
+}
+
+.employee-salary-modal.dark .employee-salary-total-label {
+  color: #d1d5db;
+}
+
+.employee-salary-total-amount {
+  color: #16a34a;
+  font-size: 1rem;
+}
+
+/* Empty History */
+.employee-salary-empty-history {
+  text-align: center;
+  padding: 2rem 0;
+  color: #6b7280;
+}
+
+.employee-salary-empty-history-icon {
+  font-size: 2.5rem;
+  margin: 0 auto 0.5rem;
+  color: #9ca3af;
+}
+
+/* Modal Footer */
+.employee-salary-modal-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  background: white;
+  border-radius: 0 0 1rem 1rem;
+}
+
+.employee-salary-modal-footer.dark {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+.employee-salary-btn-close {
+  padding: 0.5rem 1.25rem;
+  background: #374151;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.employee-salary-btn-close:hover {
+  background: #4b5563;
+}
+
+/* ==================== FORMS ==================== */
+.employee-salary-form-group {
+  margin-bottom: 1rem;
+}
+
+.employee-salary-form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.employee-salary-form-label.dark {
+  color: #d1d5db;
+}
+
+.employee-salary-form-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+  outline: none;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  background: white;
+  color: #111827;
+}
+
+.employee-salary-form-input:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
+.employee-salary-form-input.dark {
+  background: #1f2937;
+  border-color: #374151;
+  color: white;
+}
+
+.employee-salary-form-input.dark::placeholder {
+  color: #6b7280;
+}
+
+.employee-salary-form-input.dark:focus {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
+.employee-salary-form-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.employee-salary-form-actions button {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.employee-salary-btn-cancel {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.employee-salary-btn-cancel:hover {
+  background: #d1d5db;
+}
+
+.employee-salary-modal.dark .employee-salary-btn-cancel {
+  background: #374151;
+  color: #d1d5db;
+}
+
+.employee-salary-modal.dark .employee-salary-btn-cancel:hover {
+  background: #4b5563;
+}
+
+.employee-salary-btn-submit {
+  background: #dc2626;
+  color: white;
+}
+
+.employee-salary-btn-submit:hover {
+  background: #b91c1c;
+}
+
+.employee-salary-btn-update {
+  background: #eab308;
+  color: white;
+}
+
+.employee-salary-btn-update:hover {
+  background: #ca8a04;
+}
+
+/* Payment Summary in Modal */
+.employee-salary-payment-summary {
+  padding: 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.employee-salary-modal.dark .employee-salary-payment-summary {
+  background: rgba(220, 38, 38, 0.1);
+  border-color: #7f1d1d;
+}
+
+.employee-salary-payment-label {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin: 0.25rem 0;
+}
+
+.employee-salary-modal.dark .employee-salary-payment-label {
+  color: #9ca3af;
+}
+
+.employee-salary-payment-vendor {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 0.5rem;
+}
+
+.employee-salary-modal.dark .employee-salary-payment-vendor {
+  color: white;
+}
+
+.employee-salary-payment-balance {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #dc2626;
+  margin: 0;
+}
+
+.employee-salary-btn-pay-submit {
+  background: #22c55e;
+  color: white;
+}
+
+.employee-salary-btn-pay-submit:hover {
+  background: #16a34a;
+}
+
+/* ==================== RESPONSIVE ==================== */
+@media (max-width: 640px) {
+  .employee-salary-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .employee-salary-header-left {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .employee-salary-btn-add {
+    justify-content: center;
+  }
+
+  .employee-salary-search-container {
+    max-width: 100%;
+  }
+
+  .employee-salary-pagination {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .employee-salary-pagination-buttons {
+    justify-content: center;
+  }
+
+  .employee-salary-summary {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  .employee-salary-modal {
+    max-width: 100%;
+    margin: 0.5rem;
+    max-height: 95vh;
+  }
+
+  .employee-salary-table {
+    min-width: 600px;
+  }
+
+  .employee-salary-actions {
+    flex-wrap: wrap;
+  }
+}
+/* Add this to EmployeeSalary.css at the end */
+
+/* ✅ Reset Button */
+.employee-salary-btn-reset {
+  padding: 0.25rem 0.5rem;
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.employee-salary-btn-reset:hover {
+  background: #7c3aed;
+}
+
+/* ✅ Salary Due Indicator */
+.employee-salary-due-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 4px;
+}
+
+.employee-salary-due-indicator.due {
+  background: #ef4444;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+
+/* src/components/finance/EmployeeSalary.css */
+
+/* ✅ Reset Button - Always visible, purple color */
+.employee-salary-btn-reset {
+  padding: 0.25rem 0.5rem;
+  background: #8b5cf6;
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.employee-salary-btn-reset:hover {
+  background: #7c3aed;
+  transform: scale(1.05);
+}
+
+/* Dark mode */
+.employee-salary-card.dark .employee-salary-btn-reset {
+  background: #6d28d9;
+}
+
+.employee-salary-card.dark .employee-salary-btn-reset:hover {
+  background: #5b21b6;
+}

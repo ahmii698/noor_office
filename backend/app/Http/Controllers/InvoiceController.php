@@ -16,13 +16,16 @@ class InvoiceController extends Controller
     public function index()
     {
         try {
-            $invoices = Invoice::with('items')->orderBy('id', 'desc')->get();
+            $invoices = Invoice::with(['items', 'creator'])->orderBy('id', 'desc')->get();
             
             $transformedInvoices = $invoices->map(function($invoice) {
                 return [
                     'id' => $invoice->id,
                     'invoice_no' => $invoice->invoice_no,
                     'invoice_date' => $invoice->invoice_date,
+                    'subtotal' => $invoice->subtotal ?? 0,
+                    'discount' => $invoice->discount ?? 0,
+                    'discount_note' => $invoice->discount_note,
                     'total_amount' => $invoice->total_amount,
                     'paid_amount' => $invoice->paid_amount,
                     'remaining_amount' => $invoice->remaining_amount,
@@ -33,6 +36,9 @@ class InvoiceController extends Controller
                     'customer_email' => $invoice->customer_email,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
+                    'created_by' => $invoice->created_by,
+                    'creator_name' => $invoice->creator ? $invoice->creator->name : 'System',
+                    'creator_role' => $invoice->creator ? $invoice->creator->role : 'system',
                     'items' => $invoice->items->map(function($item) {
                         return [
                             'id' => $item->id,
@@ -59,12 +65,15 @@ class InvoiceController extends Controller
     public function show($id)
     {
         try {
-            $invoice = Invoice::with('items')->findOrFail($id);
+            $invoice = Invoice::with(['items', 'creator'])->findOrFail($id);
             
             $transformedInvoice = [
                 'id' => $invoice->id,
                 'invoice_no' => $invoice->invoice_no,
                 'invoice_date' => $invoice->invoice_date,
+                'subtotal' => $invoice->subtotal ?? 0,
+                'discount' => $invoice->discount ?? 0,
+                'discount_note' => $invoice->discount_note,
                 'total_amount' => $invoice->total_amount,
                 'paid_amount' => $invoice->paid_amount,
                 'remaining_amount' => $invoice->remaining_amount,
@@ -75,6 +84,9 @@ class InvoiceController extends Controller
                 'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
+                'created_by' => $invoice->created_by,
+                'creator_name' => $invoice->creator ? $invoice->creator->name : 'System',
+                'creator_role' => $invoice->creator ? $invoice->creator->role : 'system',
                 'items' => $invoice->items->map(function($item) {
                     return [
                         'id' => $item->id,
@@ -110,6 +122,9 @@ class InvoiceController extends Controller
                 'customer_car_number' => 'nullable|string|max:50',
                 'customer_car_model' => 'nullable|string|max:100',
                 'customer_birthday' => 'nullable|date',
+                'subtotal' => 'required|numeric|min:0',
+                'discount' => 'required|numeric|min:0',
+                'discount_note' => 'nullable|string|max:255',
                 'total_amount' => 'required|numeric|min:0',
                 'paid_amount' => 'nullable|numeric|min:0',
                 'remaining_amount' => 'nullable|numeric|min:0',
@@ -122,7 +137,7 @@ class InvoiceController extends Controller
                 'items.*.quantity' => 'required|integer|min:1'
             ]);
 
-            // ✅ 1. SAVE OR UPDATE CUSTOMER
+            // Save or update customer
             $customer = null;
             if (!empty($validated['customer_phone'])) {
                 $customer = Customer::where('phone', $validated['customer_phone'])->first();
@@ -149,12 +164,10 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Set default values
             $paidAmount = $validated['paid_amount'] ?? 0;
             $totalAmount = $validated['total_amount'];
             $remainingAmount = $validated['remaining_amount'] ?? ($totalAmount - $paidAmount);
             
-            // Determine status
             if ($paidAmount >= $totalAmount) {
                 $status = 'Paid';
             } elseif ($paidAmount > 0) {
@@ -163,7 +176,6 @@ class InvoiceController extends Controller
                 $status = 'Pending';
             }
 
-            // ✅ 2. Create invoice with customer_id
             $invoiceId = DB::table('invoices')->insertGetId([
                 'invoice_no' => $validated['invoice_no'],
                 'customer_id' => $customer ? $customer->id : null,
@@ -172,19 +184,22 @@ class InvoiceController extends Controller
                 'customer_email' => $validated['customer_email'] ?? null,
                 'customer_car_number' => $validated['customer_car_number'] ?? null,
                 'customer_car_model' => $validated['customer_car_model'] ?? null,
+                'subtotal' => $validated['subtotal'],
+                'discount' => $validated['discount'],
+                'discount_note' => $validated['discount_note'] ?? null,
                 'total_amount' => $totalAmount,
                 'paid_amount' => $paidAmount,
                 'remaining_amount' => $remainingAmount,
                 'payment_method' => $validated['payment_method'] ?? 'cash',
                 'status' => $status,
                 'invoice_date' => Carbon::now(),
+                'created_by' => auth()->id(),
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now()
             ]);
 
-            Log::info('✅ Invoice created: ID ' . $invoiceId);
+            Log::info('✅ Invoice created: ID ' . $invoiceId . ' by user: ' . auth()->id());
 
-            // ✅ 3. Create invoice items
             foreach ($validated['items'] as $item) {
                 DB::table('invoice_items')->insert([
                     'invoice_id' => $invoiceId,
@@ -200,7 +215,6 @@ class InvoiceController extends Controller
 
             DB::commit();
 
-            // Fetch the created invoice with items
             $invoice = DB::table('invoices')->where('id', $invoiceId)->first();
             $items = DB::table('invoice_items')->where('invoice_id', $invoiceId)->get();
 
@@ -209,6 +223,9 @@ class InvoiceController extends Controller
                 'id' => $invoiceId,
                 'invoice_no' => $invoice->invoice_no,
                 'invoice_date' => $invoice->invoice_date,
+                'subtotal' => $invoice->subtotal ?? 0,
+                'discount' => $invoice->discount ?? 0,
+                'discount_note' => $invoice->discount_note,
                 'total_amount' => $invoice->total_amount,
                 'paid_amount' => $invoice->paid_amount,
                 'remaining_amount' => $invoice->remaining_amount,
@@ -220,6 +237,7 @@ class InvoiceController extends Controller
                 'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
+                'created_by' => $invoice->created_by,
                 'items' => $items->map(function($item) {
                     return [
                         'id' => $item->id,
@@ -246,6 +264,103 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create invoice: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ✅ ==================== UPDATE INVOICE ====================
+    public function update(Request $request, $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            Log::info('Invoice update request received:', $request->all());
+
+            $validated = $request->validate([
+                'subtotal' => 'sometimes|numeric|min:0',
+                'discount' => 'sometimes|numeric|min:0',
+                'discount_note' => 'nullable|string|max:255',
+                'total_amount' => 'sometimes|numeric|min:0',
+                'paid_amount' => 'sometimes|numeric|min:0',
+                'remaining_amount' => 'sometimes|numeric|min:0',
+                'payment_method' => 'sometimes|string|max:50',
+                'status' => 'sometimes|string|max:20'
+            ]);
+
+            $invoice = Invoice::findOrFail($id);
+
+            // Update invoice
+            $invoice->update([
+                'subtotal' => $validated['subtotal'] ?? $invoice->subtotal,
+                'discount' => $validated['discount'] ?? $invoice->discount,
+                'discount_note' => $validated['discount_note'] ?? $invoice->discount_note,
+                'total_amount' => $validated['total_amount'] ?? $invoice->total_amount,
+                'paid_amount' => $validated['paid_amount'] ?? $invoice->paid_amount,
+                'remaining_amount' => $validated['remaining_amount'] ?? $invoice->remaining_amount,
+                'payment_method' => $validated['payment_method'] ?? $invoice->payment_method,
+                'status' => $validated['status'] ?? $invoice->status,
+                'updated_at' => Carbon::now()
+            ]);
+
+            DB::commit();
+
+            Log::info('✅ Invoice updated: ID ' . $invoice->id);
+
+            // Fetch updated invoice with items
+            $updatedInvoice = Invoice::with('items')->find($id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invoice updated successfully',
+                'data' => [
+                    'id' => $updatedInvoice->id,
+                    'invoice_no' => $updatedInvoice->invoice_no,
+                    'invoice_date' => $updatedInvoice->invoice_date,
+                    'subtotal' => $updatedInvoice->subtotal ?? 0,
+                    'discount' => $updatedInvoice->discount ?? 0,
+                    'discount_note' => $updatedInvoice->discount_note,
+                    'total_amount' => $updatedInvoice->total_amount,
+                    'paid_amount' => $updatedInvoice->paid_amount,
+                    'remaining_amount' => $updatedInvoice->remaining_amount,
+                    'payment_method' => $updatedInvoice->payment_method,
+                    'status' => $updatedInvoice->status,
+                    'customer_name' => $updatedInvoice->customer_name,
+                    'customer_phone' => $updatedInvoice->customer_phone,
+                    'customer_car_number' => $updatedInvoice->customer_car_number,
+                    'customer_car_model' => $updatedInvoice->customer_car_model,
+                    'items' => $updatedInvoice->items->map(function($item) {
+                        return [
+                            'id' => $item->id,
+                            'service_name' => $item->service_name,
+                            'service_category' => $item->service_category,
+                            'quantity' => $item->quantity,
+                            'price' => $item->price,
+                            'total' => $item->total
+                        ];
+                    })
+                ]
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            Log::error('❌ Validation error:', $e->errors());
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Invoice not found'
+            ], 404);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('❌ Invoice update error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update invoice: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -288,6 +403,9 @@ class InvoiceController extends Controller
                     'id' => $invoice->id,
                     'invoice_no' => $invoice->invoice_no,
                     'invoice_date' => $invoice->invoice_date,
+                    'subtotal' => $invoice->subtotal ?? 0,
+                    'discount' => $invoice->discount ?? 0,
+                    'discount_note' => $invoice->discount_note,
                     'total_amount' => $invoice->total_amount,
                     'paid_amount' => $invoice->paid_amount,
                     'remaining_amount' => $invoice->remaining_amount,
@@ -352,21 +470,17 @@ class InvoiceController extends Controller
 
     // ✅ ==================== PENDING PAYMENTS ====================
 
-    // ✅ FIXED: Get all pending payments (status = 'Partial' or 'Pending')
     public function getPendingPayments()
     {
         try {
-            // ✅ Get invoices with Partial or Pending status (not just remaining_amount > 0)
             $pendingInvoices = Invoice::whereIn('status', ['Partial', 'Pending'])
                 ->with('items')
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // ✅ Debug log
             Log::info('Pending payments found: ' . $pendingInvoices->count());
 
             $transformed = $pendingInvoices->map(function($invoice) {
-                // ✅ Ensure remaining_amount is properly set
                 $remaining = (float) $invoice->remaining_amount;
                 if ($remaining < 0) {
                     $remaining = 0;
@@ -379,6 +493,9 @@ class InvoiceController extends Controller
                     'customer_phone' => $invoice->customer_phone,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
+                    'subtotal' => $invoice->subtotal ?? 0,
+                    'discount' => $invoice->discount ?? 0,
+                    'discount_note' => $invoice->discount_note,
                     'total_amount' => (float) $invoice->total_amount,
                     'paid_amount' => (float) $invoice->paid_amount,
                     'remaining_amount' => $remaining,
@@ -408,7 +525,6 @@ class InvoiceController extends Controller
         }
     }
 
-    // ✅ Update pending payment (add payment)
     public function updatePendingPayment(Request $request, $id)
     {
         try {
@@ -418,7 +534,6 @@ class InvoiceController extends Controller
 
             $invoice = Invoice::findOrFail($id);
             
-            // Check if amount is not more than remaining
             if ($request->amount > $invoice->remaining_amount) {
                 return response()->json([
                     'success' => false,
@@ -426,11 +541,9 @@ class InvoiceController extends Controller
                 ], 400);
             }
 
-            // Update paid and remaining amounts
             $newPaidAmount = $invoice->paid_amount + $request->amount;
             $newRemainingAmount = $invoice->remaining_amount - $request->amount;
             
-            // Update status if fully paid
             if ($newRemainingAmount <= 0) {
                 $status = 'Paid';
                 $newRemainingAmount = 0;
@@ -454,6 +567,9 @@ class InvoiceController extends Controller
                     'id' => $invoice->id,
                     'invoice_no' => $invoice->invoice_no,
                     'customer_name' => $invoice->customer_name,
+                    'subtotal' => $invoice->subtotal ?? 0,
+                    'discount' => $invoice->discount ?? 0,
+                    'discount_note' => $invoice->discount_note,
                     'total_amount' => $invoice->total_amount,
                     'paid_amount' => $invoice->paid_amount,
                     'remaining_amount' => $invoice->remaining_amount,

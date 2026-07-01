@@ -4,7 +4,7 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
-  FiLogOut 
+  FiLogOut, FiCreditCard
 } from 'react-icons/fi';
 import { HiMenu, HiX } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
@@ -19,8 +19,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
 
-  // ✅ Admin menu items (Correct Sequence)
-  // 1. Dashboard → 2. Inventory → 3. Finance → 4. Billing → 5. Reminders → 6. Records → 7. Users
+  // Admin menu items
   const adminMenuItems = [
     { id: 'all-data', label: 'Dashboard', icon: FiHome, path: '/dashboard' },
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
@@ -31,21 +30,22 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'users', label: 'Users', icon: FiUsers, path: '/users' },
   ];
 
-  // ✅ Employee menu items (without Dashboard, Finance, Records, Users)
+  // Employee menu items
   const employeeMenuItems = [
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
   ];
 
-  // Finance Submenu (Admin only)
+  // Finance Submenu - All red theme, no purple, no "New" badge
   const financeSubmenu = [
     { id: 'finance-overview', label: 'Overview', icon: FiTrendingUp, path: '/finance' },
     { id: 'finance-expenses', label: 'Expenses', icon: FiList, path: '/finance-expenses' },
     { id: 'finance-charts', label: 'Charts', icon: FiPieChart, path: '/finance-charts' },
+    { id: 'finance-credit', label: 'Credit', icon: FiCreditCard, path: '/finance-credit' },
   ];
 
-  // ✅ Fetch user data
+  // Fetch user data
   const fetchUserData = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -68,7 +68,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // ✅ Fetch reminder count
+  // Fetch reminder count
   const fetchReminderCount = async () => {
     try {
       const birthdayRes = await api.get('/birthday-reminders/today');
@@ -85,7 +85,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // ✅ Logout
+  // Logout
   const handleLogout = async () => {
     try {
       await api.post('/logout');
@@ -120,7 +120,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     img.onerror = () => setLogoExists(false);
   }, []);
 
-  // ✅ Fetch user data and reminder count on mount
+  // Fetch user data and reminder count on mount
   useEffect(() => {
     fetchUserData();
     fetchReminderCount();
@@ -168,7 +168,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     setIsOpen(!isOpen);
   };
 
-  // ✅ All menu items based on role with correct sequence
   const allMenuItems = isAdmin ? adminMenuItems : employeeMenuItems;
 
   return (
@@ -232,7 +231,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   )}
                 </button>
                 
-                {/* Finance Submenu - Admin only */}
+                {/* Finance Submenu - Admin only - All red theme */}
                 {isOpen && isAdmin && item.hasSubmenu && isFinanceOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {financeSubmenu.map((subItem) => {
@@ -267,7 +266,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
           })}
         </div>
 
-        {/* ✅ User Profile Section - Bottom */}
+        {/* User Profile Section - Bottom */}
         <div className="border-t border-gray-800">
           {isOpen ? (
             <div className="p-4">

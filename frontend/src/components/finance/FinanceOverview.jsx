@@ -1,6 +1,6 @@
 // src/components/finance/FinanceOverview.jsx
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { FiCalendar, FiTrendingUp, FiDollarSign, FiPackage, FiBarChart2, FiChevronDown, FiChevronUp, FiDownload, FiFileText, FiLoader, FiClock, FiTrendingDown, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { FiCalendar, FiTrendingUp, FiDollarSign, FiPackage, FiBarChart2, FiChevronDown, FiChevronUp, FiDownload, FiFileText, FiLoader, FiClock, FiTrendingDown, FiChevronLeft, FiChevronRight, FiPercent, FiGift } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
@@ -174,10 +174,10 @@ const FinanceOverview = ({ darkMode }) => {
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
   
-  const [todaySales, setTodaySales] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
-  const [weeklySales, setWeeklySales] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
-  const [monthlySales, setMonthlySales] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
-  const [selectedYearData, setSelectedYearData] = useState({ total: 0, items: 0, count: 0, profit: 0, details: [] });
+  const [todaySales, setTodaySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
+  const [weeklySales, setWeeklySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
+  const [monthlySales, setMonthlySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
+  const [selectedYearData, setSelectedYearData] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
   
   const [todayExpenseDetails, setTodayExpenseDetails] = useState([]);
   const [weekExpenseDetails, setWeekExpenseDetails] = useState([]);
@@ -190,9 +190,12 @@ const FinanceOverview = ({ darkMode }) => {
     weekExpenseCount: 0,
     monthExpenses: 0,
     monthExpenseCount: 0,
-    monthRevenue: 0,
+    todayProfit: 0,
+    weekProfit: 0,
     monthProfit: 0,
-    monthMargin: 0
+    todayDiscount: 0,
+    weekDiscount: 0,
+    monthDiscount: 0
   });
 
   // Memoized helper functions
@@ -268,7 +271,6 @@ const FinanceOverview = ({ darkMode }) => {
     setError(null);
     
     try {
-      // Fetch all data in parallel with Promise.all
       const [productsList, expensesList, invoicesList] = await Promise.all([
         fetchProducts(abortController.signal),
         fetchExpenses(abortController.signal),
@@ -279,12 +281,10 @@ const FinanceOverview = ({ darkMode }) => {
       const weekStart = getStartOfWeek();
       const monthStart = getStartOfMonth();
       
-      // Process invoices efficiently
-      let todayTotal = 0, todayItems = 0, todayProfit = 0, todayDetails = [];
-      let weekTotal = 0, weekItems = 0, weekProfit = 0, weekDetails = [];
-      let monthTotal = 0, monthItems = 0, monthProfit = 0, monthDetails = [];
+      let todayTotal = 0, todayItems = 0, todayProfit = 0, todayDiscount = 0, todayDetails = [];
+      let weekTotal = 0, weekItems = 0, weekProfit = 0, weekDiscount = 0, weekDetails = [];
+      let monthTotal = 0, monthItems = 0, monthProfit = 0, monthDiscount = 0, monthDetails = [];
       
-      // Create a map for faster product lookup
       const productsMap = new Map();
       productsList.forEach(p => {
         productsMap.set(p.name, p);
@@ -302,6 +302,7 @@ const FinanceOverview = ({ darkMode }) => {
         let invTotal = parseFloat(inv.total_amount) || 0;
         let invProfit = 0;
         let itemCount = 0;
+        let invDiscount = parseFloat(inv.discount) || 0;
         
         if (inv.items && inv.items.length > 0) {
           inv.items.forEach(item => {
@@ -335,6 +336,7 @@ const FinanceOverview = ({ darkMode }) => {
           date: inv.invoice_date,
           total: invTotal,
           profit: invProfit,
+          discount: invDiscount,
           items: inv.items || [],
           itemCount: itemCount
         };
@@ -343,27 +345,29 @@ const FinanceOverview = ({ darkMode }) => {
           todayTotal += invTotal;
           todayItems += itemCount;
           todayProfit += invProfit;
+          todayDiscount += invDiscount;
           todayDetails.push(detailItem);
         }
         if (isThisWeek) {
           weekTotal += invTotal;
           weekItems += itemCount;
           weekProfit += invProfit;
+          weekDiscount += invDiscount;
           weekDetails.push(detailItem);
         }
         if (isThisMonth) {
           monthTotal += invTotal;
           monthItems += itemCount;
           monthProfit += invProfit;
+          monthDiscount += invDiscount;
           monthDetails.push(detailItem);
         }
       });
       
-      setTodaySales({ total: todayTotal, items: todayItems, count: todayDetails.length, profit: todayProfit, details: todayDetails });
-      setWeeklySales({ total: weekTotal, items: weekItems, count: weekDetails.length, profit: weekProfit, details: weekDetails });
-      setMonthlySales({ total: monthTotal, items: monthItems, count: monthDetails.length, profit: monthProfit, details: monthDetails });
+      setTodaySales({ total: todayTotal, items: todayItems, count: todayDetails.length, profit: todayProfit, discount: todayDiscount, details: todayDetails });
+      setWeeklySales({ total: weekTotal, items: weekItems, count: weekDetails.length, profit: weekProfit, discount: weekDiscount, details: weekDetails });
+      setMonthlySales({ total: monthTotal, items: monthItems, count: monthDetails.length, profit: monthProfit, discount: monthDiscount, details: monthDetails });
       
-      // Process expenses
       let todayExp = 0, todayExpCount = 0, todayExpList = [];
       let weekExp = 0, weekExpCount = 0, weekExpList = [];
       let monthExp = 0, monthExpCount = 0, monthExpList = [];
@@ -401,9 +405,9 @@ const FinanceOverview = ({ darkMode }) => {
       setWeekExpenseDetails(weekExpList);
       setMonthExpenseDetails(monthExpList);
       
-      const monthRevenue = monthTotal;
+      const todayNetProfit = todayProfit - todayExp;
+      const weekNetProfit = weekProfit - weekExp;
       const monthNetProfit = monthProfit - monthExp;
-      const monthMargin = monthRevenue > 0 ? (monthNetProfit / monthRevenue) * 100 : 0;
       
       setStats({
         todayExpenses: todayExp,
@@ -412,24 +416,27 @@ const FinanceOverview = ({ darkMode }) => {
         weekExpenseCount: weekExpCount,
         monthExpenses: monthExp,
         monthExpenseCount: monthExpCount,
-        monthRevenue: monthRevenue,
+        todayProfit: todayNetProfit,
+        weekProfit: weekNetProfit,
         monthProfit: monthNetProfit,
-        monthMargin: monthMargin
+        todayDiscount: todayDiscount,
+        weekDiscount: weekDiscount,
+        monthDiscount: monthDiscount
       });
       
-      // Process yearly data
       const year = selectedYear;
       const yearInvoices = invoicesList.filter(inv => {
         if (!inv.invoice_date) return false;
         return new Date(inv.invoice_date).getFullYear() === year;
       });
       
-      let yearlyTotal = 0, yearlyItems = 0, yearlyProfit = 0, yearlyDetails = [];
+      let yearlyTotal = 0, yearlyItems = 0, yearlyProfit = 0, yearlyDiscount = 0, yearlyDetails = [];
       
       yearInvoices.forEach(inv => {
         let invTotal = parseFloat(inv.total_amount) || 0;
         let invProfit = 0;
         let itemCount = 0;
+        let invDiscount = parseFloat(inv.discount) || 0;
         
         if (inv.items && inv.items.length > 0) {
           inv.items.forEach(item => {
@@ -460,18 +467,20 @@ const FinanceOverview = ({ darkMode }) => {
         yearlyTotal += invTotal;
         yearlyItems += itemCount;
         yearlyProfit += invProfit;
+        yearlyDiscount += invDiscount;
         yearlyDetails.push({
           invoiceNo: inv.invoice_no,
           customer: inv.customer_name,
           date: inv.invoice_date,
           total: invTotal,
           profit: invProfit,
+          discount: invDiscount,
           items: inv.items || [],
           itemCount: itemCount
         });
       });
       
-      setSelectedYearData({ total: yearlyTotal, items: yearlyItems, count: yearInvoices.length, profit: yearlyProfit, details: yearlyDetails });
+      setSelectedYearData({ total: yearlyTotal, items: yearlyItems, count: yearInvoices.length, profit: yearlyProfit, discount: yearlyDiscount, details: yearlyDetails });
       setCurrentPage(1);
       
     } catch (err) {
@@ -493,7 +502,6 @@ const FinanceOverview = ({ darkMode }) => {
     };
   }, [loadAllData]);
 
-  // Memoized flattened items for yearly report
   const flattenedItems = useMemo(() => {
     const items = [];
     selectedYearData.details.forEach(inv => {
@@ -504,7 +512,6 @@ const FinanceOverview = ({ darkMode }) => {
     return items;
   }, [selectedYearData.details]);
 
-  // Pagination logic
   const totalItems = flattenedItems.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -530,7 +537,6 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, [currentPage, totalPages]);
 
-  // Memoized export functions
   const exportToExcel = useCallback(() => {
     if (selectedYearData.details.length === 0) {
       toast.error('No data available for the selected year');
@@ -610,7 +616,7 @@ const FinanceOverview = ({ darkMode }) => {
 
   return (
     <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-      {/* Sales Overview Cards */}
+      {/* ✅ SALES CARDS - Blue */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayDetails(!showTodayDetails)}>
           <div className="flex justify-between items-start">
@@ -625,7 +631,7 @@ const FinanceOverview = ({ darkMode }) => {
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowWeekDetails(!showWeekDetails)}>
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowWeekDetails(!showWeekDetails)}>
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm opacity-90">This Week's Sales</p>
@@ -638,7 +644,7 @@ const FinanceOverview = ({ darkMode }) => {
           </div>
         </div>
         
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowMonthDetails(!showMonthDetails)}>
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowMonthDetails(!showMonthDetails)}>
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm opacity-90">This Month's Sales</p>
@@ -656,41 +662,41 @@ const FinanceOverview = ({ darkMode }) => {
       {showWeekDetails && <InvoiceDetails title="This Week's Sales" data={weeklySales} darkMode={darkMode} onClose={() => setShowWeekDetails(false)} />}
       {showMonthDetails && <InvoiceDetails title="This Month's Sales" data={monthlySales} darkMode={darkMode} onClose={() => setShowMonthDetails(false)} />}
 
-      {/* Expense Overview Cards */}
+      {/* ✅ EXPENSE CARDS - Red */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'} cursor-pointer hover:scale-105 transition-transform`} onClick={() => setShowTodayExpenses(!showTodayExpenses)}>
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayExpenses(!showTodayExpenses)}>
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-sm text-gray-500">Today's Expenses</p>
-              <p className="text-2xl font-bold text-red-500 mt-2">Rs. {stats.todayExpenses.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">{stats.todayExpenseCount} transactions</p>
+              <p className="text-sm opacity-90">Today's Expenses</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.todayExpenses.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1">{stats.todayExpenseCount} transactions</p>
               <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
             </div>
-            <FiTrendingDown className="text-3xl text-red-500 opacity-50" />
+            <FiTrendingDown className="text-3xl opacity-50" />
           </div>
         </div>
         
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'} cursor-pointer hover:scale-105 transition-transform`} onClick={() => setShowWeekExpenses(!showWeekExpenses)}>
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowWeekExpenses(!showWeekExpenses)}>
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-sm text-gray-500">This Week Expenses</p>
-              <p className="text-2xl font-bold text-orange-500 mt-2">Rs. {stats.weekExpenses.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">{stats.weekExpenseCount} transactions</p>
+              <p className="text-sm opacity-90">This Week's Expenses</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.weekExpenses.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1">{stats.weekExpenseCount} transactions</p>
               <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
             </div>
-            <FiTrendingDown className="text-3xl text-orange-500 opacity-50" />
+            <FiTrendingDown className="text-3xl opacity-50" />
           </div>
         </div>
         
-        <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'} cursor-pointer hover:scale-105 transition-transform`} onClick={() => setShowMonthExpenses(!showMonthExpenses)}>
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowMonthExpenses(!showMonthExpenses)}>
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-sm text-gray-500">This Month Expenses</p>
-              <p className="text-2xl font-bold text-red-500 mt-2">Rs. {stats.monthExpenses.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">{stats.monthExpenseCount} transactions</p>
+              <p className="text-sm opacity-90">This Month's Expenses</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.monthExpenses.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1">{stats.monthExpenseCount} transactions</p>
               <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
             </div>
-            <FiTrendingDown className="text-3xl text-red-500 opacity-50" />
+            <FiTrendingDown className="text-3xl opacity-50" />
           </div>
         </div>
       </div>
@@ -699,15 +705,75 @@ const FinanceOverview = ({ darkMode }) => {
       {showWeekExpenses && <ExpenseDetails title="This Week's Expenses" expenses={weekExpenseDetails} darkMode={darkMode} onClose={() => setShowWeekExpenses(false)} />}
       {showMonthExpenses && <ExpenseDetails title="This Month's Expenses" expenses={monthExpenseDetails} darkMode={darkMode} onClose={() => setShowMonthExpenses(false)} />}
 
-      {/* Net Profit Card */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <div className="flex justify-between items-start">
-          <div>
-            <p className="text-sm text-gray-500">This Month Net Profit</p>
-            <p className="text-2xl font-bold text-green-500 mt-2">Rs. {stats.monthProfit?.toLocaleString() || 0}</p>
-            <p className="text-xs text-gray-500 mt-1">Margin: {stats.monthMargin?.toFixed(2) || 0}%</p>
+      {/* ✅ PROFIT CARDS - Green */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">Today's Profit</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.todayProfit?.toLocaleString() || 0}</p>
+              <p className="text-xs opacity-75 mt-1">After expenses</p>
+            </div>
+            <FiTrendingUp className="text-3xl opacity-50" />
           </div>
-          <FiTrendingUp className="text-3xl text-green-500 opacity-50" />
+        </div>
+        
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">This Week's Profit</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.weekProfit?.toLocaleString() || 0}</p>
+              <p className="text-xs opacity-75 mt-1">After expenses</p>
+            </div>
+            <FiTrendingUp className="text-3xl opacity-50" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">This Month's Profit</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.monthProfit?.toLocaleString() || 0}</p>
+              <p className="text-xs opacity-75 mt-1">After expenses</p>
+            </div>
+            <FiTrendingUp className="text-3xl opacity-50" />
+          </div>
+        </div>
+      </div>
+
+      {/* ✅ DISCOUNT CARDS - Light Blue */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">Today's Discount</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.todayDiscount?.toLocaleString() || 0}</p>
+              <p className="text-xs opacity-75 mt-1">Given today</p>
+            </div>
+            <FiGift className="text-3xl opacity-50" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">This Week's Discount</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.weekDiscount?.toLocaleString() || 0}</p>
+              <p className="text-xs opacity-75 mt-1">Given this week</p>
+            </div>
+            <FiGift className="text-3xl opacity-50" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">This Month's Discount</p>
+              <p className="text-3xl font-bold mt-2">Rs. {stats.monthDiscount?.toLocaleString() || 0}</p>
+              <p className="text-xs opacity-75 mt-1">Given this month</p>
+            </div>
+            <FiGift className="text-3xl opacity-50" />
+          </div>
         </div>
       </div>
 
@@ -716,21 +782,21 @@ const FinanceOverview = ({ darkMode }) => {
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className="text-sm text-gray-500">Revenue</p>
-            <p className="text-xl font-bold text-red-500">Rs. {monthlySales.total.toLocaleString()}</p>
+            <p className="text-xl font-bold text-blue-500">Rs. {monthlySales.total.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className="text-sm text-gray-500">Expenses</p>
-            <p className="text-xl font-bold text-orange-500">Rs. {stats.monthExpenses?.toLocaleString() || 0}</p>
+            <p className="text-xl font-bold text-red-500">Rs. {stats.monthExpenses?.toLocaleString() || 0}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className="text-sm text-gray-500">Gross Profit (Sales Only)</p>
-            <p className="text-xl font-bold text-green-500">Rs. {monthlySales.profit.toLocaleString()}</p>
+            <p className="text-sm text-gray-500">Discount Given</p>
+            <p className="text-xl font-bold text-sky-500">Rs. {monthlySales.discount.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className="text-sm text-gray-500">Net Profit (After Expenses)</p>
+            <p className="text-sm text-gray-500">Net Profit</p>
             <p className="text-xl font-bold text-green-500">Rs. {(monthlySales.profit - (stats.monthExpenses || 0)).toLocaleString()}</p>
           </div>
         </div>
@@ -752,7 +818,7 @@ const FinanceOverview = ({ darkMode }) => {
               <div className="flex gap-3 items-center">
                 <label className="text-sm font-medium">Select Year:</label>
                 <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
-                  {[2024, 2025, 2026].map(year => (<option key={year} value={year}>{year}</option>))}
+                  {[2024, 2025, 2026, 2027].map(year => (<option key={year} value={year}>{year}</option>))}
                 </select>
               </div>
               <div className="flex gap-3">
@@ -764,7 +830,7 @@ const FinanceOverview = ({ darkMode }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className="text-sm opacity-70">Total Sales</p>
-                <p className="text-2xl font-bold text-red-500">Rs. {selectedYearData.total.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-blue-500">Rs. {selectedYearData.total.toLocaleString()}</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className="text-sm opacity-70">Total Invoices</p>

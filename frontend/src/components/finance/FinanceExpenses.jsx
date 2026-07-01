@@ -1,6 +1,7 @@
 // src/components/finance/FinanceExpenses.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import ExpensesRecord from './ExpensesRecord';
+import EmployeeSalary from './EmployeeSalary';
 import { FiLoader } from 'react-icons/fi';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -9,8 +10,9 @@ const FinanceExpenses = ({ darkMode }) => {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('expenses');
 
-  // Fetch expenses from API - Optimized with useCallback
+  // Fetch expenses from API
   const fetchExpenses = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -30,7 +32,7 @@ const FinanceExpenses = ({ darkMode }) => {
     }
   }, []);
 
-  // Add new expense - Optimized with useCallback
+  // Add new expense
   const handleAddExpense = useCallback(async (expenseData) => {
     try {
       const response = await api.post('/expenses', {
@@ -56,7 +58,7 @@ const FinanceExpenses = ({ darkMode }) => {
     }
   }, [fetchExpenses]);
 
-  // Update existing expense - Optimized with useCallback
+  // Update existing expense
   const handleUpdateExpense = useCallback(async (updatedExpense) => {
     try {
       const response = await api.put(`/expenses/${updatedExpense.id}`, {
@@ -82,7 +84,7 @@ const FinanceExpenses = ({ darkMode }) => {
     }
   }, [fetchExpenses]);
 
-  // Load expenses on component mount
+  // Load data on component mount
   useEffect(() => {
     fetchExpenses();
   }, [fetchExpenses]);
@@ -92,7 +94,7 @@ const FinanceExpenses = ({ darkMode }) => {
       <div className={`min-h-[400px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
         <div className="text-center">
           <FiLoader className="text-5xl text-red-500 animate-spin mx-auto mb-4" />
-          <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading expenses...</p>
+          <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading...</p>
         </div>
       </div>
     );
@@ -100,12 +102,43 @@ const FinanceExpenses = ({ darkMode }) => {
 
   return (
     <div className="space-y-6">
-      <ExpensesRecord 
-        expenses={expenses} 
-        onAddExpense={handleAddExpense} 
-        onUpdateExpense={handleUpdateExpense} 
-        darkMode={darkMode} 
-      />
+      {/* Tabs */}
+      <div className={`flex gap-2 p-1 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+        <button
+          onClick={() => setActiveTab('expenses')}
+          className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
+            activeTab === 'expenses'
+              ? 'bg-red-500 text-white shadow-lg'
+              : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          📋 Other Expenses
+        </button>
+        <button
+          onClick={() => setActiveTab('salaries')}
+          className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition ${
+            activeTab === 'salaries'
+              ? 'bg-red-500 text-white shadow-lg'
+              : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          👨‍💼 Employee Salaries
+        </button>
+      </div>
+
+      {/* Content */}
+      {activeTab === 'expenses' ? (
+        <ExpensesRecord 
+          expenses={expenses} 
+          onAddExpense={handleAddExpense} 
+          onUpdateExpense={handleUpdateExpense} 
+          darkMode={darkMode} 
+        />
+      ) : (
+        <EmployeeSalary 
+          darkMode={darkMode}  // ✅ Sirf darkMode pass karo, EmployeeSalary apne aap data fetch karega
+        />
+      )}
       
       {error && (
         <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-center border border-red-200 dark:border-red-800">

@@ -484,7 +484,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                   <optgroup label="Fixed Monthly Expenses">
                     <option value="Rent">Rent</option>
                     <option value="Utilities">Utilities</option>
-                    <option value="Salary">Salary</option>
+                 
                   </optgroup>
                   <optgroup label="Other Expenses">
                     {otherCategories.map(cat => (

@@ -1,80 +1,290 @@
-// src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+ Route,
+  Navigate,
+} from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => {
+  const getDarkMode = () => {
     const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
-  });
 
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
+  };
+
+  // ✅ CHANGE 1: admin_data → user
+  const getUserFromStorage = () => {
+    const user = localStorage.getItem('user');
+
+    if (user) {
+      try {
+        return JSON.parse(user);
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  };
+
+  const [darkMode, setDarkMode] = useState(getDarkMode);
+
+  // ✅ CHANGE 2: admin_token → token
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem('token');
   });
 
   const [userRole, setUserRole] = useState(() => {
-    const user = localStorage.getItem('user');
-    return user ? JSON.parse(user)?.role : null;
+    const user = getUserFromStorage();
+    return user?.role || null;
   });
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
-    localStorage.setItem('darkMode', JSON.stringify(!darkMode));
+    localStorage.setItem(
+      'darkMode',
+      JSON.stringify(!darkMode)
+    );
   };
 
   useEffect(() => {
+    // ✅ CHANGE 3: admin_token → token
     const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
+    const user = getUserFromStorage();
+
+    console.log('====================');
+    console.log('APP MOUNTED');
+    console.log('TOKEN:', token);
+    console.log('USER:', user);
+    console.log('====================');
+
     setIsAuthenticated(!!token);
+
     if (user) {
-      setUserRole(JSON.parse(user)?.role);
+      setUserRole(user.role);
     }
   }, []);
 
   const ProtectedRoute = ({ children }) => {
+    // ✅ CHANGE 4: admin_token → token
     const token = localStorage.getItem('token');
+
+    console.log(
+      'ProtectedRoute Token:',
+      token
+    );
+
     if (!token) {
       return <Navigate to="/" replace />;
     }
-    return children;
-  };
 
-  // ✅ Get redirect path based on role
-  const getDefaultPath = () => {
-    const user = localStorage.getItem('user');
-    const role = user ? JSON.parse(user)?.role : null;
-    
-    if (role === 'employee') {
-      return '/billing';
-    }
-    return '/dashboard';
+    return children;
   };
 
   return (
     <Router>
-      <Toaster 
+      <Toaster
         position="top-right"
         toastOptions={{
           duration: 3000,
           style: {
-            background: darkMode ? '#1f2937' : '#fff',
-            color: darkMode ? '#fff' : '#333',
+            background: darkMode
+              ? '#1f2937'
+              : '#fff',
+            color: darkMode
+              ? '#fff'
+              : '#333',
           },
         }}
       />
+
       <Routes>
-        {/* Public Route - Login */}
-        <Route path="/" element={<Login />} />
-        
-        {/* ✅ ALL Protected Routes - Dashboard handles everything */}
-        <Route path="/*" element={
-          <ProtectedRoute>
-            <Dashboard darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
-          </ProtectedRoute>
-        } />
+
+        {/* Login */}
+        <Route
+          path="/"
+          element={
+            // ✅ CHANGE 5: admin_token → token
+            localStorage.getItem('token')
+              ? (
+                  <Navigate
+                    to="/dashboard"
+                    replace
+                  />
+                )
+              : (
+                  <Login />
+                )
+          }
+        />
+
+        {/* Dashboard */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/billing"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/inventory"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/records"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/finance"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/finance-expenses"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/finance-charts"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/finance-credit"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/finance-reminders"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/reminders"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/users"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Fallback */}
+        <Route
+          path="*"
+          element={
+            // ✅ CHANGE 6: admin_token → token
+            localStorage.getItem('token')
+              ? (
+                  <Navigate
+                    to="/dashboard"
+                    replace
+                  />
+                )
+              : (
+                  <Navigate
+                    to="/"
+                    replace
+                  />
+                )
+          }
+        />
+
       </Routes>
     </Router>
   );

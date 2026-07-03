@@ -111,10 +111,19 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [userRole, setUserRole] = useState(null);
   
-  // Get default menu based on role
+  // ✅ FIX 1: Safe getDefaultMenu with try-catch
   const getDefaultMenu = () => {
-    const user = localStorage.getItem('user');
-    const role = user ? JSON.parse(user)?.role : null;
+    const userData = localStorage.getItem('user');
+    let role = null;
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        role = user?.role;
+      } catch (e) {
+        console.error('Error parsing user:', e);
+        role = null;
+      }
+    }
     return role === 'employee' ? 'billing' : 'all-data';
   };
   
@@ -137,17 +146,20 @@ const Dashboard = () => {
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
 
-  // Check user role on mount
+  // ✅ FIX 2: Safe useEffect with try-catch
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (user) {
-      const userData = JSON.parse(user);
-      setUserRole(userData.role);
-      
-      if (userData.role === 'employee') {
-        setActiveMenu('billing');
-      } else {
-        setActiveMenu('all-data');
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        setUserRole(user.role);
+        if (user.role === 'employee') {
+          setActiveMenu('billing');
+        } else {
+          setActiveMenu('all-data');
+        }
+      } catch (e) {
+        console.error('Error parsing user:', e);
       }
     }
   }, []);

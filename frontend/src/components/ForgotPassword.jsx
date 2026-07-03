@@ -28,12 +28,15 @@ const ForgotPassword = ({ onBack }) => {
         email: resetEmail
       });
       
-      if (response.data.success) {
-        setResetToken(response.data.token);
+      const data = response.data;  // ✅ CHANGE 1
+      
+      // ✅ FIX: success check hatao, token check karo
+      if (data && data.token) {
+        setResetToken(data.token);
         setOtpSent(true);
-        toast.success(response.data.message || `OTP sent to ${resetEmail}`);
+        toast.success(data.message || `OTP sent to ${resetEmail}`);
       } else {
-        toast.error(response.data.message || 'Failed to send OTP');
+        toast.error(data?.message || 'Failed to send OTP');
       }
     } catch (error) {
       console.error('Forgot password error:', error);
@@ -71,27 +74,30 @@ const ForgotPassword = ({ onBack }) => {
         otp: otpCode
       });
       
-      if (!verifyResponse.data.success) {
-        toast.error(verifyResponse.data.message || 'Invalid OTP');
+      const vData = verifyResponse.data;  // ✅ CHANGE 2
+      
+      // ✅ FIX: success check hatao, token check karo
+      if (vData && vData.token) {
+        const token = vData.token;
+        
+        // Then reset password
+        const resetResponse = await api.post('/reset-password', {
+          email: resetEmail,
+          token: token,
+          password: newPassword,
+          password_confirmation: confirmPassword
+        });
+        
+        if (resetResponse.data.success) {
+          toast.success(resetResponse.data.message || 'Password reset successful! Please login');
+          onBack();
+        } else {
+          toast.error(resetResponse.data.message || 'Reset failed');
+        }
+      } else {
+        toast.error(vData?.message || 'Invalid OTP');
         setLoading(false);
         return;
-      }
-      
-      const token = verifyResponse.data.token;
-      
-      // Then reset password
-      const resetResponse = await api.post('/reset-password', {
-        email: resetEmail,
-        token: token,
-        password: newPassword,
-        password_confirmation: confirmPassword
-      });
-      
-      if (resetResponse.data.success) {
-        toast.success(resetResponse.data.message || 'Password reset successful! Please login');
-        onBack();
-      } else {
-        toast.error(resetResponse.data.message || 'Reset failed');
       }
     } catch (error) {
       console.error('Reset error:', error);

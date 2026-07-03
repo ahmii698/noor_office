@@ -31,10 +31,26 @@ api.interceptors.request.use(
     }
 );
 
-// Response interceptor - Handle responses and errors
+// ✅ FIXED Response interceptor - Clean // from response
 api.interceptors.response.use(
     (response) => {
         console.log(`[API Response] ${response.status} ${response.config.url}`);
+        
+        // ✅ FIX: Agar response.data string hai toh clean karo
+        if (typeof response.data === 'string') {
+            try {
+                let cleanData = response.data.trim();
+                // Remove // from beginning if present
+                if (cleanData.startsWith('//')) {
+                    cleanData = cleanData.substring(2);
+                }
+                response.data = JSON.parse(cleanData);
+                console.log('✅ Cleaned response:', response.data);
+            } catch (e) {
+                console.error('Error parsing response:', e);
+            }
+        }
+        
         return response;
     },
     (error) => {

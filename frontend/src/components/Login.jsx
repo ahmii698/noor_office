@@ -1,4 +1,3 @@
-// src/components/Login.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -8,161 +7,150 @@ import api from '../services/api';
 
 const Login = () => {
   const navigate = useNavigate();
-  const [credentials, setCredentials] = useState({ email: '', password: '' });
+  const [credentials, setCredentials] = useState({
+    email: '',
+    password: '',
+  });
+
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    
-    // Prevent browser autofill popup
-    e.stopPropagation();
-    
+
     if (!credentials.email || !credentials.password) {
       toast.error('Please enter email and password');
       return;
     }
 
     setLoading(true);
-    
+
     try {
       const response = await api.post('/login', {
         email: credentials.email,
-        password: credentials.password
+        password: credentials.password,
       });
-      
-      if (response.data.success && response.data.token) {
-        // Save token and user data
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      const data = response.data;
+
+      console.log('📥 Login Response:', data);
+      console.log('📥 Token:', data?.token);
+
+      if (data && data.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('isLoggedIn', 'true');
-        
-        toast.success(response.data.message || 'Login Successful!');
-        
-        // ✅ Role-based redirect
-        const userRole = response.data.user?.role;
-        if (userRole === 'employee') {
-          navigate('/billing');
-        } else {
-          navigate('/dashboard');
-        }
-      } else {
-        toast.error(response.data.message || 'Login failed');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      
-      // Handle different error cases
-      if (error.response) {
-        const status = error.response.status;
-        const message = error.response.data?.message;
-        
-        if (status === 401) {
-          if (message === 'Account not found. Please check your email address.') {
-            toast.error('Account not found. Please check your email address.');
-          } else if (message === 'Wrong password! Please try again.') {
-            toast.error('Wrong password! Please try again.');
-          } else if (message === 'Invalid password') {
-            toast.error('Wrong password! Please try again.');
+
+        console.log('✅ Token saved:', localStorage.getItem('token'));
+        console.log('✅ User saved:', localStorage.getItem('user'));
+
+        toast.success(data.message || 'Login Successful!');
+
+        // ✅ FIX: window.location.href use karo
+        setTimeout(() => {
+          if (data.user?.role === 'employee') {
+            window.location.href = '/billing';
           } else {
-            toast.error('Invalid email or password. Please try again.');
+            window.location.href = '/dashboard';
           }
-        } else if (status === 422) {
-          toast.error('Please enter valid email and password.');
-        } else if (status === 500) {
-          toast.error('Server error. Please try again later.');
-        } else {
-          toast.error(message || 'Login failed. Please try again.');
-        }
-      } else if (error.request) {
-        toast.error('Cannot connect to server. Please make sure backend is running on port 8000');
+        }, 300);
+
       } else {
-        toast.error('Something went wrong. Please try again.');
+        console.log('❌ Token missing');
+        toast.error(data?.message || 'Login failed');
       }
+
+    } catch (error) {
+      console.error('❌ Login Error:', error);
+      toast.error('Login failed');
     } finally {
       setLoading(false);
     }
   };
 
   if (showForgotPassword) {
-    return <ForgotPassword onBack={() => setShowForgotPassword(false)} />;
+    return (
+      <ForgotPassword
+        onBack={() => setShowForgotPassword(false)}
+      />
+    );
   }
 
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Background Image */}
-      <div 
+      <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ 
+        style={{
           backgroundImage: "url('/car.jfif')",
           backgroundSize: 'cover',
-          backgroundPosition: 'center'
+          backgroundPosition: 'center',
         }}
       >
         <div className="absolute inset-0 bg-black/60"></div>
       </div>
 
-      {/* Modal */}
       <div className="relative z-10 w-full max-w-md px-4">
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden transform transition-all duration-500">
-          {/* Modal Header - Logo */}
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden">
           <div className="w-full">
-            <img 
-              src="/logo.jpg" 
-              alt="Noorani Logo" 
+            <img
+              src="/logo.jpg"
+              alt="Noorani Logo"
               className="w-full h-32 object-cover"
               onError={(e) => {
                 e.target.style.display = 'none';
-                e.target.parentElement.innerHTML = '<div class="text-center py-8 text-6xl">❄️</div>';
               }}
             />
           </div>
 
-          {/* Login Form */}
           <div className="p-6">
-            <form 
-              onSubmit={handleLogin} 
-              className="space-y-5" 
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck="false"
+            <form
+              onSubmit={handleLogin}
+              className="space-y-5"
             >
               <div className="relative">
-                <FiMail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+
                 <input
                   type="email"
-                  name="email"
                   placeholder="Email Address"
                   value={credentials.email}
-                  onChange={(e) => setCredentials({...credentials, email: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition"
+                  onChange={(e) =>
+                    setCredentials({
+                      ...credentials,
+                      email: e.target.value,
+                    })
+                  }
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
                   required
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
                 />
               </div>
-              
+
               <div className="relative">
-                <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+
                 <input
                   type="password"
-                  name="password"
                   placeholder="Password"
                   value={credentials.password}
-                  onChange={(e) => setCredentials({...credentials, password: e.target.value})}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition"
+                  onChange={(e) =>
+                    setCredentials({
+                      ...credentials,
+                      password: e.target.value,
+                    })
+                  }
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                  autoComplete="current-password"
                   required
-                  autoComplete="new-password"
                 />
               </div>
 
               <div className="text-right">
                 <button
                   type="button"
-                  onClick={() => setShowForgotPassword(true)}
-                  className="text-sm text-red-600 hover:text-red-800 hover:underline transition"
+                  onClick={() =>
+                    setShowForgotPassword(true)
+                  }
+                  className="text-sm text-red-600 hover:text-red-800"
                 >
                   Forgot Password?
                 </button>
@@ -171,9 +159,7 @@ const Login = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className={`w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold py-3 rounded-lg transition duration-300 flex items-center justify-center gap-2 ${
-                  loading ? 'opacity-70 cursor-not-allowed' : ''
-                }`}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>
@@ -182,12 +168,12 @@ const Login = () => {
                   </>
                 ) : (
                   <>
-                    <FiLogIn className="w-5 h-5" />
+                    <FiLogIn />
                     Login to Dashboard
                   </>
                 )}
               </button>
-              
+
               <div className="text-center text-sm text-gray-500">
                 <p>Demo: admin@noorani.com / 123456</p>
               </div>

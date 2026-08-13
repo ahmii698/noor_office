@@ -45,20 +45,20 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
 
   // ✅ Handle customer submit - Ensure birthday is passed
   const handleCustomerSubmit = async (details) => {
-    console.log('📝 Customer details received in Billing:', details); // Debug
+    console.log('📝 Customer details received in Billing:', details);
     
-    // ✅ Ensure all fields are set, especially birthday
+    // ✅ Ensure all fields are set, especially birthday and date
     const customerData = {
       name: details.name || '',
       phone: details.phone || '',
       email: details.email || '',
       carNumber: details.carNumber || '',
       carModel: details.carModel || '',
-      birthday: details.birthday || '', // ✅ Birthday properly passed
-      date: details.date || new Date().toISOString().split('T')[0]
+      birthday: details.birthday || '',
+      date: details.date || new Date().toISOString().split('T')[0] // ✅ Current date
     };
     
-    console.log('✅ Setting customer details with birthday:', customerData); // Debug
+    console.log('✅ Setting customer details with date:', customerData);
     setCustomerDetails(customerData);
     setStep(2);
   };
@@ -74,14 +74,14 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
         customer_email: invoiceData.customer_email,
         customer_car_number: invoiceData.customer_car_number,
         customer_car_model: invoiceData.customer_car_model,
-        customer_birthday: customerDetails?.birthday || null, // ✅ Send birthday
+        customer_birthday: customerDetails?.birthday || null,
         total_amount: invoiceData.total_amount,
         paid_amount: invoiceData.paid_amount,
         remaining_amount: invoiceData.remaining_amount,
         payment_method: invoiceData.payment_method,
         status: invoiceData.status,
         items: serviceItems,
-        invoice_date: new Date().toISOString()
+        invoice_date: customerDetails?.date || new Date().toISOString().split('T')[0] // ✅ Use customer date or current date
       });
       
       if (response.data) {
@@ -97,6 +97,14 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
     } finally {
       setLoading(false);
     }
+  };
+
+  // ✅ NEW: Called by BillingInvoice after a payment is successfully saved.
+  // Resets customer data + sends user back to Step 1 (empty form) so old
+  // Email/Car Number/Model/Birthday don't stay visible on screen.
+  const handlePaymentSuccess = () => {
+    setCustomerDetails(null);
+    setStep(1);
   };
 
   return (
@@ -120,6 +128,7 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
           customerDetails={customerDetails}
           darkMode={darkMode}
           onInvoiceComplete={handleInvoiceComplete}
+          onPaymentSuccess={handlePaymentSuccess}
           loading={loading}
         />
       )}

@@ -86,6 +86,22 @@ const getSalaryDateDisplay = (salaryDate) => {
   return `${salaryDate}${getDaySuffix(salaryDate)} of every month`;
 };
 
+// ✅ Format join date for display (d-m-Y)
+const formatJoinDate = (dateString) => {
+  if (!dateString) return '-';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch (e) {
+    return '-';
+  }
+};
+
 const EmployeeSalary = ({ darkMode }) => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +120,8 @@ const EmployeeSalary = ({ darkMode }) => {
   const [formData, setFormData] = useState({
     name: '',
     monthly_salary: '',
-    salary_date: ''
+    salary_date: '',
+    join_date: ''   // ✅ new
   });
   
   const [paymentData, setPaymentData] = useState({
@@ -187,14 +204,15 @@ const EmployeeSalary = ({ darkMode }) => {
       const response = await api.post('/employees', {
         name: formData.name,
         monthly_salary: parseFloat(formData.monthly_salary),
-        salary_date: parseInt(formData.salary_date)
+        salary_date: parseInt(formData.salary_date),
+        join_date: formData.join_date || null   // ✅ new
       });
       
       if (response.data.success) {
         toast.success('Employee added successfully!');
         await fetchEmployees();
         setIsAddModalOpen(false);
-        setFormData({ name: '', monthly_salary: '', salary_date: '' });
+        setFormData({ name: '', monthly_salary: '', salary_date: '', join_date: '' });
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to add employee');
@@ -311,14 +329,15 @@ const EmployeeSalary = ({ darkMode }) => {
       const response = await api.put(`/employees/${selectedEmployee.id}`, {
         name: formData.name || selectedEmployee.name,
         monthly_salary: parseFloat(formData.monthly_salary) || selectedEmployee.monthly_salary,
-        salary_date: parseInt(formData.salary_date) || selectedEmployee.salary_date
+        salary_date: parseInt(formData.salary_date) || selectedEmployee.salary_date,
+        join_date: formData.join_date || null   // ✅ new
       });
       
       if (response.data.success) {
         toast.success('Employee updated successfully!');
         await fetchEmployees();
         setIsEditModalOpen(false);
-        setFormData({ name: '', monthly_salary: '', salary_date: '' });
+        setFormData({ name: '', monthly_salary: '', salary_date: '', join_date: '' });
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update employee');
@@ -417,6 +436,7 @@ const EmployeeSalary = ({ darkMode }) => {
                 <th className="employee-salary-text-right">Paid</th>
                 <th className="employee-salary-text-right">Balance</th>
                 <th>Salary Date</th>
+                <th>Join Date</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -424,7 +444,7 @@ const EmployeeSalary = ({ darkMode }) => {
             <tbody>
               {currentEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="employee-salary-empty">
+                  <td colSpan="8" className="employee-salary-empty">
                     <FiInbox className="employee-salary-empty-icon" />
                     <p>No employees found</p>
                     <p className="employee-salary-empty-sub">Click "Add Employee" to create your first record</p>
@@ -466,6 +486,11 @@ const EmployeeSalary = ({ darkMode }) => {
                         )}
                       </td>
                       <td>
+                        <span className="font-medium">
+                          {formatJoinDate(employee.join_date)}
+                        </span>
+                      </td>
+                      <td>
                         <span className={getStatusBadge(employee.status)}>
                           {employee.status}
                         </span>
@@ -491,7 +516,8 @@ const EmployeeSalary = ({ darkMode }) => {
                               setFormData({
                                 name: employee.name,
                                 monthly_salary: employee.monthly_salary,
-                                salary_date: employee.salary_date || ''
+                                salary_date: employee.salary_date || '',
+                                join_date: employee.join_date || ''   // ✅ new
                               });
                               setIsEditModalOpen(true);
                             }} 
@@ -623,6 +649,10 @@ const EmployeeSalary = ({ darkMode }) => {
                 <div className="employee-salary-summary-item">
                   <p className="employee-salary-summary-label">Balance</p>
                   <p className="employee-salary-summary-value balance">Rs.{formatCurrency(selectedEmployee.balance_amount)}</p>
+                </div>
+                <div className="employee-salary-summary-item">
+                  <p className="employee-salary-summary-label">Join Date</p>
+                  <p className="employee-salary-summary-value total">{formatJoinDate(selectedEmployee.join_date)}</p>
                 </div>
                 <div className="employee-salary-summary-item">
                   <p className="employee-salary-summary-label">Status</p>
@@ -857,6 +887,15 @@ const EmployeeSalary = ({ darkMode }) => {
                   Salary will be due on this day every month (adjusted for short months)
                 </p>
               </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Join Date</label>
+                <input
+                  type="date"
+                  value={formData.join_date}
+                  onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                />
+              </div>
               <div className="employee-salary-form-actions">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
                 <button type="submit" className="employee-salary-btn-submit" disabled={isSubmitting}>
@@ -917,6 +956,15 @@ const EmployeeSalary = ({ darkMode }) => {
                   min="1"
                   max="31"
                   required
+                />
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Join Date</label>
+                <input
+                  type="date"
+                  value={formData.join_date}
+                  onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
                 />
               </div>
               <div className="employee-salary-form-actions">

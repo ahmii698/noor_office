@@ -20,6 +20,71 @@ const debounce = (func, delay) => {
   };
 };
 
+// ✅ Helper: Get date range for filter (with custom date support)
+const getDateRange = (filter, customDate = null) => {
+  const now = new Date();
+  const start = new Date();
+  
+  // Custom date filter
+  if (filter === 'custom' && customDate) {
+    const date = new Date(customDate);
+    start.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+  
+  switch (filter) {
+    case 'today':
+      start.setHours(0, 0, 0, 0);
+      break;
+    case 'week':
+      const day = now.getDay();
+      const diff = (day === 0 ? 6 : day - 1);
+      start.setDate(now.getDate() - diff);
+      start.setHours(0, 0, 0, 0);
+      break;
+    case 'month':
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      break;
+    case 'year':
+      start.setMonth(0, 1);
+      start.setHours(0, 0, 0, 0);
+      break;
+    default:
+      return null;
+  }
+  return { start, end: now };
+};
+
+// ✅ Helper: Filter invoices by date range
+const filterInvoicesByDate = (invoices, filter, customDate = null) => {
+  if (filter === 'all' || !invoices || invoices.length === 0) return invoices;
+  const range = getDateRange(filter, customDate);
+  if (!range) return invoices;
+  
+  return invoices.filter(inv => {
+    if (!inv.invoice_date) return false;
+    const invDate = new Date(inv.invoice_date);
+    return invDate >= range.start && invDate <= range.end;
+  });
+};
+
+// ✅ Helper: Filter expenses by date range
+const filterExpensesByDate = (expenses, filter, customDate = null) => {
+  if (filter === 'all' || !expenses || expenses.length === 0) return expenses;
+  const range = getDateRange(filter, customDate);
+  if (!range) return expenses;
+  
+  return expenses.filter(exp => {
+    if (!exp.expense_date && !exp.date) return false;
+    const expDate = new Date(exp.expense_date || exp.date || exp.created_at);
+    return expDate >= range.start && expDate <= range.end;
+  });
+};
+
 // Memoized Invoice Details Component
 const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   if (!data?.details || data.details.length === 0) {
@@ -137,7 +202,7 @@ const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
                     {exp.category || 'General'}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-sm">{new Date(exp.date).toLocaleDateString()}</td>
+                <td className="px-3 py-2 text-sm">{new Date(exp.date || exp.expense_date).toLocaleDateString()}</td>
                 <td className="px-3 py-2 text-right font-semibold text-red-500">Rs. {exp.amount.toLocaleString()}</td>
                </tr>
             ))}
@@ -155,6 +220,11 @@ const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
 });
 
 const FinanceOverview = ({ darkMode }) => {
+  // ✅ Filter states
+  const [timeFilter, setTimeFilter] = useState('all');
+  const [customDate, setCustomDate] = useState('');
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showYearlyReport, setShowYearlyReport] = useState(true);
   const [showTodayDetails, setShowTodayDetails] = useState(false);
@@ -173,6 +243,16 @@ const FinanceOverview = ({ darkMode }) => {
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  
+  // ✅ Dynamic data states - updated based on filter
+  const [filteredSalesData, setFilteredSalesData] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
+  const [filteredExpenseData, setFilteredExpenseData] = useState([]);
+  const [filteredStats, setFilteredStats] = useState({
+    expenses: 0,
+    expenseCount: 0,
+    profit: 0,
+    discount: 0
+  });
   
   const [todaySales, setTodaySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
   const [weeklySales, setWeeklySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
@@ -198,6 +278,42 @@ const FinanceOverview = ({ darkMode }) => {
     monthDiscount: 0
   });
 
+  // ✅ Get filter label
+  const getFilterLabel = useCallback(() => {
+    const labels = {
+      all: 'All Time',
+      today: 'Today',
+      week: 'This Week',
+      month: 'This Month',
+      year: 'This Year',
+      custom: `Custom: ${customDate || 'Select Date'}`
+    };
+    return labels[timeFilter] || 'All Time';
+  }, [timeFilter, customDate]);
+
+  // ✅ Handle custom date change - FIXED: No page refresh, just update filter
+  const handleCustomDateChange = (e) => {
+    const date = e.target.value;
+    setCustomDate(date);
+    if (date) {
+      setTimeFilter('custom');
+      // ✅ Keep date picker open after selection
+      setShowCustomDate(true);
+    }
+  };
+
+  // ✅ Toggle custom date picker - FIXED: Toggle without closing on selection
+  const toggleCustomDate = () => {
+    setShowCustomDate(!showCustomDate);
+  };
+
+  // ✅ Clear custom date
+  const clearCustomDate = () => {
+    setCustomDate('');
+    setTimeFilter('all');
+    setShowCustomDate(false);
+  };
+
   // Memoized helper functions
   const getStartOfWeek = useCallback(() => {
     const today = new Date();
@@ -215,6 +331,84 @@ const FinanceOverview = ({ darkMode }) => {
     date.setHours(0, 0, 0, 0);
     return date;
   }, []);
+
+  // ✅ Calculate filtered data based on time filter
+  const calculateFilteredData = useCallback((invoicesList, expensesList, productsMap) => {
+    // Filter invoices by date
+    const filteredInvoices = filterInvoicesByDate(invoicesList, timeFilter, customDate || null);
+    const filteredExpenses = filterExpensesByDate(expensesList, timeFilter, customDate || null);
+    
+    let total = 0, items = 0, profit = 0, discount = 0, details = [];
+    
+    filteredInvoices.forEach(inv => {
+      let invTotal = parseFloat(inv.total_amount) || 0;
+      let invProfit = 0;
+      let itemCount = 0;
+      let invDiscount = parseFloat(inv.discount) || 0;
+      
+      if (inv.items && inv.items.length > 0) {
+        inv.items.forEach(item => {
+          const itemQty = parseInt(item.quantity) || 0;
+          const itemPrice = parseFloat(item.price) || 0;
+          itemCount += itemQty;
+          
+          let itemProfit = 0;
+          let purchasePrice = 0;
+          
+          const product = productsMap.get(item.service_name);
+          
+          if (product) {
+            purchasePrice = parseFloat(product.purchase_price) || 0;
+            itemProfit = (itemPrice - purchasePrice) * itemQty;
+          } else {
+            itemProfit = itemPrice * itemQty;
+            purchasePrice = 0;
+          }
+          
+          invProfit += itemProfit;
+          item.purchasePrice = purchasePrice;
+          item.isProduct = !!product;
+          item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
+        });
+      }
+      
+      total += invTotal;
+      items += itemCount;
+      profit += invProfit;
+      discount += invDiscount;
+      details.push({
+        invoiceNo: inv.invoice_no,
+        customer: inv.customer_name,
+        date: inv.invoice_date,
+        total: invTotal,
+        profit: invProfit,
+        discount: invDiscount,
+        items: inv.items || [],
+        itemCount: itemCount
+      });
+    });
+    
+    let expenseTotal = 0;
+    let expenseList = [];
+    filteredExpenses.forEach(exp => {
+      const amount = parseFloat(exp.amount) || 0;
+      expenseTotal += amount;
+      expenseList.push({
+        id: exp.id,
+        description: exp.description,
+        amount: amount,
+        date: exp.expense_date || exp.date || exp.created_at,
+        category: exp.category
+      });
+    });
+    
+    return {
+      sales: { total, items, count: details.length, profit, discount, details },
+      expenses: expenseList,
+      expenseTotal: expenseTotal,
+      expenseCount: expenseList.length
+    };
+  }, [timeFilter, customDate]);
 
   // Fetch functions with abort controller
   const fetchProducts = useCallback(async (signal) => {
@@ -277,6 +471,23 @@ const FinanceOverview = ({ darkMode }) => {
         fetchInvoices(abortController.signal)
       ]);
       
+      const productsMap = new Map();
+      productsList.forEach(p => {
+        productsMap.set(p.name, p);
+      });
+      
+      // ✅ Calculate filtered data based on selected filter
+      const filtered = calculateFilteredData(invoicesList, expensesList, productsMap);
+      setFilteredSalesData(filtered.sales);
+      setFilteredExpenseData(filtered.expenses);
+      setFilteredStats({
+        expenses: filtered.expenseTotal,
+        expenseCount: filtered.expenseCount,
+        profit: filtered.sales.profit - filtered.expenseTotal,
+        discount: filtered.sales.discount
+      });
+      
+      // Also calculate today, week, month for individual cards
       const todayStr = new Date().toDateString();
       const weekStart = getStartOfWeek();
       const monthStart = getStartOfMonth();
@@ -284,11 +495,6 @@ const FinanceOverview = ({ darkMode }) => {
       let todayTotal = 0, todayItems = 0, todayProfit = 0, todayDiscount = 0, todayDetails = [];
       let weekTotal = 0, weekItems = 0, weekProfit = 0, weekDiscount = 0, weekDetails = [];
       let monthTotal = 0, monthItems = 0, monthProfit = 0, monthDiscount = 0, monthDetails = [];
-      
-      const productsMap = new Map();
-      productsList.forEach(p => {
-        productsMap.set(p.name, p);
-      });
       
       invoicesList.forEach(inv => {
         if (!inv.invoice_date) return;
@@ -373,14 +579,13 @@ const FinanceOverview = ({ darkMode }) => {
       let monthExp = 0, monthExpCount = 0, monthExpList = [];
       
       expensesList.forEach(exp => {
-        if (!exp.expense_date) return;
-        const expDate = new Date(exp.expense_date);
+        const expDate = new Date(exp.expense_date || exp.date || exp.created_at);
         const amount = parseFloat(exp.amount) || 0;
         const expenseItem = {
           id: exp.id,
           description: exp.description,
           amount: amount,
-          date: exp.expense_date,
+          date: exp.expense_date || exp.date || exp.created_at,
           category: exp.category
         };
         
@@ -493,7 +698,7 @@ const FinanceOverview = ({ darkMode }) => {
     }
     
     return () => abortController.abort();
-  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, getStartOfWeek, getStartOfMonth]);
+  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, getStartOfWeek, getStartOfMonth, calculateFilteredData, timeFilter, customDate]);
 
   useEffect(() => {
     const cleanup = loadAllData();
@@ -616,7 +821,150 @@ const FinanceOverview = ({ darkMode }) => {
 
   return (
     <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-      {/* ✅ SALES CARDS - Blue */}
+      {/* ✅ FILTER BUTTONS with Custom Date - FIXED: Date picker stays open */}
+      <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className="flex items-center gap-2 mr-4">
+          <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+          <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Filter:</span>
+        </div>
+        <button
+          onClick={() => { setTimeFilter('all'); setShowCustomDate(false); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            timeFilter === 'all' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          All Time
+        </button>
+        <button
+          onClick={() => { setTimeFilter('today'); setShowCustomDate(false); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            timeFilter === 'today' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Today
+        </button>
+        <button
+          onClick={() => { setTimeFilter('week'); setShowCustomDate(false); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            timeFilter === 'week' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          This Week
+        </button>
+        <button
+          onClick={() => { setTimeFilter('month'); setShowCustomDate(false); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            timeFilter === 'month' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          This Month
+        </button>
+        <button
+          onClick={() => { setTimeFilter('year'); setShowCustomDate(false); }}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            timeFilter === 'year' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          This Year
+        </button>
+        
+        {/* Custom Date Button - FIXED: Toggle without closing on selection */}
+        <button
+          onClick={toggleCustomDate}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            timeFilter === 'custom' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          📅 Custom Date
+        </button>
+        
+        {/* Custom Date Input - FIXED: Stays open after selection */}
+        {showCustomDate && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={customDate}
+              onChange={handleCustomDateChange}
+              className={`px-3 py-2 rounded-lg text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+            />
+            {customDate && (
+              <button
+                onClick={clearCustomDate}
+                className="text-red-500 text-sm hover:text-red-600"
+              >
+                ✕ Clear
+              </button>
+            )}
+          </div>
+        )}
+        
+        <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
+        </span>
+      </div>
+
+      {/* ✅ DYNAMIC FILTERED SALES CARD */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">{getFilterLabel()} Sales</p>
+              <p className="text-3xl font-bold mt-2">Rs. {filteredSalesData.total.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1">{filteredSalesData.items} items sold</p>
+              <p className="text-xs opacity-75 mt-1">Profit: Rs. {filteredSalesData.profit.toLocaleString()}</p>
+            </div>
+            <FiDollarSign className="text-3xl opacity-50" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">{getFilterLabel()} Expenses</p>
+              <p className="text-3xl font-bold mt-2">Rs. {filteredStats.expenses.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1">{filteredStats.expenseCount} transactions</p>
+            </div>
+            <FiTrendingDown className="text-3xl opacity-50" />
+          </div>
+        </div>
+        
+        <div className={`bg-gradient-to-r ${filteredStats.profit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'} rounded-2xl p-6 text-white shadow-lg`}>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">{getFilterLabel()} Profit</p>
+              <p className="text-3xl font-bold mt-2">Rs. {filteredStats.profit.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1">After expenses</p>
+            </div>
+            <FiTrendingUp className="text-3xl opacity-50" />
+          </div>
+        </div>
+      </div>
+
+      {/* Today's Sales Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayDetails(!showTodayDetails)}>
           <div className="flex justify-between items-start">
@@ -662,7 +1010,7 @@ const FinanceOverview = ({ darkMode }) => {
       {showWeekDetails && <InvoiceDetails title="This Week's Sales" data={weeklySales} darkMode={darkMode} onClose={() => setShowWeekDetails(false)} />}
       {showMonthDetails && <InvoiceDetails title="This Month's Sales" data={monthlySales} darkMode={darkMode} onClose={() => setShowMonthDetails(false)} />}
 
-      {/* ✅ EXPENSE CARDS - Red */}
+      {/* Expense Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayExpenses(!showTodayExpenses)}>
           <div className="flex justify-between items-start">
@@ -705,7 +1053,7 @@ const FinanceOverview = ({ darkMode }) => {
       {showWeekExpenses && <ExpenseDetails title="This Week's Expenses" expenses={weekExpenseDetails} darkMode={darkMode} onClose={() => setShowWeekExpenses(false)} />}
       {showMonthExpenses && <ExpenseDetails title="This Month's Expenses" expenses={monthExpenseDetails} darkMode={darkMode} onClose={() => setShowMonthExpenses(false)} />}
 
-      {/* ✅ PROFIT CARDS - Green */}
+      {/* Profit Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
@@ -741,7 +1089,7 @@ const FinanceOverview = ({ darkMode }) => {
         </div>
       </div>
 
-      {/* ✅ DISCOUNT CARDS - Light Blue */}
+      {/* Discount Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
@@ -781,23 +1129,28 @@ const FinanceOverview = ({ darkMode }) => {
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
+          <span className={`text-xs font-normal ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            ({getFilterLabel()})
+          </span>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className="text-sm text-gray-500">Revenue</p>
-            <p className="text-xl font-bold text-blue-500">Rs. {monthlySales.total.toLocaleString()}</p>
+            <p className="text-xl font-bold text-blue-500">Rs. {filteredSalesData.total.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className="text-sm text-gray-500">Expenses</p>
-            <p className="text-xl font-bold text-red-500">Rs. {stats.monthExpenses?.toLocaleString() || 0}</p>
+            <p className="text-xl font-bold text-red-500">Rs. {filteredStats.expenses.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className="text-sm text-gray-500">Discount Given</p>
-            <p className="text-xl font-bold text-sky-500">Rs. {monthlySales.discount.toLocaleString()}</p>
+            <p className="text-xl font-bold text-sky-500">Rs. {filteredSalesData.discount.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className="text-sm text-gray-500">Net Profit</p>
-            <p className="text-xl font-bold text-green-500">Rs. {(monthlySales.profit - (stats.monthExpenses || 0)).toLocaleString()}</p>
+            <p className={`text-xl font-bold ${filteredStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+              Rs. {filteredStats.profit.toLocaleString()}
+            </p>
           </div>
         </div>
       </div>

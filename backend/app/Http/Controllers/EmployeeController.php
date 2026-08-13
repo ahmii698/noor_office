@@ -29,6 +29,7 @@ class EmployeeController extends Controller
                     'name' => $employee->name,
                     'monthly_salary' => (float) $employee->monthly_salary,
                     'salary_date' => $employee->salary_date,
+                    'join_date' => $employee->join_date ? $employee->join_date->format('Y-m-d') : null,
                     'paid_amount' => (float) $employee->paid_amount,
                     'balance_amount' => (float) $employee->balance_amount,
                     'status' => $employee->status,
@@ -103,6 +104,7 @@ class EmployeeController extends Controller
                     'name' => $employee->name,
                     'monthly_salary' => (float) $employee->monthly_salary,
                     'salary_date' => $employee->salary_date,
+                    'join_date' => $employee->join_date ? $employee->join_date->format('Y-m-d') : null,
                     'paid_amount' => (float) $employee->paid_amount,
                     'balance_amount' => (float) $employee->balance_amount,
                     'status' => $employee->status,
@@ -151,6 +153,7 @@ class EmployeeController extends Controller
                 'name' => 'required|string|max:255',
                 'monthly_salary' => 'required|numeric|min:0',
                 'salary_date' => 'nullable|integer|min:1|max:31',
+                'join_date' => 'nullable|date',
             ]);
 
             if ($validator->fails()) {
@@ -170,6 +173,7 @@ class EmployeeController extends Controller
                 'paid_amount' => 0,
                 'balance_amount' => $request->monthly_salary,
                 'salary_date' => $request->salary_date,
+                'join_date' => $request->join_date,
                 'status' => 'Pending',
                 'created_by' => $createdBy,
             ]);
@@ -215,6 +219,7 @@ class EmployeeController extends Controller
                 'name' => 'sometimes|required|string|max:255',
                 'monthly_salary' => 'sometimes|required|numeric|min:0',
                 'salary_date' => 'nullable|integer|min:1|max:31',
+                'join_date' => 'nullable|date',
             ]);
 
             if ($validator->fails()) {
@@ -240,6 +245,10 @@ class EmployeeController extends Controller
             
             if ($request->has('salary_date')) {
                 $updateData['salary_date'] = $request->salary_date;
+            }
+
+            if ($request->has('join_date')) {
+                $updateData['join_date'] = $request->join_date;
             }
 
             $employee->update($updateData);
@@ -487,6 +496,7 @@ class EmployeeController extends Controller
                         'name' => $employee->name,
                         'monthly_salary' => (float) $employee->monthly_salary,
                         'salary_date' => $employee->salary_date,
+                        'join_date' => $employee->join_date ? $employee->join_date->format('Y-m-d') : null,
                     ],
                     'history' => $history->map(function($record) {
                         return [

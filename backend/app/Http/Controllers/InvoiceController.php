@@ -16,9 +16,12 @@ class InvoiceController extends Controller
     public function index()
     {
         try {
-            $invoices = Invoice::with(['items', 'creator'])->orderBy('id', 'desc')->get();
+            $invoices = Invoice::with(['items', 'creator', 'customer'])->orderBy('id', 'desc')->get();
             
             $transformedInvoices = $invoices->map(function($invoice) {
+                // ✅ Get birthday from customer relationship
+                $birthday = $invoice->customer ? $invoice->customer->birthday : null;
+                
                 return [
                     'id' => $invoice->id,
                     'invoice_no' => $invoice->invoice_no,
@@ -36,6 +39,7 @@ class InvoiceController extends Controller
                     'customer_email' => $invoice->customer_email,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
+                    'customer_birthday' => $birthday, // ✅ From customer table
                     'created_by' => $invoice->created_by,
                     'creator_name' => $invoice->creator ? $invoice->creator->name : 'System',
                     'creator_role' => $invoice->creator ? $invoice->creator->role : 'system',
@@ -45,6 +49,7 @@ class InvoiceController extends Controller
                             'service_id' => $item->service_id,
                             'service_name' => $item->service_name,
                             'service_category' => $item->service_category,
+                            'mileage' => $item->mileage,
                             'quantity' => $item->quantity,
                             'price' => $item->price,
                             'total' => $item->total
@@ -65,7 +70,10 @@ class InvoiceController extends Controller
     public function show($id)
     {
         try {
-            $invoice = Invoice::with(['items', 'creator'])->findOrFail($id);
+            $invoice = Invoice::with(['items', 'creator', 'customer'])->findOrFail($id);
+            
+            // ✅ Get birthday from customer relationship
+            $birthday = $invoice->customer ? $invoice->customer->birthday : null;
             
             $transformedInvoice = [
                 'id' => $invoice->id,
@@ -84,6 +92,7 @@ class InvoiceController extends Controller
                 'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
+                'customer_birthday' => $birthday, // ✅ From customer table
                 'created_by' => $invoice->created_by,
                 'creator_name' => $invoice->creator ? $invoice->creator->name : 'System',
                 'creator_role' => $invoice->creator ? $invoice->creator->role : 'system',
@@ -93,6 +102,7 @@ class InvoiceController extends Controller
                         'service_id' => $item->service_id,
                         'service_name' => $item->service_name,
                         'service_category' => $item->service_category,
+                        'mileage' => $item->mileage,
                         'quantity' => $item->quantity,
                         'price' => $item->price,
                         'total' => $item->total
@@ -121,7 +131,7 @@ class InvoiceController extends Controller
                 'customer_email' => 'nullable|email|max:255',
                 'customer_car_number' => 'nullable|string|max:50',
                 'customer_car_model' => 'nullable|string|max:100',
-                'customer_birthday' => 'nullable|date',
+                // ❌ REMOVED: 'customer_birthday' => 'nullable|date',
                 'subtotal' => 'required|numeric|min:0',
                 'discount' => 'required|numeric|min:0',
                 'discount_note' => 'nullable|string|max:255',
@@ -133,6 +143,7 @@ class InvoiceController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.service_name' => 'required|string',
                 'items.*.service_category' => 'nullable|string',
+                'items.*.mileage' => 'nullable|integer|min:0',
                 'items.*.price' => 'required|numeric|min:0',
                 'items.*.quantity' => 'required|integer|min:1'
             ]);
@@ -149,7 +160,7 @@ class InvoiceController extends Controller
                         'email' => $validated['customer_email'] ?? null,
                         'car_number' => $validated['customer_car_number'] ?? null,
                         'car_model' => $validated['customer_car_model'] ?? null,
-                        'birthday' => $validated['customer_birthday'] ?? null
+                        // ❌ REMOVED: 'birthday' => $validated['customer_birthday'] ?? null
                     ]);
                     Log::info('✅ New customer created: ID ' . $customer->id);
                 } else {
@@ -158,7 +169,7 @@ class InvoiceController extends Controller
                         'email' => $validated['customer_email'] ?? $customer->email,
                         'car_number' => $validated['customer_car_number'] ?? $customer->car_number,
                         'car_model' => $validated['customer_car_model'] ?? $customer->car_model,
-                        'birthday' => $validated['customer_birthday'] ?? $customer->birthday
+                        // ❌ REMOVED: 'birthday' => $validated['customer_birthday'] ?? $customer->birthday
                     ]);
                     Log::info('✅ Customer updated: ID ' . $customer->id);
                 }
@@ -176,6 +187,7 @@ class InvoiceController extends Controller
                 $status = 'Pending';
             }
 
+            // ✅ INSERT WITHOUT customer_birthday
             $invoiceId = DB::table('invoices')->insertGetId([
                 'invoice_no' => $validated['invoice_no'],
                 'customer_id' => $customer ? $customer->id : null,
@@ -184,6 +196,7 @@ class InvoiceController extends Controller
                 'customer_email' => $validated['customer_email'] ?? null,
                 'customer_car_number' => $validated['customer_car_number'] ?? null,
                 'customer_car_model' => $validated['customer_car_model'] ?? null,
+                // ❌ REMOVED: 'customer_birthday' => $validated['customer_birthday'] ?? null,
                 'subtotal' => $validated['subtotal'],
                 'discount' => $validated['discount'],
                 'discount_note' => $validated['discount_note'] ?? null,
@@ -205,6 +218,7 @@ class InvoiceController extends Controller
                     'invoice_id' => $invoiceId,
                     'service_name' => $item['service_name'],
                     'service_category' => $item['service_category'] ?? 'Service',
+                    'mileage' => $item['mileage'] ?? null,
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     'total' => $item['price'] * $item['quantity'],
@@ -237,12 +251,14 @@ class InvoiceController extends Controller
                 'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
+                // ❌ REMOVED: 'customer_birthday' => $invoice->customer_birthday,
                 'created_by' => $invoice->created_by,
                 'items' => $items->map(function($item) {
                     return [
                         'id' => $item->id,
                         'service_name' => $item->service_name,
                         'service_category' => $item->service_category,
+                        'mileage' => $item->mileage,
                         'quantity' => $item->quantity,
                         'price' => $item->price,
                         'total' => $item->total
@@ -333,6 +349,7 @@ class InvoiceController extends Controller
                             'id' => $item->id,
                             'service_name' => $item->service_name,
                             'service_category' => $item->service_category,
+                            'mileage' => $item->mileage,
                             'quantity' => $item->quantity,
                             'price' => $item->price,
                             'total' => $item->total
@@ -395,10 +412,13 @@ class InvoiceController extends Controller
         try {
             $invoices = Invoice::where('customer_phone', $phone)
                 ->orderBy('invoice_date', 'desc')
-                ->with('items')
+                ->with(['items', 'customer'])
                 ->get();
             
             $transformedInvoices = $invoices->map(function($invoice) {
+                // ✅ Get birthday from customer relationship
+                $birthday = $invoice->customer ? $invoice->customer->birthday : null;
+                
                 return [
                     'id' => $invoice->id,
                     'invoice_no' => $invoice->invoice_no,
@@ -416,12 +436,14 @@ class InvoiceController extends Controller
                     'customer_email' => $invoice->customer_email,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
+                    'customer_birthday' => $birthday, // ✅ From customer table
                     'items' => $invoice->items->map(function($item) {
                         return [
                             'id' => $item->id,
                             'service_id' => $item->service_id,
                             'service_name' => $item->service_name,
                             'service_category' => $item->service_category,
+                            'mileage' => $item->mileage,
                             'quantity' => $item->quantity,
                             'price' => $item->price,
                             'total' => $item->total
@@ -474,7 +496,7 @@ class InvoiceController extends Controller
     {
         try {
             $pendingInvoices = Invoice::whereIn('status', ['Partial', 'Pending'])
-                ->with('items')
+                ->with(['items', 'customer'])
                 ->orderBy('created_at', 'desc')
                 ->get();
 
@@ -506,7 +528,8 @@ class InvoiceController extends Controller
                             'service_name' => $item->service_name,
                             'price' => (float) $item->price,
                             'quantity' => $item->quantity,
-                            'total' => (float) $item->total
+                            'total' => (float) $item->total,
+                            'mileage' => $item->mileage
                         ];
                     })
                 ];

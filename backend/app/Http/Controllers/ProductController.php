@@ -46,9 +46,9 @@ class ProductController extends Controller
                 $query->where('name', 'LIKE', "%{$search}%");
             }
 
-            // Low stock filter
+            // Low stock filter (✅ now uses each product's own threshold)
             if ($request->has('low_stock') && $request->low_stock) {
-                $query->where('quantity', '<', 10);
+                $query->whereColumn('quantity', '<', 'low_stock_threshold');
             }
 
             $products = $query->orderBy('created_at', 'desc')->get();
@@ -65,6 +65,7 @@ class ProductController extends Controller
                     'purchase_price' => (float) $product->purchase_price,
                     'selling_price' => (float) $product->selling_price,
                     'quantity' => (int) $product->quantity,
+                    'low_stock_threshold' => (int) $product->low_stock_threshold, // ✅ added
                     'date_added' => $product->date_added,
                     'created_at' => $product->created_at,
                     'updated_at' => $product->updated_at,
@@ -89,7 +90,10 @@ class ProductController extends Controller
                 'total' => $products->count(),
                 'active_count' => $activeCount,
                 'hidden_count' => $hiddenCount,
-                'low_stock_count' => $products->where('quantity', '<', 10)->count(),
+                // ✅ each product compared against its own threshold
+                'low_stock_count' => $products->filter(function ($p) {
+                    return $p->quantity < $p->low_stock_threshold;
+                })->count(),
                 'showing_hidden' => $showHidden,
             ]);
 
@@ -119,6 +123,7 @@ class ProductController extends Controller
                     'purchase_price' => (float) $product->purchase_price,
                     'selling_price' => (float) $product->selling_price,
                     'quantity' => (int) $product->quantity,
+                    'low_stock_threshold' => (int) $product->low_stock_threshold, // ✅ added
                     'date_added' => $product->date_added,
                     'created_at' => $product->created_at,
                     'updated_at' => $product->updated_at,
@@ -169,6 +174,7 @@ class ProductController extends Controller
             'purchase_price' => 'required|numeric|min:0',
             'selling_price' => 'required|numeric|min:0',
             'quantity' => 'required|integer|min:0',
+            'low_stock_threshold' => 'nullable|integer|min:0', // ✅ added
             'vendor_id' => 'nullable|exists:credit_vendors,id',
             'is_credit_purchase' => 'nullable|boolean',
         ]);
@@ -186,6 +192,8 @@ class ProductController extends Controller
                 'purchase_price' => $request->purchase_price,
                 'selling_price' => $request->selling_price,
                 'quantity' => $request->quantity,
+                // ✅ falls back to 5 if not provided
+                'low_stock_threshold' => $request->low_stock_threshold ?? 5,
                 'date_added' => now(),
                 'vendor_id' => $request->vendor_id ?? null,
                 'is_credit_purchase' => $request->is_credit_purchase ?? false,
@@ -237,6 +245,7 @@ class ProductController extends Controller
             'purchase_price' => 'sometimes|required|numeric|min:0',
             'selling_price' => 'sometimes|required|numeric|min:0',
             'quantity' => 'sometimes|required|integer|min:0',
+            'low_stock_threshold' => 'sometimes|nullable|integer|min:0', // ✅ added
             'vendor_id' => 'nullable|exists:credit_vendors,id',
             'is_credit_purchase' => 'nullable|boolean',
             'is_hidden' => 'nullable|boolean',
@@ -259,13 +268,16 @@ class ProductController extends Controller
                 'purchase_price', 
                 'selling_price', 
                 'quantity',
+                'low_stock_threshold', // ✅ added
                 'vendor_id',
                 'is_credit_purchase',
                 'is_hidden'
             ]));
-            
-            // Check if stock dropped below 5 and send email
-            if ($product->quantity < 5 && $oldQuantity >= 5) {
+
+            $product->refresh();
+
+            // ✅ Check if stock dropped below THIS product's own threshold
+            if ($product->quantity < $product->low_stock_threshold && $oldQuantity >= $product->low_stock_threshold) {
                 $this->sendLowStockEmail($product);
             }
 
@@ -346,6 +358,7 @@ class ProductController extends Controller
             'quantity' => 'sometimes|required|integer|min:0',
             'purchase_price' => 'sometimes|required|numeric|min:0',
             'selling_price' => 'sometimes|required|numeric|min:0',
+            'low_stock_threshold' => 'sometimes|required|integer|min:0', // ✅ added
             'is_hidden' => 'sometimes|required|boolean',
         ]);
 
@@ -361,11 +374,14 @@ class ProductController extends Controller
                 'quantity',
                 'purchase_price',
                 'selling_price',
+                'low_stock_threshold', // ✅ added
                 'is_hidden'
             ]));
-            
-            // Check if stock dropped below 5
-            if ($product->quantity < 5) {
+
+            $product->refresh();
+
+            // ✅ Check against this product's own threshold
+            if ($product->quantity < $product->low_stock_threshold) {
                 $this->sendLowStockEmail($product);
             }
             
@@ -391,8 +407,9 @@ class ProductController extends Controller
     public function lowStock()
     {
         try {
+            // ✅ compares each product's quantity against its own threshold column
             $products = Product::with('creditVendor')
-                ->where('quantity', '<', 10)
+                ->whereColumn('quantity', '<', 'low_stock_threshold')
                 ->where('is_hidden', 0)
                 ->orderBy('quantity', 'asc')
                 ->get();
@@ -404,6 +421,7 @@ class ProductController extends Controller
                         'id' => $product->id,
                         'name' => $product->name,
                         'quantity' => (int) $product->quantity,
+                        'low_stock_threshold' => (int) $product->low_stock_threshold, // ✅ added
                         'purchase_price' => (float) $product->purchase_price,
                         'selling_price' => (float) $product->selling_price,
                         'vendor_name' => $product->vendor_name,
@@ -511,7 +529,7 @@ class ProductController extends Controller
                                     <strong>Current Stock:</strong> <span class="stock">' . $product->quantity . ' units</span>
                                 </div>
                                 <div style="margin-top: 10px;">
-                                    <strong>Status:</strong> <span style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px;">Low Stock (Below 5)</span>
+                                    <strong>Status:</strong> <span style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px;">Low Stock (Below ' . $product->low_stock_threshold . ')</span>
                                 </div>
                                 ' . ($product->is_credit_purchase ? '
                                 <div style="margin-top: 10px;">
@@ -547,7 +565,7 @@ class ProductController extends Controller
                             ->html($html);
                 });
                 
-                Log::info('Low stock email sent for: ' . $product->name . ' (Stock: ' . $product->quantity . ')');
+                Log::info('Low stock email sent for: ' . $product->name . ' (Stock: ' . $product->quantity . ', Threshold: ' . $product->low_stock_threshold . ')');
             } else {
                 Log::warning('No admin user found to send low stock alert');
             }

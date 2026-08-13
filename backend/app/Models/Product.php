@@ -19,6 +19,7 @@ class Product extends Model
         'purchase_price', 
         'selling_price', 
         'quantity', 
+        'low_stock_threshold', // ✅ ADDED - was missing, so it was never saving!
         'date_added',
         'last_low_stock_notification',
         'vendor_id',
@@ -33,6 +34,7 @@ class Product extends Model
         'updated_at' => 'datetime',
         'is_credit_purchase' => 'boolean',
         'is_hidden' => 'boolean', // ✅ Added is_hidden cast
+        'low_stock_threshold' => 'integer', // ✅ ADDED
     ];
 
     public $timestamps = true;
@@ -115,23 +117,26 @@ class Product extends Model
     }
 
     /**
-     * Check if product is low stock (less than 10)
+     * Check if product is low stock (✅ now uses this product's own threshold)
      */
     public function isLowStock(): bool
     {
-        return $this->quantity < 10;
+        $threshold = $this->low_stock_threshold ?? 5;
+        return $this->quantity < $threshold;
     }
 
     /**
-     * Get stock status label
+     * Get stock status label (✅ now uses this product's own threshold)
      */
     public function getStockStatusAttribute(): string
     {
+        $threshold = $this->low_stock_threshold ?? 5;
+
         if ($this->quantity <= 0) {
             return 'Out of Stock';
-        } elseif ($this->quantity < 10) {
+        } elseif ($this->quantity < $threshold) {
             return 'Low Stock';
-        } elseif ($this->quantity < 50) {
+        } elseif ($this->quantity < ($threshold * 5)) {
             return 'Medium';
         } else {
             return 'In Stock';
@@ -139,15 +144,17 @@ class Product extends Model
     }
 
     /**
-     * Get stock status color
+     * Get stock status color (✅ now uses this product's own threshold)
      */
     public function getStockStatusColorAttribute(): string
     {
+        $threshold = $this->low_stock_threshold ?? 5;
+
         if ($this->quantity <= 0) {
             return 'red';
-        } elseif ($this->quantity < 10) {
+        } elseif ($this->quantity < $threshold) {
             return 'yellow';
-        } elseif ($this->quantity < 50) {
+        } elseif ($this->quantity < ($threshold * 5)) {
             return 'blue';
         } else {
             return 'green';
@@ -224,10 +231,15 @@ class Product extends Model
     }
 
     /**
-     * Scope to get low stock products
+     * Scope to get low stock products.
+     * ✅ If no $threshold param passed, compares each row against its OWN
+     * low_stock_threshold column instead of one fixed number for everyone.
      */
-    public function scopeLowStock($query, $threshold = 10)
+    public function scopeLowStock($query, $threshold = null)
     {
+        if ($threshold === null) {
+            return $query->whereColumn('quantity', '<', 'low_stock_threshold');
+        }
         return $query->where('quantity', '<', $threshold);
     }
 
@@ -306,7 +318,7 @@ class Product extends Model
     {
         $totalProducts = self::count();
         $totalQuantity = self::sum('quantity');
-        $lowStockCount = self::lowStock()->count();
+        $lowStockCount = self::lowStock()->count(); // ✅ now per-product threshold
         $outOfStockCount = self::outOfStock()->count();
         $creditProducts = self::creditPurchases()->count();
         $normalProducts = self::normalPurchases()->count();
@@ -339,8 +351,9 @@ class Product extends Model
     {
         // When product is updated
         static::updated(function ($product) {
-            // Check if quantity is less than 10
-            if ($product->quantity < 10) {
+            // ✅ Check against THIS product's own threshold (was hardcoded 10)
+            $threshold = $product->low_stock_threshold ?? 5;
+            if ($product->quantity < $threshold) {
                 self::sendLowStockEmail($product);
             }
             
@@ -356,8 +369,9 @@ class Product extends Model
         
         // When product is created
         static::created(function ($product) {
-            // Check if new product quantity is less than 10
-            if ($product->quantity < 10) {
+            // ✅ Check against THIS product's own threshold (was hardcoded 10)
+            $threshold = $product->low_stock_threshold ?? 5;
+            if ($product->quantity < $threshold) {
                 self::sendLowStockEmail($product);
             }
             
@@ -365,6 +379,7 @@ class Product extends Model
                 'product_id' => $product->id,
                 'name' => $product->name,
                 'quantity' => $product->quantity,
+                'low_stock_threshold' => $product->low_stock_threshold,
                 'is_credit_purchase' => $product->is_credit_purchase,
                 'is_hidden' => $product->is_hidden,
             ]);
@@ -388,6 +403,8 @@ class Product extends Model
             $admin = User::where('role', 'admin')->first();
             
             if ($admin) {
+                $threshold = $product->low_stock_threshold ?? 5;
+
                 $html = '
                 <html>
                 <head>
@@ -420,7 +437,7 @@ class Product extends Model
                                     <strong>Current Stock:</strong> <span class="stock">' . $product->quantity . ' units</span>
                                 </div>
                                 <div style="margin-top: 10px;">
-                                    <strong>Status:</strong> <span style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px;">Low Stock (Below 10)</span>
+                                    <strong>Status:</strong> <span style="background: #dc2626; color: white; padding: 4px 8px; border-radius: 4px;">Low Stock (Below ' . $threshold . ')</span>
                                 </div>
                                 ' . ($product->is_credit_purchase ? '
                                 <div style="margin-top: 10px;">
@@ -456,7 +473,7 @@ class Product extends Model
                             ->html($html);
                 });
                 
-                \Log::info('Low stock email sent for: ' . $product->name . ' (Stock: ' . $product->quantity . ')');
+                \Log::info('Low stock email sent for: ' . $product->name . ' (Stock: ' . $product->quantity . ', Threshold: ' . $threshold . ')');
             } else {
                 \Log::warning('No admin user found to send low stock alert');
             }

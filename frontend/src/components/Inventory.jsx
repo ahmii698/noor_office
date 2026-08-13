@@ -9,14 +9,23 @@ import {
   FiEdit2, FiPackage, FiDollarSign, FiTrendingUp,
   FiShoppingCart, FiBarChart2, FiCheckCircle, FiAlertCircle,
   FiLoader, FiUser, FiTrash2, FiEye, FiEyeOff, FiGrid, FiList,
-  FiCalendar
+  FiCalendar, FiArrowUp, FiArrowDown
 } from 'react-icons/fi';
 import api from '../services/api';
 
-// ✅ Helper: Get date range for filter
-const getDateRange = (filter) => {
+// ✅ Helper: Get date range for filter (with custom date support)
+const getDateRange = (filter, customDate = null) => {
   const now = new Date();
   const start = new Date();
+  
+  if (filter === 'custom' && customDate) {
+    const date = new Date(customDate);
+    start.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
   
   switch (filter) {
     case 'today':
@@ -42,20 +51,19 @@ const getDateRange = (filter) => {
   return { start, end: now };
 };
 
-// ✅ Helper: Filter products by date added
-const filterProductsByDate = (products, filter) => {
+const filterProductsByDate = (products, filter, customDate = null) => {
   if (filter === 'all' || !products || products.length === 0) return products;
-  const range = getDateRange(filter);
+  const range = getDateRange(filter, customDate);
   if (!range) return products;
   
   return products.filter(product => {
+    if (product.is_hidden === true) return false;
     if (!product.date_added) return false;
     const prodDate = new Date(product.date_added);
     return prodDate >= range.start && prodDate <= range.end;
   });
 };
 
-// Debounce function
 const debounce = (func, delay) => {
   let timeoutId;
   return (...args) => {
@@ -64,13 +72,17 @@ const debounce = (func, delay) => {
   };
 };
 
-// ✅ Product Row Component
+// ✅ Product Row Component - WITH LOW STOCK THRESHOLD
 const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, onSaveEdit, onKeyPress, onEditProduct, onDeleteProduct, onToggleHide, formatPrice, isAdmin }) => {
   const isEditingName = editingCell.productId === product.id && editingCell.field === 'name';
   const isEditingPurchase = editingCell.productId === product.id && editingCell.field === 'purchasePrice';
   const isEditingSelling = editingCell.productId === product.id && editingCell.field === 'sellingPrice';
   const isEditingQuantity = editingCell.productId === product.id && editingCell.field === 'quantity';
+  const isEditingThreshold = editingCell.productId === product.id && editingCell.field === 'lowStockThreshold';
   const isHidden = product.is_hidden === 1 || product.is_hidden === true;
+  
+  // ✅ Use product's own threshold, default to 5
+  const threshold = product.low_stock_threshold ?? 5;
 
   return (
     <tr className={`${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} ${isHidden ? 'opacity-50 bg-gray-100 dark:bg-gray-800' : ''}`}>
@@ -149,6 +161,7 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
         </td>
       )}
 
+      {/* ✅ STOCK - Uses product's threshold for color */}
       <td className="px-6 py-4">
         {isEditingQuantity ? (
           <input
@@ -165,17 +178,53 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
           <div 
             onDoubleClick={() => onStartEdit({ productId: product.id, field: 'quantity', value: product.quantity })} 
             className={`cursor-pointer font-semibold flex items-center gap-1 ${
-              product.quantity < 5 && product.quantity > 0 ? 'text-yellow-500' : 
+              product.quantity < threshold && product.quantity > 0 ? 'text-yellow-500' : 
               product.quantity === 0 ? 'text-red-500' : 
               darkMode ? 'text-white' : 'text-gray-900'
             } hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
             title="Double-click to edit stock"
           >
             {product.quantity}
-            {product.quantity < 5 && product.quantity > 0 && <FiAlertCircle className="text-xs" />}
+            {product.quantity < threshold && product.quantity > 0 && <FiAlertCircle className="text-xs" />}
             {product.quantity === 0 && <FiX className="text-xs" />}
           </div>
         )}
+      </td>
+
+      {/* ✅ NEW: Low Stock At - Editable column (Admin only) */}
+      {isAdmin && (
+        <td className="px-6 py-4">
+          {isEditingThreshold ? (
+            <input
+              type="number"
+              value={editingCell.value}
+              onChange={(e) => onStartEdit({ ...editingCell, value: e.target.value })}
+              onBlur={() => onSaveEdit(product.id, 'lowStockThreshold')}
+              onKeyDown={(e) => onKeyPress(e, product.id, 'lowStockThreshold')}
+              className={`w-20 px-2 py-1 border rounded focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+              autoFocus
+              min="0"
+            />
+          ) : (
+            <div
+              onDoubleClick={() => onStartEdit({ productId: product.id, field: 'lowStockThreshold', value: product.low_stock_threshold ?? 5 })}
+              className={`cursor-pointer ${darkMode ? 'text-gray-300' : 'text-gray-600'} hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition w-fit`}
+              title="Double-click to edit low stock alert level"
+            >
+              {product.low_stock_threshold ?? 5}
+            </div>
+          )}
+        </td>
+      )}
+
+      {/* ✅ NEW: Invoice No - Placeholder (will be implemented later) */}
+      <td className="px-6 py-4 text-sm text-gray-400">
+        -
+      </td>
+
+      {/* ✅ NEW: Vendor - Placeholder (will be implemented later) */}
+      <td className="px-6 py-4 text-sm text-gray-400">
+        -
       </td>
       
       <td className="px-6 py-4">
@@ -226,10 +275,11 @@ const Inventory = ({ darkMode }) => {
   const [userRole, setUserRole] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // ✅ Time filter state
   const [timeFilter, setTimeFilter] = useState('all');
+  const [customDate, setCustomDate] = useState('');
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  const [sortOption, setSortOption] = useState('default');
   
-  // ✅ Dynamic stats based on filter
   const [filteredStats, setFilteredStats] = useState({
     totalPurchase: 0,
     totalSelling: 0,
@@ -240,7 +290,8 @@ const Inventory = ({ darkMode }) => {
     name: '',
     purchasePrice: '',
     sellingPrice: '',
-    quantity: ''
+    quantity: '',
+    lowStockThreshold: 5
   });
   const [viewMode, setViewMode] = useState('active');
   const [editingCell, setEditingCell] = useState({ productId: null, field: null, value: '' });
@@ -254,31 +305,46 @@ const Inventory = ({ darkMode }) => {
     }
   }, []);
 
-  // ✅ Filtered products based on viewMode and timeFilter
   const filteredProducts = useMemo(() => {
     let filtered = products;
     
-    // Apply view mode filter
     if (viewMode === 'active') {
       filtered = filtered.filter(product => product.is_hidden !== true);
     } else if (viewMode === 'hidden') {
       filtered = filtered.filter(product => product.is_hidden === true);
     }
     
-    // Apply time filter
-    filtered = filterProductsByDate(filtered, timeFilter);
+    filtered = filterProductsByDate(filtered, timeFilter, customDate || null);
     
-    // Apply search filter
     if (searchTerm.trim()) {
       filtered = filtered.filter(product =>
         product.name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     
+    if (sortOption !== 'default') {
+      filtered = [...filtered];
+      switch (sortOption) {
+        case 'name-asc':
+          filtered.sort((a, b) => a.name?.localeCompare(b.name || '') || 0);
+          break;
+        case 'name-desc':
+          filtered.sort((a, b) => b.name?.localeCompare(a.name || '') || 0);
+          break;
+        case 'price-asc':
+          filtered.sort((a, b) => (a.selling_price || 0) - (b.selling_price || 0));
+          break;
+        case 'price-desc':
+          filtered.sort((a, b) => (b.selling_price || 0) - (a.selling_price || 0));
+          break;
+        default:
+          break;
+      }
+    }
+    
     return filtered;
-  }, [products, searchTerm, viewMode, timeFilter]);
+  }, [products, searchTerm, viewMode, timeFilter, customDate, sortOption]);
 
-  // ✅ Calculate summary totals for table
   const summaryTotals = useMemo(() => {
     let data = filteredProducts;
     
@@ -295,11 +361,9 @@ const Inventory = ({ darkMode }) => {
     };
   }, [filteredProducts]);
 
-  // ✅ Calculate stats based on filter
-  const calculateFilteredStats = useCallback((productsList, filter) => {
-    const range = getDateRange(filter);
+  const calculateFilteredStats = useCallback((productsList, filter, customDateVal = null) => {
+    const range = getDateRange(filter, customDateVal);
     if (!range || filter === 'all') {
-      // For 'all', show total of all products
       const stats = productsList.reduce((acc, product) => {
         if (product.is_hidden === true) return acc;
         acc.totalPurchase += (product.purchase_price || 0) * (product.quantity || 0);
@@ -310,7 +374,6 @@ const Inventory = ({ darkMode }) => {
       return stats;
     }
     
-    // Filter by date range
     const filtered = productsList.filter(product => {
       if (product.is_hidden === true) return false;
       if (!product.date_added) return false;
@@ -328,22 +391,44 @@ const Inventory = ({ darkMode }) => {
     return stats;
   }, []);
 
-  // ✅ Update stats when filter changes
   useEffect(() => {
-    const stats = calculateFilteredStats(products, timeFilter);
+    const stats = calculateFilteredStats(products, timeFilter, customDate || null);
     setFilteredStats(stats);
-  }, [products, timeFilter, calculateFilteredStats]);
+  }, [products, timeFilter, customDate, calculateFilteredStats]);
 
-  // ✅ Get filter label for stats cards
-  const getStatsLabel = () => {
+  const getFilterLabel = () => {
+    const labels = {
+      all: 'All Time',
+      today: 'Today',
+      week: 'This Week',
+      month: 'This Month',
+      year: 'This Year',
+      custom: `Custom: ${customDate || 'Select Date'}`
+    };
+    return labels[timeFilter] || 'All Time';
+  };
+
+  const getStatsLabelText = () => {
     const labels = {
       all: 'Total',
       today: "Today's",
       week: "This Week's",
       month: "This Month's",
-      year: "This Year's"
+      year: "This Year's",
+      custom: `Custom (${customDate})`
     };
     return labels[timeFilter] || 'Total';
+  };
+
+  const getSortLabel = () => {
+    const labels = {
+      'default': 'Default',
+      'name-asc': 'A → Z',
+      'name-desc': 'Z → A',
+      'price-asc': 'Price: Low → High',
+      'price-desc': 'Price: High → Low'
+    };
+    return labels[sortOption] || 'Default';
   };
 
   const fetchProducts = useCallback(async () => {
@@ -357,8 +442,6 @@ const Inventory = ({ darkMode }) => {
         }
       });
       
-      console.log('📦 API Response:', response.data);
-      
       let productsData = [];
       
       if (response.data?.success && Array.isArray(response.data.data)) {
@@ -366,14 +449,12 @@ const Inventory = ({ darkMode }) => {
       } else if (Array.isArray(response.data)) {
         productsData = response.data;
       } else {
-        console.warn('Unexpected API response:', response.data);
         productsData = [];
       }
       
       setProducts(productsData);
       
-      // ✅ Calculate initial stats
-      const stats = calculateFilteredStats(productsData, timeFilter);
+      const stats = calculateFilteredStats(productsData, timeFilter, customDate || null);
       setFilteredStats(stats);
       
     } catch (error) {
@@ -385,7 +466,7 @@ const Inventory = ({ darkMode }) => {
       setLoading(false);
     }
     return () => abortController.abort();
-  }, [calculateFilteredStats, timeFilter]);
+  }, [calculateFilteredStats, timeFilter, customDate]);
 
   const debouncedSearch = useMemo(
     () => debounce((value) => {
@@ -396,6 +477,14 @@ const Inventory = ({ darkMode }) => {
 
   const handleSearchChange = (e) => {
     debouncedSearch(e.target.value);
+  };
+
+  const handleCustomDateChange = (e) => {
+    const date = e.target.value;
+    setCustomDate(date);
+    if (date) {
+      setTimeFilter('custom');
+    }
   };
 
   const handleAddProduct = useCallback(async (productData) => {
@@ -480,6 +569,9 @@ const Inventory = ({ darkMode }) => {
       ...(isAdmin && { 'Purchase Price': `Rs. ${(p.purchase_price || 0).toLocaleString()}` }),
       ...(isAdmin && { 'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}` }),
       'Stock': p.quantity || 0,
+      ...(isAdmin && { 'Low Stock At': p.low_stock_threshold ?? 5 }),
+      'Invoice No': '-',
+      'Vendor': '-',
       'Status': p.is_hidden === true ? 'Hidden' : 'Active'
     }));
     
@@ -488,6 +580,9 @@ const Inventory = ({ darkMode }) => {
       ...(isAdmin && { 'Purchase Price': `Rs. ${summaryTotals.totalPurchaseValue.toLocaleString()}` }),
       ...(isAdmin && { 'Selling Price': `Rs. ${summaryTotals.totalSellingValue.toLocaleString()}` }),
       'Stock': summaryTotals.totalStock,
+      ...(isAdmin && { 'Low Stock At': '-' }),
+      'Invoice No': '-',
+      'Vendor': '-',
       'Status': ''
     };
     exportData.push(summaryRow);
@@ -505,12 +600,17 @@ const Inventory = ({ darkMode }) => {
     
     const head = ['Product'];
     if (isAdmin) head.push('Purchase Price', 'Selling Price');
-    head.push('Stock', 'Status');
+    head.push('Stock');
+    if (isAdmin) head.push('Low Stock At');
+    head.push('Invoice No', 'Vendor');
+    head.push('Status');
     
     const body = data.map(p => {
       const row = [p.name || ''];
       if (isAdmin) row.push(`Rs. ${(p.purchase_price || 0).toLocaleString()}`, `Rs. ${(p.selling_price || 0).toLocaleString()}`);
       row.push(p.quantity || 0);
+      if (isAdmin) row.push(p.low_stock_threshold ?? 5);
+      row.push('-', '-');
       row.push(p.is_hidden === true ? 'Hidden' : 'Active');
       return row;
     });
@@ -521,6 +621,8 @@ const Inventory = ({ darkMode }) => {
       summaryRow.push(`Rs. ${summaryTotals.totalSellingValue.toLocaleString()}`);
     }
     summaryRow.push(summaryTotals.totalStock);
+    if (isAdmin) summaryRow.push('-');
+    summaryRow.push('-', '-');
     summaryRow.push('');
     body.push(summaryRow);
     
@@ -556,13 +658,14 @@ const Inventory = ({ darkMode }) => {
     const purchasePriceNum = parseFloat(formData.purchasePrice);
     const sellingPriceNum = parseFloat(formData.sellingPrice);
     const quantityNum = parseInt(formData.quantity);
+    const thresholdNum = parseInt(formData.lowStockThreshold) || 5;
 
     if (isNaN(purchasePriceNum) || isNaN(sellingPriceNum) || isNaN(quantityNum)) {
       toast.error('Please enter valid numbers');
       return;
     }
 
-    if (purchasePriceNum < 0 || sellingPriceNum < 0 || quantityNum < 0) {
+    if (purchasePriceNum < 0 || sellingPriceNum < 0 || quantityNum < 0 || thresholdNum < 0) {
       toast.error('Values cannot be negative');
       return;
     }
@@ -571,11 +674,12 @@ const Inventory = ({ darkMode }) => {
       name: formData.name,
       purchase_price: purchasePriceNum,
       selling_price: sellingPriceNum,
-      quantity: quantityNum
+      quantity: quantityNum,
+      low_stock_threshold: thresholdNum
     });
 
     if (success) {
-      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
+      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 });
       setIsModalOpen(false);
     }
   }, [formData, handleAddProduct, isAdmin]);
@@ -586,7 +690,8 @@ const Inventory = ({ darkMode }) => {
       name: product.name,
       purchasePrice: product.purchase_price,
       sellingPrice: product.selling_price,
-      quantity: product.quantity
+      quantity: product.quantity,
+      lowStockThreshold: product.low_stock_threshold ?? 5
     });
     setIsModalOpen(true);
   }, []);
@@ -610,7 +715,7 @@ const Inventory = ({ darkMode }) => {
       });
       
       if (success) {
-        setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
+        setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 });
         setEditingProduct(null);
         setIsModalOpen(false);
       }
@@ -625,9 +730,15 @@ const Inventory = ({ darkMode }) => {
     const purchasePriceNum = parseFloat(formData.purchasePrice);
     const sellingPriceNum = parseFloat(formData.sellingPrice);
     const quantityNum = parseInt(formData.quantity);
+    const thresholdNum = parseInt(formData.lowStockThreshold) || 5;
 
-    if (isNaN(purchasePriceNum) || isNaN(sellingPriceNum) || isNaN(quantityNum)) {
+    if (isNaN(purchasePriceNum) || isNaN(sellingPriceNum) || isNaN(quantityNum) || isNaN(thresholdNum)) {
       toast.error('Please enter valid numbers');
+      return;
+    }
+
+    if (purchasePriceNum < 0 || sellingPriceNum < 0 || quantityNum < 0 || thresholdNum < 0) {
+      toast.error('Values cannot be negative');
       return;
     }
 
@@ -635,11 +746,12 @@ const Inventory = ({ darkMode }) => {
       name: formData.name,
       purchase_price: purchasePriceNum,
       selling_price: sellingPriceNum,
-      quantity: quantityNum
+      quantity: quantityNum,
+      low_stock_threshold: thresholdNum
     });
 
     if (success) {
-      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' });
+      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 });
       setEditingProduct(null);
       setIsModalOpen(false);
     }
@@ -666,7 +778,7 @@ const Inventory = ({ darkMode }) => {
         setEditingCell({ productId: null, field: null, value: '' });
         return;
       }
-    } else if (field === 'quantity') {
+    } else if (field === 'quantity' || field === 'lowStockThreshold') {
       newValue = parseInt(editingCell.value);
       if (isNaN(newValue) || newValue < 0) {
         toast.error('Please enter a valid positive number');
@@ -686,13 +798,15 @@ const Inventory = ({ darkMode }) => {
       name: productToUpdate.name,
       purchase_price: productToUpdate.purchase_price,
       selling_price: productToUpdate.selling_price,
-      quantity: productToUpdate.quantity
+      quantity: productToUpdate.quantity,
+      low_stock_threshold: productToUpdate.low_stock_threshold ?? 5
     };
     
     if (field === 'name') updateData.name = newValue;
     else if (field === 'quantity') updateData.quantity = newValue;
     else if (field === 'purchasePrice') updateData.purchase_price = newValue;
     else if (field === 'sellingPrice') updateData.selling_price = newValue;
+    else if (field === 'lowStockThreshold') updateData.low_stock_threshold = newValue;
     
     try {
       await api.put(`/products/${productId}`, updateData);
@@ -702,7 +816,8 @@ const Inventory = ({ darkMode }) => {
         name: 'Product name updated successfully!',
         quantity: 'Stock updated successfully!',
         purchasePrice: 'Purchase price updated successfully!',
-        sellingPrice: 'Selling price updated successfully!'
+        sellingPrice: 'Selling price updated successfully!',
+        lowStockThreshold: 'Low stock alert level updated!'
       }[field];
       
       toast.success(successMessage);
@@ -732,7 +847,7 @@ const Inventory = ({ darkMode }) => {
     } else if (viewMode === 'hidden') {
       filtered = filtered.filter(p => p.is_hidden === true);
     }
-    filtered = filterProductsByDate(filtered, timeFilter);
+    filtered = filterProductsByDate(filtered, timeFilter, customDate || null);
     return filtered.length;
   };
 
@@ -740,30 +855,6 @@ const Inventory = ({ darkMode }) => {
     if (viewMode === 'active') return 'active';
     if (viewMode === 'hidden') return 'hidden';
     return 'all';
-  };
-
-  // ✅ Get filter label
-  const getFilterLabel = () => {
-    const labels = {
-      all: 'All Time',
-      today: 'Today',
-      week: 'This Week',
-      month: 'This Month',
-      year: 'This Year'
-    };
-    return labels[timeFilter] || 'All Time';
-  };
-
-  // ✅ Get stats label for cards
-  const getStatsLabelText = () => {
-    const labels = {
-      all: 'Total',
-      today: "Today's",
-      week: "This Week's",
-      month: "This Month's",
-      year: "This Year's"
-    };
-    return labels[timeFilter] || 'Total';
   };
 
   if (loading) {
@@ -779,14 +870,14 @@ const Inventory = ({ darkMode }) => {
 
   return (
     <div className="space-y-6">
-      {/* ✅ FILTER BUTTONS - Daily, Weekly, Monthly, Yearly */}
+      {/* FILTER BUTTONS */}
       <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="flex items-center gap-2 mr-4">
           <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
           <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Filter:</span>
         </div>
         <button
-          onClick={() => setTimeFilter('all')}
+          onClick={() => { setTimeFilter('all'); setShowCustomDate(false); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
             timeFilter === 'all' 
               ? 'bg-red-500 text-white shadow-md' 
@@ -798,7 +889,7 @@ const Inventory = ({ darkMode }) => {
           All Time
         </button>
         <button
-          onClick={() => setTimeFilter('today')}
+          onClick={() => { setTimeFilter('today'); setShowCustomDate(false); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
             timeFilter === 'today' 
               ? 'bg-red-500 text-white shadow-md' 
@@ -810,7 +901,7 @@ const Inventory = ({ darkMode }) => {
           Today
         </button>
         <button
-          onClick={() => setTimeFilter('week')}
+          onClick={() => { setTimeFilter('week'); setShowCustomDate(false); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
             timeFilter === 'week' 
               ? 'bg-red-500 text-white shadow-md' 
@@ -822,7 +913,7 @@ const Inventory = ({ darkMode }) => {
           This Week
         </button>
         <button
-          onClick={() => setTimeFilter('month')}
+          onClick={() => { setTimeFilter('month'); setShowCustomDate(false); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
             timeFilter === 'month' 
               ? 'bg-red-500 text-white shadow-md' 
@@ -834,7 +925,7 @@ const Inventory = ({ darkMode }) => {
           This Month
         </button>
         <button
-          onClick={() => setTimeFilter('year')}
+          onClick={() => { setTimeFilter('year'); setShowCustomDate(false); }}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
             timeFilter === 'year' 
               ? 'bg-red-500 text-white shadow-md' 
@@ -845,12 +936,116 @@ const Inventory = ({ darkMode }) => {
         >
           This Year
         </button>
+        
+        <button
+          onClick={() => setShowCustomDate(!showCustomDate)}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            timeFilter === 'custom' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          📅 Custom Date
+        </button>
+        
+        {showCustomDate && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={customDate}
+              onChange={handleCustomDateChange}
+              className={`px-3 py-2 rounded-lg text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+            />
+            {customDate && (
+              <button
+                onClick={() => { setCustomDate(''); setTimeFilter('all'); setShowCustomDate(false); }}
+                className="text-red-500 text-sm hover:text-red-600"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )}
+        
         <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
         </span>
       </div>
 
-      {/* ✅ DYNAMIC STATISTICS CARDS - Change with filter */}
+      {/* SORTING BUTTONS */}
+      <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className="flex items-center gap-2 mr-4">
+          <FiArrowUp className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+          <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Sort by:</span>
+        </div>
+        <button
+          onClick={() => setSortOption('default')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            sortOption === 'default' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Default
+        </button>
+        <button
+          onClick={() => setSortOption('name-asc')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 ${
+            sortOption === 'name-asc' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FiArrowUp className="text-xs" /> A → Z
+        </button>
+        <button
+          onClick={() => setSortOption('name-desc')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 ${
+            sortOption === 'name-desc' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FiArrowDown className="text-xs" /> Z → A
+        </button>
+        <button
+          onClick={() => setSortOption('price-asc')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            sortOption === 'price-asc' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Price: Low → High
+        </button>
+        <button
+          onClick={() => setSortOption('price-desc')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+            sortOption === 'price-desc' 
+              ? 'bg-red-500 text-white shadow-md' 
+              : darkMode 
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Price: High → Low
+        </button>
+        <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          Sorting: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getSortLabel()}</strong>
+        </span>
+      </div>
+
+      {/* STATISTICS CARDS */}
       {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
@@ -888,6 +1083,7 @@ const Inventory = ({ darkMode }) => {
         </div>
       )}
 
+      {/* MAIN TABLE */}
       <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'}`}>
           <div className="flex flex-wrap justify-between items-center gap-4">
@@ -978,21 +1174,42 @@ const Inventory = ({ darkMode }) => {
           <table className="w-full">
             <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
               <tr>
-                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Product</th>
+                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
+                  Product
+                  {sortOption === 'name-asc' && <FiArrowUp className="inline ml-1 text-red-500" />}
+                  {sortOption === 'name-desc' && <FiArrowDown className="inline ml-1 text-red-500" />}
+                </th>
                 {isAdmin && (
                   <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Purchase Price</th>
                 )}
                 {isAdmin && (
-                  <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Selling Price</th>
+                  <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
+                    Selling Price
+                    {sortOption === 'price-asc' && <FiArrowUp className="inline ml-1 text-red-500" />}
+                    {sortOption === 'price-desc' && <FiArrowDown className="inline ml-1 text-red-500" />}
+                  </th>
                 )}
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Stock</th>
+                {isAdmin && (
+                  <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
+                    Low Stock At
+                  </th>
+                )}
+                {/* ✅ NEW: Invoice No Column */}
+                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
+                  Invoice No
+                </th>
+                {/* ✅ NEW: Vendor Column */}
+                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
+                  Vendor
+                </th>
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Actions</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 5 : 3} className="px-6 py-12 text-center">
+                  <td colSpan={isAdmin ? 8 : 5} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <FiPackage className="text-5xl text-gray-400" />
                       <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1039,7 +1256,7 @@ const Inventory = ({ darkMode }) => {
                     />
                   ))}
                   
-                  {/* ✅ SUMMARY ROW - Clean Styling */}
+                  {/* SUMMARY ROW */}
                   <tr className={`${darkMode ? 'bg-gray-800' : 'bg-gray-100'} border-t-2 ${darkMode ? 'border-gray-600' : 'border-gray-400'}`}>
                     <td className="px-6 py-3">
                       <div className="font-bold text-base flex items-center gap-2">
@@ -1071,6 +1288,20 @@ const Inventory = ({ darkMode }) => {
                       </div>
                     </td>
                     
+                    {isAdmin && (
+                      <td className="px-6 py-3">
+                        <span className="text-xs text-gray-400">-</span>
+                      </td>
+                    )}
+                    
+                    <td className="px-6 py-3">
+                      <span className="text-xs text-gray-400">-</span>
+                    </td>
+                    
+                    <td className="px-6 py-3">
+                      <span className="text-xs text-gray-400">-</span>
+                    </td>
+                    
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-gray-500">Stock: {summaryTotals.totalStock}</span>
@@ -1092,7 +1323,7 @@ const Inventory = ({ darkMode }) => {
           </table>
         </div>
         
-        {/* ✅ SUMMARY CARD - Compact and Clean */}
+        {/* SUMMARY CARD */}
         <div className={`px-6 py-3 border-t ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-4 flex-wrap">
@@ -1136,7 +1367,7 @@ const Inventory = ({ darkMode }) => {
         </div>
       </div>
 
-      {/* Add/Edit Product Modal - Sirf Admin ke liye */}
+      {/* Add/Edit Product Modal */}
       {isModalOpen && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -1144,7 +1375,7 @@ const Inventory = ({ darkMode }) => {
               <h3 className="text-xl font-semibold">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
               </h3>
-              <button onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' }); }} className="text-gray-500 hover:text-gray-700 text-2xl">
+              <button onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 }); }} className="text-gray-500 hover:text-gray-700 text-2xl">
                 <FiX />
               </button>
             </div>
@@ -1206,11 +1437,31 @@ const Inventory = ({ darkMode }) => {
                   required 
                 />
               </div>
+
+              {/* Low Stock Threshold field in modal */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Low Stock Alert At
+                  <span className="text-xs ml-1 opacity-60">(Default: 5)</span>
+                </label>
+                <input 
+                  type="number" 
+                  name="lowStockThreshold" 
+                  value={formData.lowStockThreshold} 
+                  onChange={handleInputChange} 
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} 
+                  placeholder="Alert when stock below" 
+                  min="0" 
+                />
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Stock below this number will show yellow alert
+                </p>
+              </div>
               
               <div className="flex gap-3 pt-4">
                 <button 
                   type="button" 
-                  onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '' }); }} 
+                  onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 }); }} 
                   className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
                 >
                   Cancel

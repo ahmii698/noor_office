@@ -52,13 +52,40 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     return date;
   };
 
-  // ✅ Format date from YYYY-MM-DD to MM/DD/YYYY for display
+  // ✅ Format date from YYYY-MM-DD (or ISO datetime) to MM/DD/YYYY for display
+  // 🔧 FIXED: backend sometimes sends full ISO timestamps like
+  // "2026-06-24T00:00:00.000000Z" — the old code split that on "-" directly,
+  // which corrupted the day/time chunk. Now we strip the time part first.
   const formatToDisplay = (dateStr) => {
     if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
+    
+    // ✅ If already in MM/DD/YYYY format, return as is
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      return dateStr;
+    }
+    
+    // ✅ Strip time portion first (handles ISO datetimes like "...T00:00:00.000000Z")
+    const datePart = dateStr.split('T')[0];
+    
+    // ✅ Try to parse YYYY-MM-DD format
+    const parts = datePart.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
       return `${parts[1]}/${parts[2]}/${parts[0]}`;
     }
+    
+    // ✅ Fallback: try to parse from any date string (use UTC to avoid timezone shift)
+    try {
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const year = date.getUTCFullYear();
+        return `${month}/${day}/${year}`;
+      }
+    } catch (e) {
+      console.error('Error parsing date:', e);
+    }
+    
     return dateStr;
   };
 
@@ -179,10 +206,12 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             if (customerData || history.length > 0) {
               const lastInvoice = history[0] || {};
               
-              // ✅ Convert YYYY-MM-DD to MM/DD/YYYY for display
+              // ✅ Convert any date format to MM/DD/YYYY for display
               const birthdayValue = customerData?.birthday 
                 ? formatToDisplay(customerData.birthday) 
-                : '';
+                : lastInvoice.customer_birthday 
+                  ? formatToDisplay(lastInvoice.customer_birthday)
+                  : '';
               
               setCustomerDetails(prev => ({
                 ...prev,
@@ -368,7 +397,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             />
           </div>
 
-          {/* ✅ Birthday - TEXT INPUT (NO DATE PICKER) */}
+          {/* ✅ Birthday - TEXT INPUT with proper formatting */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiCalendar className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
@@ -387,7 +416,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 maxLength={10}
                 inputMode="numeric"
               />
-              {customerDetails.birthday && !birthdayError && (
+              {customerDetails.birthday && !birthdayError && customerDetails.birthday.length === 10 && (
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
                   <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✅ Valid</span>
                 </div>
@@ -401,7 +430,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             {birthdayError && (
               <p className="text-xs text-red-500 mt-1">{birthdayError}</p>
             )}
-            {customerDetails.birthday && !birthdayError && (
+            {customerDetails.birthday && !birthdayError && customerDetails.birthday.length === 10 && (
               <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                 ✅ Valid date
               </p>

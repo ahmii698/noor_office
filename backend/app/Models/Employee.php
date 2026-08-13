@@ -11,6 +11,7 @@ class Employee extends Model
         'name',
         'monthly_salary',
         'salary_date',
+        'join_date',
         'paid_amount',
         'balance_amount',
         'status',
@@ -23,6 +24,7 @@ class Employee extends Model
         'paid_amount' => 'decimal:2',
         'balance_amount' => 'decimal:2',
         'salary_date' => 'integer',
+        'join_date' => 'date',
         'due_date' => 'date',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -225,6 +227,12 @@ class Employee extends Model
         return $todayDay >= $effectiveDate && $this->balance_amount > 0;
     }
 
+    // ✅ Get formatted join date
+    public function getFormattedJoinDateAttribute()
+    {
+        return $this->join_date ? $this->join_date->format('d-m-Y') : '-';
+    }
+
     // ✅ Get summary
     public function getSummary()
     {
@@ -236,6 +244,7 @@ class Employee extends Model
             'balance_amount' => (float) $this->balance_amount,
             'salary_date' => $this->salary_date,
             'salary_date_display' => $this->salary_date_display,
+            'join_date' => $this->join_date,
             'status' => $this->status,
             'is_due' => $this->is_due,
             'payment_percentage' => $this->payment_percentage,

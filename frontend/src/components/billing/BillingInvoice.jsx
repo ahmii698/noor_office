@@ -147,7 +147,7 @@ const loadImageAsBase64 = (src) => {
   });
 };
 
-const BillingInvoice = ({ customerDetails, darkMode }) => {
+const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
   const [cart, setCart] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
@@ -187,11 +187,19 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     quantity: ''
   });
   
+  // ✅ Oil Change Modal states
+  const [isOilChangeModalOpen, setIsOilChangeModalOpen] = useState(false);
+  const [oilChangeMileage, setOilChangeMileage] = useState('');
+  const [oilChangeService, setOilChangeService] = useState(null);
+  
   const isProcessingRef = useRef(false);
   const paymentExecutedRef = useRef(false);
   
   const userRole = getUserRole();
   const isAdmin = userRole === 'admin';
+
+  // ✅ Get current date
+  const currentDate = new Date().toISOString().split('T')[0];
 
   const subtotal = useMemo(() => {
     const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -591,7 +599,26 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     return product ? product.quantity : 0;
   };
 
+  // ✅ Add to bill - WITH OIL CHANGE MODAL
   const addToBill = (item, type) => {
+    // ✅ Check if it's an oil change service
+    const isOilChange = item.name?.toLowerCase().includes('oil') || 
+                        item.name?.toLowerCase().includes('engine oil') ||
+                        item.name?.toLowerCase().includes('oil change');
+
+    if (isOilChange && type === 'service') {
+      // ✅ Open oil change modal
+      setOilChangeService(item);
+      setIsOilChangeModalOpen(true);
+      return;
+    }
+
+    // ✅ Normal add to cart
+    addItemToBill(item, type);
+  };
+
+  // ✅ Add item to bill (called after oil change modal)
+  const addItemToBill = (item, type, mileage = null) => {
     const currentStock = type === 'product' ? getProductStock(item.id) : null;
     if (currentStock !== null && currentStock <= 0) {
       toast.error(`${item.name} is out of stock!`);
@@ -606,9 +633,25 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       ...item, 
       quantity: 1, 
       type: type,
-      price: type === 'service' ? item.price : item.selling_price
+      price: type === 'service' ? item.price : item.selling_price,
+      mileage: mileage // ✅ Save mileage for oil change
     }]);
     toast.success(`${item.name} added`);
+  };
+
+  // ✅ Handle oil change modal submit
+  const handleOilChangeSubmit = () => {
+    const mileage = parseInt(oilChangeMileage);
+    if (!oilChangeMileage || isNaN(mileage) || mileage < 0) {
+      toast.error('Please enter a valid mileage');
+      return;
+    }
+    
+    // ✅ Add oil change service with mileage
+    addItemToBill(oilChangeService, 'service', mileage);
+    setIsOilChangeModalOpen(false);
+    setOilChangeMileage('');
+    setOilChangeService(null);
   };
 
   const updateQuantity = (id, newQuantity, type) => {
@@ -673,7 +716,10 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     const cartItemsHtml = cart.map((item, idx) => `
       <tr>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${item.name}</td>
+        <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">
+          ${item.name}
+          ${item.mileage ? `<br/><span style="font-size:10px;color:#666;">Mileage: ${item.mileage} km</span>` : ''}
+        </td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.type === 'service' ? 'Service' : 'Part'}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price).toLocaleString()}</td>
@@ -682,7 +728,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     `).join('');
 
     const displayDiscount = roundToTwo(discountAmount);
-    // ✅ FIX: Discount note removed from bill - ONLY show discount amount
     const discountRowHtml = discountAmount > 0 ? `
       <tr>
         <td colspan="5" style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount</td>
@@ -849,7 +894,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     toast.success('Exported to Excel');
   };
 
-  // ✅ UPDATED PDF Export — WITHOUT discount note
+  // ✅ PDF Export - WITH OIL CHANGE MILEAGE
   const exportToPDF = async () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     let yPos = 12;
@@ -920,7 +965,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     yPos += 4;
     
     const tableData = cart.map((item) => [
-      item.name,
+      item.name + (item.mileage ? ` (Mileage: ${item.mileage} km)` : ''),
       item.type === 'service' ? 'Service' : 'Part',
       item.quantity,
       `Rs. ${roundToTwo(item.price).toLocaleString()}`,
@@ -965,7 +1010,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     
-    // ✅ FIX: Discount note removed from PDF - only show discount amount
     const paymentFields = [
       ['Subtotal:', `Rs. ${roundToTwo(subtotal).toLocaleString()}`],
       ...(discountAmount > 0 ? [['Discount:', `- Rs. ${displayDiscount.toLocaleString()}`]] : []),
@@ -1023,7 +1067,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     toast.success('PDF exported successfully!');
   };
 
-  // ✅ handlePayment — sab fields optional with proper defaults
+  // ✅ handlePayment — WITHOUT customer_birthday
   const handlePayment = async () => {
     if (isProcessingRef.current || paymentExecutedRef.current) return;
     if (cart.length === 0) {
@@ -1071,7 +1115,8 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       const customerEmail = customerDetails.email?.trim() || null;
       const customerCarNumber = customerDetails.carNumber?.trim() || 'N/A';
       const customerCarModel = customerDetails.carModel?.trim() || null;
-      const customerBirthdayValue = customerBirthday ? formatDateForAPI(customerBirthday) : null;
+      
+      // ❌ REMOVED: customerBirthdayValue - Birthday only in customers table
       
       const payload = {
         invoice_no: invoiceNo,
@@ -1080,20 +1125,22 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         customer_email: customerEmail,
         customer_car_number: customerCarNumber,
         customer_car_model: customerCarModel,
-        customer_birthday: customerBirthdayValue,
+        // ❌ REMOVED: customer_birthday: customerBirthdayValue,
         subtotal: roundedSubtotal,
         discount: roundedDiscount,
-        discount_note: discountNote?.trim() || null, // ✅ Note saved in DB for internal use
+        discount_note: discountNote?.trim() || null,
         total_amount: roundedBillTotal,
         paid_amount: roundToTwo(exactPaidAmount),
         remaining_amount: roundToTwo(exactRemainingAmount),
         payment_method: paymentMethod,
         status: finalStatus,
+        invoice_date: customerDetails?.date || currentDate,
         items: cartSnapshot.map(item => ({
           service_name: item.name,
           service_category: item.type === 'service' ? (item.category || 'Service') : 'Product',
           price: roundToTwo(item.price),
-          quantity: item.quantity
+          quantity: item.quantity,
+          mileage: item.mileage || null
         }))
       };
       
@@ -1114,6 +1161,14 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       setDiscountNote('');
       setShowDiscount(false);
       await fetchProducts();
+
+      // ✅ NEW: Clear local birthday field and tell the parent (Billing.jsx)
+      // that payment is done, so it can reset customerDetails and send
+      // the user back to Step 1 (fresh, empty Customer Form).
+      setCustomerBirthday('');
+      if (onPaymentSuccess) {
+        onPaymentSuccess();
+      }
     } catch (err) {
       console.error('❌ Payment error:', err);
       
@@ -1522,7 +1577,10 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                         </div>
                         <div>
                           <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</p>
-                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{item.type === 'service' ? 'Service' : 'Part'} • Rs. {roundToTwo(item.price).toLocaleString()} each</p>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {item.type === 'service' ? 'Service' : 'Part'} • Rs. {roundToTwo(item.price).toLocaleString()} each
+                            {item.mileage && <span className="ml-2 text-blue-500">Mileage: {item.mileage} km</span>}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1754,6 +1812,73 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => { setIsProductModalOpen(false); setEditingProduct(null); }} className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>Cancel</button>
                 <button type="button" onClick={editingProduct ? handleUpdateProduct : handleAddProduct} className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2 shadow-md"><FiCheckCircle className="text-sm" /> {editingProduct ? 'Update Product' : 'Add Product'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Oil Change Modal */}
+      {isOilChangeModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-xl max-w-md w-full p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold flex items-center gap-2">
+                <FiAlertCircle className="text-yellow-500" /> Oil Change
+              </h3>
+              <button
+                onClick={() => {
+                  setIsOilChangeModalOpen(false);
+                  setOilChangeMileage('');
+                  setOilChangeService(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                <FiX />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                Please enter the current mileage for <strong>{oilChangeService?.name}</strong>
+              </p>
+              
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Current Mileage (km) *
+                </label>
+                <input
+                  type="number"
+                  value={oilChangeMileage}
+                  onChange={(e) => setOilChangeMileage(e.target.value)}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                  placeholder="Enter current mileage"
+                  min="0"
+                  autoFocus
+                />
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  This will help track when next oil change is due
+                </p>
+              </div>
+              
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOilChangeModalOpen(false);
+                    setOilChangeMileage('');
+                    setOilChangeService(null);
+                  }}
+                  className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleOilChangeSubmit}
+                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2 shadow-md"
+                >
+                  <FiCheckCircle /> Add to Cart
+                </button>
               </div>
             </div>
           </div>

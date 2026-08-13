@@ -7,7 +7,7 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiBell, FiTrendingUp, FiShoppingCart, FiCheckCircle, 
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
-  FiCreditCard, FiCalendar, FiGift
+  FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -55,9 +55,19 @@ const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkM
 ));
 
 // ✅ Helper: Get date range for filter
-const getDateRange = (filter) => {
+const getDateRange = (filter, customDate = null) => {
   const now = new Date();
   const start = new Date();
+  
+  // Custom date filter
+  if (filter === 'custom' && customDate) {
+    const date = new Date(customDate);
+    start.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
   
   switch (filter) {
     case 'today':
@@ -84,9 +94,9 @@ const getDateRange = (filter) => {
 };
 
 // ✅ Helper: Filter invoices by date range
-const filterInvoicesByDate = (invoices, filter) => {
+const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   if (filter === 'all') return invoices;
-  const range = getDateRange(filter);
+  const range = getDateRange(filter, customDate);
   if (!range) return invoices;
   
   return invoices.filter(inv => {
@@ -96,9 +106,9 @@ const filterInvoicesByDate = (invoices, filter) => {
 };
 
 // ✅ Helper: Filter expenses by date range
-const filterExpensesByDate = (expenses, filter) => {
+const filterExpensesByDate = (expenses, filter, customDate = null) => {
   if (filter === 'all') return expenses;
-  const range = getDateRange(filter);
+  const range = getDateRange(filter, customDate);
   if (!range) return expenses;
   
   return expenses.filter(exp => {
@@ -138,8 +148,15 @@ const Dashboard = () => {
   // ✅ Time filter state
   const [timeFilter, setTimeFilter] = useState('all');
   
+  // ✅ Custom date state
+  const [customDate, setCustomDate] = useState('');
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  
   // ✅ Chart type state - default 'line'
   const [chartType, setChartType] = useState('line');
+
+  // ✅ Low stock collapsible state - default closed
+  const [isLowStockOpen, setIsLowStockOpen] = useState(false);
 
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -170,15 +187,15 @@ const Dashboard = () => {
   const invoicesArray = useMemo(() => Array.isArray(invoices) ? invoices : [], [invoices]);
   const servicesArray = useMemo(() => Array.isArray(services) ? services : [], [services]);
 
-  // ✅ FILTERED DATA based on time filter
+  // ✅ FILTERED DATA based on time filter + custom date
   const filteredInvoices = useMemo(() => 
-    filterInvoicesByDate(invoicesArray, timeFilter),
-    [invoicesArray, timeFilter]
+    filterInvoicesByDate(invoicesArray, timeFilter, customDate || null),
+    [invoicesArray, timeFilter, customDate]
   );
 
   const filteredExpenses = useMemo(() => 
-    filterExpensesByDate(expensesArray, timeFilter),
-    [expensesArray, timeFilter]
+    filterExpensesByDate(expensesArray, timeFilter, customDate || null),
+    [expensesArray, timeFilter, customDate]
   );
 
   // ✅ Active products only (not hidden)
@@ -238,9 +255,12 @@ const Dashboard = () => {
     [activeProducts]
   );
 
-  // ✅ Low stock products - ONLY active products with quantity < 10
+  // ✅ Low stock products - uses each product's own threshold
   const lowStockProducts = useMemo(() => {
-    return activeProducts.filter(p => (parseInt(p.quantity) || 0) < 10);
+    return activeProducts.filter(p => {
+      const threshold = p.low_stock_threshold ?? 5;
+      return (parseInt(p.quantity) || 0) < threshold;
+    });
   }, [activeProducts]);
 
   const recentInvoices = useMemo(() => 
@@ -519,10 +539,20 @@ const Dashboard = () => {
       today: 'Today',
       week: 'This Week',
       month: 'This Month',
-      year: 'This Year'
+      year: 'This Year',
+      custom: `Custom: ${customDate || 'Select Date'}`
     };
     return labels[timeFilter] || 'All Time';
-  }, [timeFilter]);
+  }, [timeFilter, customDate]);
+
+  // ✅ Handle custom date change
+  const handleCustomDateChange = (e) => {
+    const date = e.target.value;
+    setCustomDate(date);
+    if (date) {
+      setTimeFilter('custom');
+    }
+  };
 
   // ✅ Render chart based on selected type
   const renderChart = (data, darkMode) => {
@@ -673,14 +703,14 @@ const Dashboard = () => {
             {/* ALL DATA VIEW - Admin only */}
             {activeMenu === 'all-data' && userRole !== 'employee' && (
               <div className="space-y-6">
-                {/* ✅ FILTER BUTTONS */}
+                {/* ✅ FILTER BUTTONS with Custom Date */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2 mr-4">
                     <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
                     <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Filter:</span>
                   </div>
                   <button
-                    onClick={() => setTimeFilter('all')}
+                    onClick={() => { setTimeFilter('all'); setShowCustomDate(false); }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       timeFilter === 'all' 
                         ? 'bg-red-500 text-white shadow-md' 
@@ -692,7 +722,7 @@ const Dashboard = () => {
                     All Time
                   </button>
                   <button
-                    onClick={() => setTimeFilter('today')}
+                    onClick={() => { setTimeFilter('today'); setShowCustomDate(false); }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       timeFilter === 'today' 
                         ? 'bg-red-500 text-white shadow-md' 
@@ -704,7 +734,7 @@ const Dashboard = () => {
                     Today
                   </button>
                   <button
-                    onClick={() => setTimeFilter('week')}
+                    onClick={() => { setTimeFilter('week'); setShowCustomDate(false); }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       timeFilter === 'week' 
                         ? 'bg-red-500 text-white shadow-md' 
@@ -716,7 +746,7 @@ const Dashboard = () => {
                     This Week
                   </button>
                   <button
-                    onClick={() => setTimeFilter('month')}
+                    onClick={() => { setTimeFilter('month'); setShowCustomDate(false); }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       timeFilter === 'month' 
                         ? 'bg-red-500 text-white shadow-md' 
@@ -728,7 +758,7 @@ const Dashboard = () => {
                     This Month
                   </button>
                   <button
-                    onClick={() => setTimeFilter('year')}
+                    onClick={() => { setTimeFilter('year'); setShowCustomDate(false); }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
                       timeFilter === 'year' 
                         ? 'bg-red-500 text-white shadow-md' 
@@ -739,6 +769,41 @@ const Dashboard = () => {
                   >
                     This Year
                   </button>
+                  
+                  {/* Custom Date Button */}
+                  <button
+                    onClick={() => setShowCustomDate(!showCustomDate)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                      timeFilter === 'custom' 
+                        ? 'bg-red-500 text-white shadow-md' 
+                        : darkMode 
+                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    📅 Custom Date
+                  </button>
+                  
+                  {/* Custom Date Input - shows when Custom Date is active */}
+                  {showCustomDate && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={customDate}
+                        onChange={handleCustomDateChange}
+                        className={`px-3 py-2 rounded-lg text-sm border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+                      />
+                      {customDate && (
+                        <button
+                          onClick={() => { setCustomDate(''); setTimeFilter('all'); setShowCustomDate(false); }}
+                          className="text-red-500 text-sm hover:text-red-600"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  
                   <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
                   </span>
@@ -760,8 +825,7 @@ const Dashboard = () => {
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    Line
-                  </button>
+                    Line                  </button>
                   <button
                     onClick={() => setChartType('bar')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -962,66 +1026,88 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Low Stock Alerts - UNCHANGED */}
+                {/* ✅ Low Stock Alerts - COLLAPSIBLE (closed by default) - NOW USES PER-PRODUCT THRESHOLD */}
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
+                  {/* Header - Click to toggle */}
+                  <div 
+                    className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center cursor-pointer hover:opacity-80 transition`}
+                    onClick={() => setIsLowStockOpen(!isLowStockOpen)}
+                  >
                     <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                       <FiAlertCircle className="text-red-500" /> Low Stock Alerts
                       <span className={`text-xs font-normal ml-2 ${lowStockProducts.length > 0 ? 'text-red-500 font-bold' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                         ({lowStockProducts.length} products)
                       </span>
                     </h3>
-                    {lowStockProducts.length > 0 && (
-                      <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full animate-pulse">
-                        ⚠️ Needs Attention
-                      </span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {lowStockProducts.length > 0 && (
+                        <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full animate-pulse">
+                          ⚠️ Needs Attention
+                        </span>
+                      )}
+                      {isLowStockOpen ? (
+                        <FiChevronUp className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                      ) : (
+                        <FiChevronDown className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                      )}
+                    </div>
                   </div>
-                  <div className="p-4">
-                    {lowStockProducts.length === 0 ? (
-                      <div className="text-center py-8">
-                        <FiCheckCircle className="text-5xl mx-auto text-green-500 mb-2" />
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>All active products have sufficient stock</p>
-                        <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Only products with less than 10 units are shown</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {lowStockProducts.map(p => (
-                          <div key={p.id} className={`flex justify-between items-center p-4 rounded-lg border-2 ${
-                            p.quantity <= 3 
-                              ? 'bg-red-50 dark:bg-red-900/30 border-red-500 dark:border-red-700' 
-                              : 'bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-700'
-                          }`}>
-                            <div className="flex items-center gap-4">
-                              <div className={`w-2 h-12 rounded-full ${p.quantity <= 3 ? 'bg-red-500' : 'bg-orange-500'}`}></div>
-                              <div>
-                                <span className={`font-semibold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                  {p.name}
-                                </span>
-                                <span className={`text-xs ml-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  Stock: {p.quantity} units
-                                </span>
+                  
+                  {/* Content - Only visible when open */}
+                  {isLowStockOpen && (
+                    <div className="p-4">
+                      {lowStockProducts.length === 0 ? (
+                        <div className="text-center py-8">
+                          <FiCheckCircle className="text-5xl mx-auto text-green-500 mb-2" />
+                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            All active products have sufficient stock
+                          </p>
+                          <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                            Each product uses its own threshold setting
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {lowStockProducts.map(p => {
+                            const threshold = p.low_stock_threshold ?? 5;
+                            return (
+                              <div key={p.id} className={`flex justify-between items-center p-4 rounded-lg border-2 ${
+                                p.quantity <= 3 
+                                  ? 'bg-red-50 dark:bg-red-900/30 border-red-500 dark:border-red-700' 
+                                  : 'bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-700'
+                              }`}>
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-2 h-12 rounded-full ${p.quantity <= 3 ? 'bg-red-500' : 'bg-orange-500'}`}></div>
+                                  <div>
+                                    <span className={`font-semibold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                      {p.name}
+                                    </span>
+                                    <span className={`text-xs ml-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                      Stock: {p.quantity} units (Threshold: {threshold})
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <span className={`font-bold text-lg ${p.quantity <= 3 ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                    {p.quantity} left
+                                  </span>
+                                  <button 
+                                    onClick={() => setActiveMenu('inventory')} 
+                                    className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition font-medium shadow-md flex items-center gap-2"
+                                  >
+                                    <FiPackage className="text-sm" /> Restock Now
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <span className={`font-bold text-lg ${p.quantity <= 3 ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'}`}>
-                                {p.quantity} left
-                              </span>
-                              <button 
-                                onClick={() => setActiveMenu('inventory')} 
-                                className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition font-medium shadow-md flex items-center gap-2"
-                              >
-                                <FiPackage className="text-sm" /> Restock Now
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Quick Actions - UNCHANGED */}
+                {/* Quick Actions - UPDATED: Add Expense now goes to finance-expenses */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <button onClick={() => setActiveMenu('billing')} className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-md flex items-center justify-center gap-2">
                     <FiFileText /> New Bill
@@ -1032,7 +1118,11 @@ const Dashboard = () => {
                   <button onClick={() => setActiveMenu('record')} className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-md flex items-center justify-center gap-2">
                     <FiShoppingCart /> View Records
                   </button>
-                  <button onClick={() => setActiveMenu('finance-overview')} className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-md flex items-center justify-center gap-2">
+                  {/* ✅ FIXED: Add Expense button now goes to finance-expenses page */}
+                  <button 
+                    onClick={() => setActiveMenu('finance-expenses')} 
+                    className="w-full py-3 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600 transition shadow-md flex items-center justify-center gap-2"
+                  >
                     <FiDollarSign /> Add Expense
                   </button>
                 </div>

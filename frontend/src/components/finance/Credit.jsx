@@ -83,14 +83,6 @@ const Credit = ({ darkMode }) => {
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
-  
-  const [isNewProductModalOpen, setIsNewProductModalOpen] = useState(false);
-  const [newProductData, setNewProductData] = useState({
-    name: '',
-    purchase_price: '',
-    selling_price: '',
-    quantity: ''
-  });
 
   const [editPayAmount, setEditPayAmount] = useState('');
 
@@ -302,11 +294,9 @@ const Credit = ({ darkMode }) => {
     setIsViewModalOpen(false);
     setIsAddModalOpen(false);
     setIsPayModalOpen(false);
-    setIsNewProductModalOpen(false);
     setSelectedVendor(null);
     setSelectedProducts([]);
     setProductSearch('');
-    setNewProductData({ name: '', purchase_price: '', selling_price: '', quantity: '' });
     setEditPayAmount('');
     setIsSubmitting(false);
     setIsPaying(false);
@@ -365,66 +355,11 @@ const Credit = ({ darkMode }) => {
     setSelectedProducts(updated);
   };
 
+  // ✅ Filter products - only show products NOT already selected
   const filteredProducts = allProducts.filter(p =>
     p.name?.toLowerCase().includes(productSearch.toLowerCase()) &&
     !selectedProducts.find(sp => sp.product_id === p.id)
   );
-
-  // ✅ Add new product with DUPLICATE CHECK
-  const handleAddNewProduct = async () => {
-    if (!newProductData.name || !newProductData.purchase_price || !newProductData.selling_price || !newProductData.quantity) {
-      toast.error('Please fill all fields');
-      return;
-    }
-
-    const purchasePrice = parseFloat(newProductData.purchase_price);
-    const sellingPrice = parseFloat(newProductData.selling_price);
-    const quantity = parseInt(newProductData.quantity);
-
-    if (isNaN(purchasePrice) || isNaN(sellingPrice) || isNaN(quantity)) {
-      toast.error('Please enter valid numbers');
-      return;
-    }
-
-    // CRITICAL: Check if product with same name already exists in system
-    const productNameTrimmed = newProductData.name.trim();
-    const existingProduct = allProducts.find(p => 
-      p.name?.toLowerCase().trim() === productNameTrimmed.toLowerCase()
-    );
-    
-    if (existingProduct) {
-      toast.error(`"${productNameTrimmed}" already exists in system! Please select it from the list.`);
-      return;
-    }
-
-    try {
-      const response = await api.post('/products', {
-        name: productNameTrimmed,
-        purchase_price: purchasePrice,
-        selling_price: sellingPrice,
-        quantity: quantity
-      });
-
-      if (response.data) {
-        toast.success('New product added successfully!');
-        await fetchAllProducts();
-        setIsNewProductModalOpen(false);
-        setNewProductData({ name: '', purchase_price: '', selling_price: '', quantity: '' });
-        
-        const newProduct = response.data.data || response.data;
-        if (newProduct && newProduct.id) {
-          handleAddProductToSelection({
-            id: newProduct.id,
-            name: newProduct.name,
-            purchase_price: newProduct.purchase_price || purchasePrice
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error adding product:', error);
-      toast.error(error.response?.data?.message || 'Failed to add product');
-    }
-  };
 
   const handleSubmitVendor = async (e) => {
     e.preventDefault();
@@ -1163,7 +1098,7 @@ const Credit = ({ darkMode }) => {
         </div>
       )}
 
-      {/* Add Vendor Modal */}
+      {/* ✅ Add Vendor Modal - "New" button REMOVED, only existing products */}
       {isAddModalOpen && (
         <div className="credit-modal-overlay">
           <div className={`credit-modal ${darkMode ? 'dark' : ''}`}>
@@ -1204,31 +1139,21 @@ const Credit = ({ darkMode }) => {
                     <button
                       type="button"
                       onClick={() => setShowProductDropdown(!showProductDropdown)}
-                      className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                      className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
                     >
                       <FiShoppingCart />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsNewProductModalOpen(true)}
-                      className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-1"
-                    >
-                      <FiPlusCircle className="text-sm" /> New
-                    </button>
+                    {/* ✅ "New" button REMOVED - user can only select existing products */}
                   </div>
                   
                   {showProductDropdown && (
                     <div className={`absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border shadow-lg ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                       {filteredProducts.length === 0 ? (
                         <div className="p-3 text-center text-gray-500">
-                          No products available. 
-                          <button 
-                            type="button"
-                            onClick={() => setIsNewProductModalOpen(true)}
-                            className="ml-1 text-green-500 hover:text-green-600 underline"
-                          >
-                            Add new product?
-                          </button>
+                          {productSearch ? 'No products found matching your search' : 'No products available in inventory'}
+                          <p className="text-xs text-gray-400 mt-1">
+                            Products can only be added from inventory
+                          </p>
                         </div>
                       ) : (
                         filteredProducts.map(product => (
@@ -1246,6 +1171,9 @@ const Credit = ({ darkMode }) => {
                     </div>
                   )}
                 </div>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Only products from inventory can be selected
+                </p>
               </div>
 
               {selectedProducts.length > 0 && (
@@ -1302,73 +1230,6 @@ const Credit = ({ darkMode }) => {
                 <button type="submit" className="credit-btn-submit">Add Vendor</button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* New Product Modal */}
-      {isNewProductModalOpen && (
-        <div className="credit-modal-overlay">
-          <div className={`credit-modal ${darkMode ? 'dark' : ''}`}>
-            <div className={`credit-modal-header ${darkMode ? 'dark' : ''}`}>
-              <h2 className="credit-modal-title">
-                <FiPlusCircle className="credit-modal-title-icon text-green-500" /> Add New Product
-              </h2>
-              <button onClick={handleCloseModal} className="credit-modal-close">
-                <FiX />
-              </button>
-            </div>
-            <div className="credit-modal-body">
-              <div className="credit-form-group">
-                <label className={`credit-form-label ${darkMode ? 'dark' : ''}`}>Product Name *</label>
-                <input
-                  type="text"
-                  value={newProductData.name}
-                  onChange={(e) => setNewProductData({ ...newProductData, name: e.target.value })}
-                  className={`credit-form-input ${darkMode ? 'dark' : ''}`}
-                  placeholder="Enter product name"
-                />
-              </div>
-              <div className="credit-form-group">
-                <label className={`credit-form-label ${darkMode ? 'dark' : ''}`}>Purchase Price (Rs.) *</label>
-                <input
-                  type="number"
-                  value={newProductData.purchase_price}
-                  onChange={(e) => setNewProductData({ ...newProductData, purchase_price: e.target.value })}
-                  className={`credit-form-input ${darkMode ? 'dark' : ''}`}
-                  placeholder="Enter purchase price"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              <div className="credit-form-group">
-                <label className={`credit-form-label ${darkMode ? 'dark' : ''}`}>Selling Price (Rs.) *</label>
-                <input
-                  type="number"
-                  value={newProductData.selling_price}
-                  onChange={(e) => setNewProductData({ ...newProductData, selling_price: e.target.value })}
-                  className={`credit-form-input ${darkMode ? 'dark' : ''}`}
-                  placeholder="Enter selling price"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              <div className="credit-form-group">
-                <label className={`credit-form-label ${darkMode ? 'dark' : ''}`}>Stock Quantity *</label>
-                <input
-                  type="number"
-                  value={newProductData.quantity}
-                  onChange={(e) => setNewProductData({ ...newProductData, quantity: e.target.value })}
-                  className={`credit-form-input ${darkMode ? 'dark' : ''}`}
-                  placeholder="Enter stock quantity"
-                  min="0"
-                />
-              </div>
-              <div className="credit-form-actions">
-                <button type="button" onClick={handleCloseModal} className="credit-btn-cancel">Cancel</button>
-                <button type="button" onClick={handleAddNewProduct} className="credit-btn-submit">Add Product</button>
-              </div>
-            </div>
           </div>
         </div>
       )}

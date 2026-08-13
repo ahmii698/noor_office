@@ -77,6 +77,76 @@ const getUserRole = () => {
   return 'employee';
 };
 
+// Helper function to format date as mm/dd/yyyy
+const formatDate = (dateString) => {
+  if (!dateString) return '';
+  
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) {
+    return dateString;
+  }
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  } catch (e) {
+    return dateString;
+  }
+};
+
+const parseDateString = (dateStr) => {
+  if (!dateStr) return null;
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const month = parseInt(parts[0]) - 1;
+    const day = parseInt(parts[1]);
+    const year = parseInt(parts[2]);
+    const date = new Date(year, month, day);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
+  return null;
+};
+
+const formatDateForAPI = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const month = parts[0].padStart(2, '0');
+    const day = parts[1].padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
+  }
+  return dateStr;
+};
+
+const loadImageAsBase64 = (src) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        resolve({ dataUrl, width: img.naturalWidth, height: img.naturalHeight });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = (err) => reject(err);
+    img.src = src;
+  });
+};
+
 const BillingInvoice = ({ customerDetails, darkMode }) => {
   const [cart, setCart] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -90,13 +160,13 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showIconDropdown, setShowIconDropdown] = useState(false);
   
-  // DISCOUNT STATES
   const [showDiscount, setShowDiscount] = useState(false);
   const [discountType, setDiscountType] = useState('fixed');
   const [discountValue, setDiscountValue] = useState('');
   const [discountNote, setDiscountNote] = useState('');
   
   const [customerBirthday, setCustomerBirthday] = useState('');
+  const [birthdayError, setBirthdayError] = useState('');
   const [previousVisits, setPreviousVisits] = useState([]);
   
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
@@ -120,11 +190,9 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
   const isProcessingRef = useRef(false);
   const paymentExecutedRef = useRef(false);
   
-  // Get user role
   const userRole = getUserRole();
   const isAdmin = userRole === 'admin';
 
-  // Calculate subtotal with rounding
   const subtotal = useMemo(() => {
     const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
     return roundToTwo(total);
@@ -159,18 +227,95 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     return remainingAmount <= 0.01;
   }, [remainingAmount]);
 
+  const validateBirthday = (value) => {
+    if (!value) {
+      setBirthdayError('');
+      return true;
+    }
+    
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+      setBirthdayError('Please use mm/dd/yyyy format');
+      return false;
+    }
+    
+    const parts = value.split('/');
+    const month = parseInt(parts[0]);
+    const day = parseInt(parts[1]);
+    const year = parseInt(parts[2]);
+    
+    if (month < 1 || month > 12) {
+      setBirthdayError('Month must be between 1-12');
+      return false;
+    }
+    
+    if (day < 1 || day > 31) {
+      setBirthdayError('Day must be between 1-31');
+      return false;
+    }
+    
+    const date = new Date(year, month - 1, day);
+    if (isNaN(date.getTime())) {
+      setBirthdayError('Invalid date');
+      return false;
+    }
+    
+    const checkDate = new Date(year, month - 1, day);
+    if (checkDate.getMonth() !== month - 1 || checkDate.getDate() !== day) {
+      setBirthdayError('Invalid date (check month/day combination)');
+      return false;
+    }
+    
+    if (year < 1900 || year > 2100) {
+      setBirthdayError('Please enter a valid year (1900-2100)');
+      return false;
+    }
+    
+    setBirthdayError('');
+    return true;
+  };
+
+  const handleBirthdayChange = (e) => {
+    let value = e.target.value;
+    value = value.replace(/[^0-9/]/g, '');
+    
+    if (value.length === 2 && !value.includes('/')) {
+      value = value + '/';
+    } else if (value.length === 5 && value.split('/').length === 2 && !value.endsWith('/')) {
+      const parts = value.split('/');
+      if (parts.length === 2 && parts[1].length === 2) {
+        value = value + '/';
+      }
+    }
+    
+    setCustomerBirthday(value);
+    
+    if (value.length === 10) {
+      validateBirthday(value);
+    } else {
+      setBirthdayError('');
+    }
+  };
+
+  const getFormattedBirthday = (birthdayStr) => {
+    if (!birthdayStr) return 'Not Provided';
+    const date = parseDateString(birthdayStr);
+    if (date) {
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+    return birthdayStr;
+  };
+
   useEffect(() => {
     if (customerDetails?.birthday) {
-      setCustomerBirthday(customerDetails.birthday);
+      const formatted = formatDate(customerDetails.birthday);
+      setCustomerBirthday(formatted);
     } else {
       setCustomerBirthday('');
     }
   }, [customerDetails]);
 
-  // ✅ Fetch previous visits - ONLY if admin
   useEffect(() => {
     const fetchPreviousVisits = async () => {
-      // ✅ ONLY ADMIN - if not admin, don't fetch
       if (!isAdmin || !customerDetails?.phone) {
         setPreviousVisits([]);
         return;
@@ -435,11 +580,9 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     setShowIconDropdown(false);
   };
 
-  // Filter services by search term
   const filteredServices = searchTerm ? 
     services.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())) : services;
 
-  // Filter products by search term (only visible products are already loaded)
   const filteredProducts = searchTerm ? 
     products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())) : products;
 
@@ -529,9 +672,9 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     
     const cartItemsHtml = cart.map((item, idx) => `
       <tr>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${idx + 1}</td>
+        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${item.name}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${item.type === 'service' ? 'Service' : 'Part'}</td>
+        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.type === 'service' ? 'Service' : 'Part'}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price).toLocaleString()}</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}</td>
@@ -539,9 +682,10 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     `).join('');
 
     const displayDiscount = roundToTwo(discountAmount);
+    // ✅ FIX: Discount note removed from bill - ONLY show discount amount
     const discountRowHtml = discountAmount > 0 ? `
       <tr>
-        <td colspan="5" style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount ${discountNote ? `(${discountNote})` : ''}</td>
+        <td colspan="5" style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount</td>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">- Rs. ${displayDiscount.toLocaleString()}</td>
       </tr>
     ` : '';
@@ -567,6 +711,9 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
             .customer-info { margin: 20px; padding: 18px; border: 1px solid #e5e7eb; border-radius: 8px; }
             .customer-info h4 { margin-bottom: 10px; color: #1f2937; font-size: 14px; }
             .customer-info p { margin: 4px 0; font-size: 13px; color: #333; }
+            .customer-info .info-row { display: flex; padding: 3px 0; }
+            .customer-info .info-label { font-weight: 600; min-width: 120px; color: #4b5563; }
+            .customer-info .info-value { color: #1f2937; }
             .invoice-details { display: flex; justify-content: space-between; margin: 20px; padding: 12px 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; }
             table { width: calc(100% - 40px); margin: 20px; border-collapse: collapse; }
             th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
@@ -580,12 +727,10 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
             .footer .address { margin-bottom: 4px; }
             .footer .social { margin-top: 6px; }
             .footer .social span { display: block; margin: 2px 0; }
-            .footer svg { display: inline; vertical-align: middle; margin-right: 6px; }
             .print-actions { text-align: center; margin-top: 20px; padding: 15px; background: white; border-radius: 12px; max-width: 800px; margin-left: auto; margin-right: auto; }
             .print-btn, .close-btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; margin: 0 8px; }
             .print-btn { background: #dc2626; color: white; }
             .close-btn { background: #6b7280; color: white; }
-            .discount-row { color: #dc2626; font-weight: bold; }
             @media print { body { background: white; padding: 0; } .print-actions { display: none; } .invoice-container { box-shadow: none; border-radius: 0; } }
           </style>
         </head>
@@ -600,20 +745,20 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
             </div>
             <div class="customer-info">
               <h4>CUSTOMER INFORMATION</h4>
-              <p><strong>Name:</strong> ${customerDetails.name}</p>
-              <p><strong>Phone:</strong> ${customerDetails.phone}</p>
-              <p><strong>Email:</strong> ${customerDetails.email || 'N/A'}</p>
-              <p><strong>Car Number:</strong> ${customerDetails.carNumber}</p>
-              <p><strong>Car Model:</strong> ${customerDetails.carModel || 'N/A'}</p>
-              <p><strong>Birthday:</strong> ${customerBirthday ? new Date(customerBirthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not Provided'}</p>
+              <div class="info-row"><span class="info-label">Name:</span><span class="info-value">${customerDetails.name || 'N/A'}</span></div>
+              <div class="info-row"><span class="info-label">Phone:</span><span class="info-value">${customerDetails.phone || 'N/A'}</span></div>
+              <div class="info-row"><span class="info-label">Email:</span><span class="info-value">${customerDetails.email || 'N/A'}</span></div>
+              <div class="info-row"><span class="info-label">Car Number:</span><span class="info-value">${customerDetails.carNumber || 'N/A'}</span></div>
+              <div class="info-row"><span class="info-label">Car Model:</span><span class="info-value">${customerDetails.carModel || 'N/A'}</span></div>
+              <div class="info-row"><span class="info-label">Birthday:</span><span class="info-value">${customerBirthday ? getFormattedBirthday(customerBirthday) : 'Not Provided'}</span></div>
             </div>
             <div class="invoice-details">
               <p><strong>Invoice #:</strong> INV-${Date.now()}</p>
-              <p><strong>Date:</strong> ${customerDetails.date}</p>
+              <p><strong>Date:</strong> ${customerDetails.date || new Date().toLocaleDateString()}</p>
             </div>
             <table>
               <thead>
-                <tr><th>#</th><th>Item</th><th>Type</th><th>Qty</th><th>Price</th><th>Total</th></tr>
+                <tr><th style="text-align:center;">#</th><th>Item</th><th style="text-align:center;">Type</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Total</th></tr>
               </thead>
               <tbody>
                 ${cartItemsHtml}
@@ -623,12 +768,12 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
             <div class="payment-details">
               <h4>PAYMENT DETAILS</h4>
               <p><strong>Subtotal:</strong> Rs. ${roundToTwo(subtotal).toLocaleString()}</p>
-              ${discountAmount > 0 ? `<p><strong>Discount:</strong> - Rs. ${displayDiscount.toLocaleString()} ${discountNote ? `(${discountNote})` : ''}</p>` : ''}
+              ${discountAmount > 0 ? `<p><strong>Discount:</strong> - Rs. ${displayDiscount.toLocaleString()}</p>` : ''}
               <p><strong>Total Amount:</strong> Rs. ${roundToTwo(billTotal).toLocaleString()}</p>
               <p><strong>Paid Amount:</strong> Rs. ${displayPaidAmount.toLocaleString()}</p>
               <p><strong>Payment Method:</strong> ${paymentMethod.toUpperCase()}</p>
               <p><strong>Remaining Balance:</strong> Rs. ${displayRemainingAmount.toLocaleString()}</p>
-              <p><strong>Payment Status:</strong> ${isFullyPaid ? 'FULLY PAID' : 'PENDING'}</p>
+              <p><strong>Payment Status:</strong> ${isFullyPaid ? 'FULLY PAID ✅' : 'PENDING ⚠️'}</p>
             </div>
             <div class="total-row">Total: Rs. ${roundToTwo(billTotal).toLocaleString()}</div>
             <div class="signature">
@@ -645,20 +790,14 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                 0337 3267363
               </div>
               <div class="social">
-                <span>
-                  <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="16" width="16" xmlns="http://www.w3.org/2000/svg"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                  Facebook: https://www.facebook.com/Noorani.Car.AC/
-                </span>
-                <span>
-                  <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="16" width="16" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-                  Instagram: https://www.instagram.com/nooranicarac/
-                </span>
+                <span>📘 Facebook: Noorani.Car.AC</span>
+                <span>📷 Instagram: nooranicarac</span>
               </div>
             </div>
           </div>
           <div class="print-actions">
-            <button class="print-btn" onclick="window.print()">Print Bill</button>
-            <button class="close-btn" onclick="window.close()">Close</button>
+            <button class="print-btn" onclick="window.print()">🖨️ Print Bill</button>
+            <button class="close-btn" onclick="window.close()">✖ Close</button>
           </div>
           <script>setTimeout(function() { window.print(); }, 300);</script>
         </body>
@@ -679,11 +818,11 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     const exportData = [
       {
         'Invoice #': `INV-${Date.now()}`,
-        'Date': customerDetails.date,
-        'Customer Name': customerDetails.name,
-        'Phone': customerDetails.phone,
+        'Date': customerDetails.date || new Date().toLocaleDateString(),
+        'Customer Name': customerDetails.name || 'N/A',
+        'Phone': customerDetails.phone || 'N/A',
         'Email': customerDetails.email || 'N/A',
-        'Car Number': customerDetails.carNumber,
+        'Car Number': customerDetails.carNumber || 'N/A',
         'Car Model': customerDetails.carModel || 'N/A',
         'Birthday': customerBirthday || 'N/A',
         'Subtotal': `Rs. ${roundToTwo(subtotal).toLocaleString()}`,
@@ -706,56 +845,81 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Bill');
-    XLSX.writeFile(wb, `Bill_${customerDetails.name}_${Date.now()}.xlsx`);
+    XLSX.writeFile(wb, `Bill_${customerDetails.name || 'Customer'}_${Date.now()}.xlsx`);
     toast.success('Exported to Excel');
   };
 
-  const exportToPDF = () => {
-    const doc = new jsPDF();
-    let yPos = 10;
-    
-    const logoImg = logo;
-    doc.addImage(logoImg, 'JPEG', 14, yPos, 25, 25);
-    
+  // ✅ UPDATED PDF Export — WITHOUT discount note
+  const exportToPDF = async () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    let yPos = 12;
+    const margin = 14;
+
+    const maxLogoW = 32;
+    const maxLogoH = 32;
+    const textX = margin + maxLogoW + 8;
+
+    try {
+      const { dataUrl, width, height } = await loadImageAsBase64(logo);
+      const ratio = Math.min(maxLogoW / width, maxLogoH / height);
+      const drawW = width * ratio;
+      const drawH = height * ratio;
+      const logoX = margin + (maxLogoW - drawW) / 2;
+      const logoY = yPos + (maxLogoH - drawH) / 2;
+      doc.addImage(dataUrl, 'JPEG', logoX, logoY, drawW, drawH);
+    } catch (e) {
+      console.warn('Logo could not be loaded for PDF', e);
+    }
+
     doc.setFontSize(20);
     doc.setTextColor(26, 26, 46);
-    doc.text('NOORANI CAR AC & AUTOS', 45, yPos + 8);
-    yPos += 8;
-    doc.setFontSize(10);
+    doc.text('NOORANI CAR AC & AUTOS', textX, yPos + 12);
+
+    doc.setFontSize(11);
     doc.setTextColor(100, 100, 100);
-    doc.text('Professional Auto Care Service', 45, yPos + 8);
-    yPos += 18;
-    
+    doc.text('Professional Auto Care Service', textX, yPos + 20);
+
+    yPos = yPos + maxLogoH + 8;
+
     doc.setFontSize(9);
     doc.setTextColor(80, 80, 80);
-    doc.text('Shop # 02, Hospital, Gulshan Luxury Apartments', 14, yPos);
+    doc.text('Shop # 02, Hospital, Gulshan Luxury Apartments', margin, yPos);
     yPos += 5;
-    doc.text('Near Al Mustafa St, Gulshan 13-B Block 13 B', 14, yPos);
+    doc.text('Near Al Mustafa St, Gulshan 13-B Block 13 B', margin, yPos);
     yPos += 5;
-    doc.text('Gulshan-e-Iqbal, Karachi', 14, yPos);
-    yPos += 5;
-    doc.text('0337 3267363', 14, yPos);
-    yPos += 10;
+    doc.text('Gulshan-e-Iqbal, Karachi  •  0337 3267363', margin, yPos);
+    yPos += 12;
     
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Customer: ${customerDetails.name}`, 14, yPos);
-    yPos += 7;
-    doc.text(`Phone: ${customerDetails.phone}`, 14, yPos);
-    yPos += 7;
-    doc.text(`Email: ${customerDetails.email || 'N/A'}`, 14, yPos);
-    yPos += 7;
-    doc.text(`Car Number: ${customerDetails.carNumber}`, 14, yPos);
-    yPos += 7;
-    doc.text(`Car Model: ${customerDetails.carModel || 'N/A'}`, 14, yPos);
-    yPos += 7;
-    doc.text(`Date: ${customerDetails.date}`, 14, yPos);
-    yPos += 7;
-    doc.text(`Birthday: ${customerBirthday || 'N/A'}`, 14, yPos);
-    yPos += 15;
+    doc.setFont('helvetica', 'bold');
+    doc.text('CUSTOMER INFORMATION', margin, yPos);
+    yPos += 6;
     
-    const tableBody = cart.map((item, idx) => [
-      idx + 1,
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    
+    const customerFields = [
+      ['Name:', customerDetails.name || 'N/A'],
+      ['Phone:', customerDetails.phone || 'N/A'],
+      ['Email:', customerDetails.email || 'N/A'],
+      ['Car Number:', customerDetails.carNumber || 'N/A'],
+      ['Car Model:', customerDetails.carModel || 'N/A'],
+      ['Birthday:', customerBirthday ? getFormattedBirthday(customerBirthday) : 'Not Provided'],
+      ['Date:', customerDetails.date || new Date().toLocaleDateString()]
+    ];
+    
+    const col1Width = 45;
+    customerFields.forEach(([label, value]) => {
+      doc.setFont('helvetica', 'bold');
+      doc.text(label, margin, yPos);
+      doc.setFont('helvetica', 'normal');
+      doc.text(value, margin + col1Width, yPos);
+      yPos += 6;
+    });
+    yPos += 4;
+    
+    const tableData = cart.map((item) => [
       item.name,
       item.type === 'service' ? 'Service' : 'Part',
       item.quantity,
@@ -763,43 +927,103 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       `Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}`
     ]);
     
-    const displayDiscount = roundToTwo(discountAmount);
-    if (discountAmount > 0) {
-      tableBody.push([
-        '', '', '', '', 
-        { content: `Discount ${discountNote ? `(${discountNote})` : ''}`, styles: { textColor: [220, 38, 38], fontStyle: 'bold' } },
-        { content: `- Rs. ${displayDiscount.toLocaleString()}`, styles: { textColor: [220, 38, 38], fontStyle: 'bold' } }
-      ]);
-    }
-    
     doc.autoTable({
       startY: yPos,
-      head: [['#', 'Item', 'Type', 'Qty', 'Price', 'Total']],
-      body: tableBody,
+      head: [['Item', 'Type', 'Qty', 'Price', 'Total']],
+      body: tableData,
       theme: 'striped',
-      headStyles: { fillColor: [26, 26, 46] }
+      headStyles: { 
+        fillColor: [26, 26, 46],
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      columnStyles: {
+        0: { cellWidth: 70 },
+        1: { cellWidth: 25, halign: 'center' },
+        2: { cellWidth: 20, halign: 'center' },
+        3: { cellWidth: 35, halign: 'right' },
+        4: { cellWidth: 35, halign: 'right' }
+      },
+      styles: {
+        fontSize: 10,
+        cellPadding: 4
+      },
+      margin: { left: margin, right: margin }
     });
     
+    let finalY = doc.lastAutoTable.finalY + 8;
     const displayPaidAmount = roundToTwo(paidAmount);
     const displayRemainingAmount = roundToTwo(remainingAmount);
+    const displayDiscount = roundToTwo(discountAmount);
     
-    const finalY = doc.lastAutoTable.finalY + 10;
-    doc.text(`Subtotal: Rs. ${roundToTwo(subtotal).toLocaleString()}`, 14, finalY);
-    if (discountAmount > 0) {
-      doc.setTextColor(220, 38, 38);
-      doc.text(`Discount: - Rs. ${displayDiscount.toLocaleString()} ${discountNote ? `(${discountNote})` : ''}`, 14, finalY + 7);
-      doc.setTextColor(0, 0, 0);
-    }
-    doc.text(`Total Amount: Rs. ${roundToTwo(billTotal).toLocaleString()}`, 14, finalY + (discountAmount > 0 ? 14 : 7));
-    doc.text(`Paid Amount: Rs. ${displayPaidAmount.toLocaleString()}`, 14, finalY + (discountAmount > 0 ? 21 : 14));
-    doc.text(`Remaining: Rs. ${displayRemainingAmount.toLocaleString()}`, 14, finalY + (discountAmount > 0 ? 28 : 21));
-    doc.text(`Status: ${isFullyPaid ? 'FULLY PAID' : 'PENDING'}`, 14, finalY + (discountAmount > 0 ? 35 : 28));
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PAYMENT DETAILS', margin, finalY);
+    finalY += 6;
     
-    doc.save(`Bill_${customerDetails.name}_${Date.now()}.pdf`);
-    toast.success('Exported to PDF');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    
+    // ✅ FIX: Discount note removed from PDF - only show discount amount
+    const paymentFields = [
+      ['Subtotal:', `Rs. ${roundToTwo(subtotal).toLocaleString()}`],
+      ...(discountAmount > 0 ? [['Discount:', `- Rs. ${displayDiscount.toLocaleString()}`]] : []),
+      ['Total Amount:', `Rs. ${roundToTwo(billTotal).toLocaleString()}`],
+      ['Paid Amount:', `Rs. ${displayPaidAmount.toLocaleString()}`],
+      ['Payment Method:', paymentMethod.toUpperCase()],
+      ['Remaining Balance:', `Rs. ${displayRemainingAmount.toLocaleString()}`],
+      ['Payment Status:', isFullyPaid ? 'FULLY PAID ✅' : 'PENDING ⚠️']
+    ];
+    
+    paymentFields.forEach(([label, value]) => {
+      const isTotal = label === 'Total Amount:';
+      const isDiscount = label === 'Discount:';
+      const isStatus = label === 'Payment Status:';
+      
+      if (isTotal) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(220, 38, 38);
+      } else if (isDiscount) {
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(10);
+        doc.setTextColor(220, 38, 38);
+      } else if (isStatus) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(isFullyPaid ? 34 : 220, isFullyPaid ? 197 : 38, isFullyPaid ? 94 : 38);
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+      }
+      
+      const labelWidth = 50;
+      doc.text(label, margin, finalY);
+      doc.text(value, margin + labelWidth, finalY);
+      finalY += 7;
+    });
+    
+    finalY += 8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Customer Signature: _________________', margin, finalY);
+    doc.text('Authorized Signature: _________________', 120, finalY);
+    finalY += 12;
+    
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text('Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B, Gulshan-e-Iqbal, Karachi', margin, finalY);
+    finalY += 4;
+    doc.text('Phone: 0337 3267363  •  Facebook: Noorani.Car.AC  •  Instagram: nooranicarac', margin, finalY);
+    
+    doc.save(`Bill_${customerDetails.name || 'Customer'}_${Date.now()}.pdf`);
+    toast.success('PDF exported successfully!');
   };
 
-  // ✅ handlePayment with fix: payment cannot exceed bill total
+  // ✅ handlePayment — sab fields optional with proper defaults
   const handlePayment = async () => {
     if (isProcessingRef.current || paymentExecutedRef.current) return;
     if (cart.length === 0) {
@@ -811,7 +1035,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       return;
     }
     
-    // ✅ FIX: Payment amount cannot exceed bill total
     if (paidAmount > billTotal) {
       toast.error(`Payment amount (Rs. ${paidAmount.toLocaleString()}) cannot exceed total amount (Rs. ${billTotal.toLocaleString()})`);
       return;
@@ -843,17 +1066,24 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         }
       }
       
-      await api.post('/invoices', {
+      const customerName = customerDetails.name?.trim() || 'Guest';
+      const customerPhone = customerDetails.phone?.trim() || 'N/A';
+      const customerEmail = customerDetails.email?.trim() || null;
+      const customerCarNumber = customerDetails.carNumber?.trim() || 'N/A';
+      const customerCarModel = customerDetails.carModel?.trim() || null;
+      const customerBirthdayValue = customerBirthday ? formatDateForAPI(customerBirthday) : null;
+      
+      const payload = {
         invoice_no: invoiceNo,
-        customer_name: customerDetails.name,
-        customer_phone: customerDetails.phone,
-        customer_email: customerDetails.email,
-        customer_car_number: customerDetails.carNumber,
-        customer_car_model: customerDetails.carModel,
-        customer_birthday: customerBirthday || null,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_email: customerEmail,
+        customer_car_number: customerCarNumber,
+        customer_car_model: customerCarModel,
+        customer_birthday: customerBirthdayValue,
         subtotal: roundedSubtotal,
         discount: roundedDiscount,
-        discount_note: discountNote || null,
+        discount_note: discountNote?.trim() || null, // ✅ Note saved in DB for internal use
         total_amount: roundedBillTotal,
         paid_amount: roundToTwo(exactPaidAmount),
         remaining_amount: roundToTwo(exactRemainingAmount),
@@ -865,7 +1095,11 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
           price: roundToTwo(item.price),
           quantity: item.quantity
         }))
-      });
+      };
+      
+      console.log('📤 Sending invoice payload:', JSON.stringify(payload, null, 2));
+      
+      await api.post('/invoices', payload);
       
       const reminderAdded = await addServiceReminder(invoiceNo, cartSnapshot);
       if (reminderAdded) {
@@ -881,8 +1115,22 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
       setShowDiscount(false);
       await fetchProducts();
     } catch (err) {
-      console.error('Payment error:', err);
-      toast.error(`Payment failed: ${err.response?.data?.message || err.response?.data?.error || 'Unknown error'}`);
+      console.error('❌ Payment error:', err);
+      
+      if (err.response?.data?.errors) {
+        const errors = err.response.data.errors;
+        const errorMessages = Object.keys(errors).map(key => {
+          const messages = Array.isArray(errors[key]) ? errors[key].join(', ') : errors[key];
+          return `${key}: ${messages}`;
+        });
+        toast.error(`Validation failed: ${errorMessages.join('; ')}`);
+      } else if (err.response?.data?.message) {
+        toast.error(`Payment failed: ${err.response.data.message}`);
+      } else if (err.response?.data?.error) {
+        toast.error(`Payment failed: ${err.response.data.error}`);
+      } else {
+        toast.error('Payment failed. Please try again.');
+      }
     } finally {
       setTimeout(() => {
         isProcessingRef.current = false;
@@ -920,7 +1168,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         </div>
       </div>
 
-      {/* Customer Info */}
+      {/* Customer Info - All fields optional */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-5 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
           Step 1: Customer Details
@@ -932,7 +1180,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Phone Number <span className="text-red-500">*</span>
+              Phone Number 
               <span className="text-xs text-gray-400 block">Type to search history</span>
             </label>
             <input
@@ -947,7 +1195,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
 
           <div>
             <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Customer Name <span className="text-red-500">*</span>
+              Customer Name
             </label>
             <input
               type="text"
@@ -975,7 +1223,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
 
           <div>
             <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Car Number Plate <span className="text-red-500">*</span>
+              Car Number Plate <span className="text-xs text-gray-400">(Optional)</span>
             </label>
             <input
               type="text"
@@ -1003,32 +1251,45 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
 
           <div>
             <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Birthday <span className="text-xs text-gray-400">(Optional)</span>
+              Birthday <span className="text-xs text-gray-400">(Optional - mm/dd/yyyy)</span>
             </label>
             <div className="relative">
               <input
-                type="date"
-                value={customerBirthday || ''}
-                onChange={(e) => setCustomerBirthday(e.target.value)}
+                type="text"
+                value={customerBirthday}
+                onChange={handleBirthdayChange}
+                placeholder="e.g. 01/15/1990"
                 className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
                   darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                } ${customerBirthday ? 'border-green-500' : ''}`}
+                } ${customerBirthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`}
+                maxLength={10}
+                inputMode="numeric"
               />
-              {customerBirthday && (
+              {customerBirthday && !birthdayError && (
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✅ Auto</span>
+                  <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✅ Valid</span>
+                </div>
+              )}
+              {birthdayError && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">⚠️</span>
                 </div>
               )}
             </div>
-            {customerBirthday && (
+            {birthdayError && (
+              <p className="text-xs text-red-500 mt-1">{birthdayError}</p>
+            )}
+            {customerBirthday && !birthdayError && (
               <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                ✅ Auto-filled from customer records: {new Date(customerBirthday).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                ✅ Birthday: {getFormattedBirthday(customerBirthday)}
               </p>
             )}
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Format: mm/dd/yyyy (e.g., 01/15/1990)
+            </p>
           </div>
         </div>
 
-        {/* ✅ Previous Visits - ONLY Admin */}
         {isAdmin && previousVisits.length > 0 && (
           <div className="mt-6">
             <h4 className={`font-semibold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -1293,7 +1554,7 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                   <div className="py-2">
                     <button onClick={() => setShowDiscount(!showDiscount)} className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 transition font-medium">
                       <FiGift className="text-lg" />
-                      {showDiscount ? 'Hide Discount' : 'Add Discount (Premium Customer)'}
+                      {showDiscount ? 'Hide Discount' : 'Add Discount'}
                     </button>
                     
                     {showDiscount && (
@@ -1312,8 +1573,8 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                           </div>
                         </div>
                         <div className="mt-3">
-                          <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Note (Optional)</label>
-                          <input type="text" value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder="e.g. Premium Customer Discount" className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
+                          <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Note <span className="text-xs text-gray-400">(Internal use only - not shown on bill)</span></label>
+                          <input type="text" value={discountNote} onChange={(e) => setDiscountNote(e.target.value)} placeholder="Internal note (not shown on bill)" className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} />
                         </div>
                         {discountAmount > 0 && (
                           <div className="mt-3 pt-3 border-t dark:border-gray-600">
@@ -1321,7 +1582,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                               <span className="text-red-500 font-semibold">Discount Applied:</span>
                               <span className="text-red-500 font-bold text-lg">- Rs. {roundToTwo(discountAmount).toLocaleString()}</span>
                             </div>
-                            {discountNote && <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Note: {discountNote}</p>}
                           </div>
                         )}
                       </div>
@@ -1351,7 +1611,6 @@ const BillingInvoice = ({ customerDetails, darkMode }) => {
                           className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} 
                           disabled={isProcessing} 
                         />
-                        {/* ✅ Show bill total for reference */}
                         <p className="text-xs text-gray-400 mt-1">Bill Total: Rs. {billTotal.toLocaleString()}</p>
                       </div>
                       <div>

@@ -9,7 +9,8 @@ import {
   FiPhone, FiTool, FiPackage, FiCalendar, FiDollarSign, 
   FiCheckCircle, FiAlertCircle, FiInbox, FiList, FiClock,
   FiSearch, FiChevronLeft, FiChevronRight, FiLoader,
-  FiFilter, FiEdit2, FiSave, FiGift, FiPercent
+  FiFilter, FiEdit2, FiSave, FiGift, FiPercent, FiUsers,
+  FiUserX, FiUserPlus, FiEyeOff, FiTrash2, FiAlertTriangle
 } from 'react-icons/fi';
 import api from '../services/api';
 
@@ -23,7 +24,6 @@ const formatPakistanDateTime = (dateString) => {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return { date: 'N/A', time: '' };
     
-    // ✅ Format date in Pakistan time
     const formattedDate = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
@@ -46,7 +46,6 @@ const formatPakistanDateTime = (dateString) => {
   }
 };
 
-// Helper functions for date filtering
 const getToday = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -77,10 +76,32 @@ const getStartOfYear = () => {
   return date;
 };
 
-// ✅ Helper: Round to 2 decimals - ONLY FOR DISPLAY/STORAGE
 const roundToTwo = (num) => {
   if (num === undefined || num === null || isNaN(num)) return 0;
   return Math.round(num * 100) / 100;
+};
+
+// ✅ NEW: LocalStorage key for hidden invoices (per-browser admin hide, does NOT touch database)
+const HIDDEN_INVOICES_KEY = 'noorani_hidden_invoices';
+
+const loadHiddenIds = () => {
+  try {
+    const saved = localStorage.getItem(HIDDEN_INVOICES_KEY);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.error('Error loading hidden invoices:', e);
+    return [];
+  }
+};
+
+const saveHiddenIds = (ids) => {
+  try {
+    localStorage.setItem(HIDDEN_INVOICES_KEY, JSON.stringify(ids));
+  } catch (e) {
+    console.error('Error saving hidden invoices:', e);
+  }
 };
 
 const Records = ({ darkMode }) => {
@@ -104,6 +125,14 @@ const Records = ({ darkMode }) => {
   const [itemsPerPage] = useState(10);
   const [filterStatus, setFilterStatus] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
+  
+  const [customerTypeFilter, setCustomerTypeFilter] = useState('all');
+
+  // ✅ NEW: Hide / Delete states
+  const [hiddenIds, setHiddenIds] = useState(() => loadHiddenIds());
+  const [visibilityFilter, setVisibilityFilter] = useState('active'); // 'active' | 'hidden'
+  const [deleteConfirmInvoice, setDeleteConfirmInvoice] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchInvoices = useCallback(async () => {
     const abortController = new AbortController();
@@ -165,8 +194,76 @@ const Records = ({ darkMode }) => {
     };
   }, [fetchInvoices]);
 
+  // ✅ NEW: Toggle hide/unhide - saved to localStorage, does NOT touch database
+  const toggleHideInvoice = useCallback((invoiceId) => {
+    setHiddenIds(prev => {
+      let updated;
+      if (prev.includes(invoiceId)) {
+        updated = prev.filter(id => id !== invoiceId);
+        toast.success('Invoice unhidden');
+      } else {
+        updated = [...prev, invoiceId];
+        toast.success('Invoice hidden from this page');
+      }
+      saveHiddenIds(updated);
+      return updated;
+    });
+  }, []);
+
+  // ✅ NEW: Open delete confirmation
+  const openDeleteConfirm = useCallback((invoice) => {
+    setDeleteConfirmInvoice(invoice);
+  }, []);
+
+  const closeDeleteConfirm = useCallback(() => {
+    setDeleteConfirmInvoice(null);
+  }, []);
+
+  // ✅ NEW: Permanently delete invoice from database
+  const handleDeleteInvoice = useCallback(async () => {
+    if (!deleteConfirmInvoice) return;
+    
+    setIsDeleting(true);
+    try {
+      await api.delete(`/invoices/${deleteConfirmInvoice.id}`);
+      
+      toast.success('Invoice deleted permanently');
+      
+      setInvoices(prev => prev.filter(inv => inv.id !== deleteConfirmInvoice.id));
+      
+      setHiddenIds(prev => {
+        const updated = prev.filter(id => id !== deleteConfirmInvoice.id);
+        saveHiddenIds(updated);
+        return updated;
+      });
+      
+      if (selectedInvoice?.id === deleteConfirmInvoice.id) {
+        setIsModalOpen(false);
+        setSelectedInvoice(null);
+      }
+      if (editingInvoice?.id === deleteConfirmInvoice.id) {
+        setIsEditModalOpen(false);
+        setEditingInvoice(null);
+      }
+      
+      closeDeleteConfirm();
+    } catch (err) {
+      console.error('Error deleting invoice:', err);
+      toast.error('Failed to delete invoice: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleteConfirmInvoice, selectedInvoice, editingInvoice, closeDeleteConfirm]);
+
   const filteredInvoices = useMemo(() => {
     let filtered = invoices;
+    
+    // ✅ NEW: Visibility filter (hidden vs active) - checked FIRST
+    if (visibilityFilter === 'active') {
+      filtered = filtered.filter(inv => !hiddenIds.includes(inv.id));
+    } else if (visibilityFilter === 'hidden') {
+      filtered = filtered.filter(inv => hiddenIds.includes(inv.id));
+    }
     
     if (dateFilter !== 'all') {
       const now = new Date();
@@ -216,8 +313,70 @@ const Records = ({ darkMode }) => {
       filtered = filtered.filter(inv => inv.status === 'Pending');
     }
     
+    if (customerTypeFilter === 'walkin') {
+      filtered = filtered.filter(inv => {
+        const name = inv.customer?.name || '';
+        const phone = inv.customer?.phone || '';
+        const carNumber = inv.customer?.carNumber || '';
+        
+        const isWalkin = 
+          !name || name === '' || name === 'Guest' || name === 'Walk-in' ||
+          !phone || phone === '' || phone === 'N/A' ||
+          !carNumber || carNumber === '' || carNumber === 'N/A';
+        
+        return isWalkin;
+      });
+    } else if (customerTypeFilter === 'registered') {
+      filtered = filtered.filter(inv => {
+        const name = inv.customer?.name || '';
+        const phone = inv.customer?.phone || '';
+        const carNumber = inv.customer?.carNumber || '';
+        
+        const isRegistered = 
+          name && name !== '' && name !== 'Guest' && name !== 'Walk-in' &&
+          phone && phone !== '' && phone !== 'N/A' &&
+          carNumber && carNumber !== '' && carNumber !== 'N/A';
+        
+        return isRegistered;
+      });
+    }
+    
     return filtered;
-  }, [invoices, searchTerm, filterStatus, dateFilter]);
+  }, [invoices, searchTerm, filterStatus, dateFilter, customerTypeFilter, visibilityFilter, hiddenIds]);
+
+  const visibleInvoices = useMemo(() => 
+    invoices.filter(inv => !hiddenIds.includes(inv.id)),
+    [invoices, hiddenIds]
+  );
+
+  const walkinCount = useMemo(() => {
+    return visibleInvoices.filter(inv => {
+      const name = inv.customer?.name || '';
+      const phone = inv.customer?.phone || '';
+      const carNumber = inv.customer?.carNumber || '';
+      
+      return !name || name === '' || name === 'Guest' || name === 'Walk-in' ||
+             !phone || phone === '' || phone === 'N/A' ||
+             !carNumber || carNumber === '' || carNumber === 'N/A';
+    }).length;
+  }, [visibleInvoices]);
+
+  const registeredCount = useMemo(() => {
+    return visibleInvoices.filter(inv => {
+      const name = inv.customer?.name || '';
+      const phone = inv.customer?.phone || '';
+      const carNumber = inv.customer?.carNumber || '';
+      
+      return name && name !== '' && name !== 'Guest' && name !== 'Walk-in' &&
+             phone && phone !== '' && phone !== 'N/A' &&
+             carNumber && carNumber !== '' && carNumber !== 'N/A';
+    }).length;
+  }, [visibleInvoices]);
+
+  // ✅ NEW: Count of hidden invoices
+  const hiddenCount = useMemo(() => {
+    return invoices.filter(inv => hiddenIds.includes(inv.id)).length;
+  }, [invoices, hiddenIds]);
 
   const totalPages = useMemo(() => Math.ceil(filteredInvoices.length / itemsPerPage), [filteredInvoices.length, itemsPerPage]);
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -242,6 +401,17 @@ const Records = ({ darkMode }) => {
     setCurrentPage(1);
   }, []);
 
+  const handleCustomerTypeFilter = useCallback((type) => {
+    setCustomerTypeFilter(type);
+    setCurrentPage(1);
+  }, []);
+
+  // ✅ NEW: Handle visibility filter (active/hidden)
+  const handleVisibilityFilter = useCallback((type) => {
+    setVisibilityFilter(type);
+    setCurrentPage(1);
+  }, []);
+
   const handlePageChange = useCallback((page) => {
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -258,7 +428,6 @@ const Records = ({ darkMode }) => {
     return labels[dateFilter] || 'All Time';
   };
 
-  // ✅ Open Edit Modal
   const openEditModal = useCallback((invoice) => {
     setEditingInvoice(invoice);
     setEditFormData({
@@ -270,7 +439,6 @@ const Records = ({ darkMode }) => {
     setIsEditModalOpen(true);
   }, []);
 
-  // ✅ Close Edit Modal
   const closeEditModal = useCallback(() => {
     setIsEditModalOpen(false);
     setEditingInvoice(null);
@@ -282,10 +450,8 @@ const Records = ({ darkMode }) => {
     });
   }, []);
 
-  // ✅ Handle Edit Form Change
   const handleEditChange = useCallback((e) => {
     const { name, value } = e.target;
-    // ✅ Allow only numbers and decimal
     if (name === 'discountValue' || name === 'additionalPayment') {
       const val = value.replace(/[^0-9.]/g, '');
       setEditFormData(prev => ({ ...prev, [name]: val }));
@@ -294,7 +460,6 @@ const Records = ({ darkMode }) => {
     }
   }, []);
 
-  // ✅ Submit Edit (Update Invoice) - FIXED: No rounding in calculations
   const handleEditSubmit = useCallback(async () => {
     if (!editingInvoice) return;
     
@@ -303,17 +468,15 @@ const Records = ({ darkMode }) => {
     try {
       const { discountValue, discountNote, additionalPayment, discountType } = editFormData;
       
-      // Calculate new totals - EXACT values, NO rounding in calculations
       const subtotal = editingInvoice.subtotal || editingInvoice.total;
       let discountAmount = 0;
       
-      // ✅ FIX: Exact discount value, no rounding
       if (discountValue && parseFloat(discountValue) > 0) {
         const val = parseFloat(discountValue);
         if (discountType === 'percentage') {
           discountAmount = (subtotal * val) / 100;
         } else {
-          discountAmount = val; // ✅ EXACT value, no rounding!
+          discountAmount = val;
         }
       }
       
@@ -324,13 +487,11 @@ const Records = ({ darkMode }) => {
       const newRemainingAmount = newTotal - newPaidAmount;
       const newStatus = newRemainingAmount <= 0.01 ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Pending');
       
-      // ✅ Round ONLY for database storage
       const roundedDiscount = roundToTwo(discountAmount);
       const roundedNewTotal = roundToTwo(newTotal);
       const roundedPaidAmount = roundToTwo(newPaidAmount);
       const roundedRemaining = roundToTwo(newRemainingAmount);
       
-      // Prepare update payload
       const payload = {
         subtotal: subtotal,
         discount: roundedDiscount,
@@ -342,17 +503,14 @@ const Records = ({ darkMode }) => {
         payment_method: editingInvoice.paymentMethod || 'cash'
       };
       
-      // Send update to API
       const response = await api.put(`/invoices/${editingInvoice.id}`, payload);
       
       if (response.data) {
         toast.success('Invoice updated successfully!');
         
-        // Refresh invoices list
         await fetchInvoices();
         closeEditModal();
         
-        // If modal is open, update selected invoice
         if (isModalOpen && selectedInvoice?.id === editingInvoice.id) {
           const updatedInvoice = invoices.find(inv => inv.id === editingInvoice.id);
           if (updatedInvoice) {
@@ -424,7 +582,6 @@ const Records = ({ darkMode }) => {
     setSelectedInvoice(null);
   }, []);
 
-  // ✅ Print Single Invoice with Dynamic Date & Time
   const printSingleInvoice = useCallback(() => {
     if (!selectedInvoice) return;
     
@@ -445,7 +602,6 @@ const Records = ({ darkMode }) => {
       </tr>
     `).join('');
 
-    // ✅ Discount row HTML
     const discountRowHtml = selectedInvoice.discount > 0 ? `
       <tr>
         <td colspan="5" style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount ${selectedInvoice.discountNote ? `(${selectedInvoice.discountNote})` : ''}</td>
@@ -458,7 +614,6 @@ const Records = ({ darkMode }) => {
     const paidAmount = selectedInvoice.paidAmount || selectedInvoice.total;
     const subtotal = selectedInvoice.subtotal || selectedInvoice.total;
 
-    // ✅ FORMAT DATE & TIME DYNAMICALLY IN PAKISTAN TIME
     const invoiceDate = new Date(selectedInvoice.date);
     const formattedDate = invoiceDate.toLocaleDateString('en-GB', {
       day: '2-digit',
@@ -764,7 +919,6 @@ const Records = ({ darkMode }) => {
     toast.success('Print preview opened');
   }, [selectedInvoice]);
 
-  // ✅ Format date for modal display with time
   const formatInvoiceDate = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
@@ -781,7 +935,6 @@ const Records = ({ darkMode }) => {
     });
   };
 
-  // ✅ Format date for table display
   const formatTableDate = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
@@ -831,6 +984,75 @@ const Records = ({ darkMode }) => {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* ✅ NEW: Visibility Filter (Active / Hidden) */}
+        <div className={`p-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap gap-2 items-center`}>
+          <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1 mr-2`}>
+            <FiEyeOff className="text-sm" /> Visibility:
+          </span>
+          <button
+            onClick={() => handleVisibilityFilter('active')}
+            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
+              visibilityFilter === 'active' 
+                ? 'bg-red-500 text-white' 
+                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <FiEye className="text-xs" /> Active ({invoices.length - hiddenCount})
+          </button>
+          <button
+            onClick={() => handleVisibilityFilter('hidden')}
+            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
+              visibilityFilter === 'hidden' 
+                ? 'bg-gray-700 text-white' 
+                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <FiEyeOff className="text-xs" /> Hidden ({hiddenCount})
+          </button>
+          {visibilityFilter === 'hidden' && (
+            <span className={`text-xs ml-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              These invoices are hidden from the main view only. Data is still in the database.
+            </span>
+          )}
+        </div>
+        
+        {/* ✅ NEW: Customer Type Filter Buttons */}
+        <div className={`p-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap gap-2 items-center`}>
+          <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1 mr-2`}>
+            <FiUsers className="text-sm" /> Customer Type:
+          </span>
+          <button
+            onClick={() => handleCustomerTypeFilter('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
+              customerTypeFilter === 'all' 
+                ? 'bg-red-500 text-white' 
+                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <FiUsers className="text-xs" /> All ({invoices.length})
+          </button>
+          <button
+            onClick={() => handleCustomerTypeFilter('registered')}
+            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
+              customerTypeFilter === 'registered' 
+                ? 'bg-green-600 text-white' 
+                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <FiUserPlus className="text-xs" /> Registered ({registeredCount})
+          </button>
+          <button
+            onClick={() => handleCustomerTypeFilter('walkin')}
+            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
+              customerTypeFilter === 'walkin' 
+                ? 'bg-yellow-600 text-white' 
+                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            <FiUserX className="text-xs" /> Walk-in / No Records ({walkinCount})
+          </button>
         </div>
         
         {/* Search, Filter and Date Filter Bar */}
@@ -928,7 +1150,7 @@ const Records = ({ darkMode }) => {
         </div>
         
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px]">
+          <table className="w-full min-w-[1250px]">
             <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[120px]">Invoice #</th>
@@ -941,7 +1163,7 @@ const Records = ({ darkMode }) => {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[80px]">Discount</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[100px]">Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[130px]">Created By</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[150px]">Action</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[220px]">Action</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
@@ -951,67 +1173,99 @@ const Records = ({ darkMode }) => {
                     <FiInbox className="text-6xl mx-auto text-gray-500" />
                     <p className="mt-2 text-gray-500">No invoices found</p>
                     <p className="text-sm mt-1 text-gray-400">
-                      {searchTerm ? `No results for "${searchTerm}"` : 'Create your first invoice from the Billing section'}
+                      {searchTerm ? `No results for "${searchTerm}"` : visibilityFilter === 'hidden' ? 'No hidden invoices' : 'Create your first invoice from the Billing section'}
                     </p>
                   </td>
                 </tr>
               ) : (
-                currentInvoices.map(inv => (
-                  <tr key={inv.id} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">{inv.invoiceNo}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{formatTableDate(inv.date)}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.name || 'Walk-in'}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.phone || 'N/A'}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.carNumber || 'N/A'}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
-                      {inv.items.slice(0, 2).map(i => i.name).join(', ')}
-                      {inv.items.length > 2 && ` +${inv.items.length - 2} more`}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-red-500 whitespace-nowrap">Rs. {inv.total.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                      {inv.discount > 0 ? (
-                        <span className="text-red-500 font-semibold">- Rs. {inv.discount.toLocaleString()}</span>
-                      ) : (
-                        <span className="text-gray-400">None</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit ${
-                        inv.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
-                        inv.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
-                        inv.status === 'Pending' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                        'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
-                      }`}>
-                        {inv.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : 
-                         inv.status === 'Partial' ? <FiAlertCircle className="text-xs" /> : 
-                         inv.status === 'Pending' ? <FiClock className="text-xs" /> :
-                         <FiClock className="text-xs" />}
-                        {inv.status || 'Pending'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        inv.creatorRole === 'admin' 
-                          ? 'bg-red-500/20 text-red-500' 
-                          : inv.creatorRole === 'employee'
-                            ? 'bg-blue-500/20 text-blue-500'
-                            : 'bg-gray-500/20 text-gray-500'
-                      }`}>
-                        {inv.creatorName || 'System'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2 flex-wrap">
-                        <button onClick={() => viewInvoiceDetails(inv)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
-                          <FiEye className="text-sm" /> View
-                        </button>
-                        <button onClick={() => openEditModal(inv)} className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
-                          <FiEdit2 className="text-sm" /> Edit
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                currentInvoices.map(inv => {
+                  const name = inv.customer?.name || '';
+                  const phone = inv.customer?.phone || '';
+                  const carNumber = inv.customer?.carNumber || '';
+                  const isWalkin = !name || name === '' || name === 'Guest' || name === 'Walk-in' ||
+                                   !phone || phone === '' || phone === 'N/A' ||
+                                   !carNumber || carNumber === '' || carNumber === 'N/A';
+                  const isHidden = hiddenIds.includes(inv.id);
+                  
+                  return (
+                    <tr key={inv.id} className={`${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} ${isWalkin ? darkMode ? 'bg-yellow-900/10' : 'bg-yellow-50' : ''}`}>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">{inv.invoiceNo}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{formatTableDate(inv.date)}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        {isWalkin ? (
+                          <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                            <FiUserX className="text-xs" /> Walk-in
+                          </span>
+                        ) : (
+                          inv.customer?.name || 'Walk-in'
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.phone || 'N/A'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.carNumber || 'N/A'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {inv.items.slice(0, 2).map(i => i.name).join(', ')}
+                        {inv.items.length > 2 && ` +${inv.items.length - 2} more`}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-red-500 whitespace-nowrap">Rs. {inv.total.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        {inv.discount > 0 ? (
+                          <span className="text-red-500 font-semibold">- Rs. {inv.discount.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-gray-400">None</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit ${
+                          inv.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 
+                          inv.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 
+                          inv.status === 'Pending' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                          'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                        }`}>
+                          {inv.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : 
+                           inv.status === 'Partial' ? <FiAlertCircle className="text-xs" /> : 
+                           inv.status === 'Pending' ? <FiClock className="text-xs" /> :
+                           <FiClock className="text-xs" />}
+                          {inv.status || 'Pending'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          inv.creatorRole === 'admin' 
+                            ? 'bg-red-500/20 text-red-500' 
+                            : inv.creatorRole === 'employee'
+                              ? 'bg-blue-500/20 text-blue-500'
+                              : 'bg-gray-500/20 text-gray-500'
+                        }`}>
+                          {inv.creatorName || 'System'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2 flex-wrap">
+                          <button onClick={() => viewInvoiceDetails(inv)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
+                            <FiEye className="text-sm" /> View
+                          </button>
+                          <button onClick={() => openEditModal(inv)} className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
+                            <FiEdit2 className="text-sm" /> Edit
+                          </button>
+                          <button 
+                            onClick={() => toggleHideInvoice(inv.id)} 
+                            title={isHidden ? 'Unhide - show on this page again' : 'Hide - removes from this page only, keeps in database'}
+                            className="px-3 py-1.5 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-1 shadow-md whitespace-nowrap"
+                          >
+                            {isHidden ? <FiEye className="text-sm" /> : <FiEyeOff className="text-sm" />} {isHidden ? 'Unhide' : 'Hide'}
+                          </button>
+                          <button 
+                            onClick={() => openDeleteConfirm(inv)} 
+                            title="Delete permanently - removes from database"
+                            className="px-3 py-1.5 bg-red-700 text-white rounded-lg text-sm hover:bg-red-800 transition flex items-center gap-1 shadow-md whitespace-nowrap"
+                          >
+                            <FiTrash2 className="text-sm" /> Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1071,7 +1325,7 @@ const Records = ({ darkMode }) => {
         </div>
       </div>
 
-      {/* Invoice Details Modal - ✅ FIXED: Dynamic Date & Time */}
+      {/* Invoice Details Modal */}
       {isModalOpen && selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -1214,6 +1468,12 @@ const Records = ({ darkMode }) => {
               <button onClick={closeModal} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
                 <FiX /> Close
               </button>
+              <button onClick={() => toggleHideInvoice(selectedInvoice.id)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 shadow-md">
+                {hiddenIds.includes(selectedInvoice.id) ? <FiEye /> : <FiEyeOff />} {hiddenIds.includes(selectedInvoice.id) ? 'Unhide' : 'Hide'}
+              </button>
+              <button onClick={() => openDeleteConfirm(selectedInvoice)} className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition flex items-center gap-2 shadow-md">
+                <FiTrash2 /> Delete
+              </button>
               <button onClick={() => openEditModal(selectedInvoice)} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2 shadow-md">
                 <FiEdit2 /> Edit Invoice
               </button>
@@ -1225,7 +1485,7 @@ const Records = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ EDIT INVOICE MODAL */}
+      {/* Edit Invoice Modal */}
       {isEditModalOpen && editingInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -1414,6 +1674,45 @@ const Records = ({ darkMode }) => {
                 {isSubmitting ? <FiLoader className="animate-spin" /> : <FiSave />} 
                 {isSubmitting ? 'Saving...' : 'Save Changes'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NEW: Delete Confirmation Modal */}
+      {deleteConfirmInvoice && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className={`max-w-md w-full rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 mx-auto rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
+                <FiAlertTriangle className="text-3xl text-red-600 dark:text-red-400" />
+              </div>
+              <h3 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Delete Invoice Permanently?
+              </h3>
+              <p className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Invoice <strong>{deleteConfirmInvoice.invoiceNo}</strong> ({deleteConfirmInvoice.customer?.name || 'Walk-in'})
+              </p>
+              <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                This will remove the record from the database completely. This action cannot be undone.
+              </p>
+              <div className="flex justify-center gap-3">
+                <button 
+                  onClick={closeDeleteConfirm} 
+                  disabled={isDeleting}
+                  className="px-5 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition flex items-center gap-2 disabled:opacity-50"
+                >
+                  <FiX /> Cancel
+                </button>
+                <button 
+                  onClick={handleDeleteInvoice} 
+                  disabled={isDeleting}
+                  className="px-5 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition flex items-center gap-2 shadow-md disabled:opacity-50"
+                >
+                  {isDeleting ? <FiLoader className="animate-spin" /> : <FiTrash2 />} 
+                  {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -22,6 +22,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   const [showHistory, setShowHistory] = useState(false);
   const [searching, setSearching] = useState(false);
   
+  // ✅ Birthday validation error
+  const [birthdayError, setBirthdayError] = useState('');
+  
   // ✅ Check if user is admin
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -47,6 +50,97 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       return date.split('T')[0];
     }
     return date;
+  };
+
+  // ✅ Format date from YYYY-MM-DD to MM/DD/YYYY for display
+  const formatToDisplay = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
+  // ✅ Format date from MM/DD/YYYY to YYYY-MM-DD for API
+  const formatToAPI = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('/');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return dateStr;
+  };
+
+  // ✅ Validate birthday format
+  const validateBirthday = (value) => {
+    if (!value) {
+      setBirthdayError('');
+      return true;
+    }
+    
+    // Check format mm/dd/yyyy
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+      setBirthdayError('Please use mm/dd/yyyy format');
+      return false;
+    }
+    
+    const parts = value.split('/');
+    const month = parseInt(parts[0]);
+    const day = parseInt(parts[1]);
+    const year = parseInt(parts[2]);
+    
+    if (month < 1 || month > 12) {
+      setBirthdayError('Month must be between 1-12');
+      return false;
+    }
+    
+    if (day < 1 || day > 31) {
+      setBirthdayError('Day must be between 1-31');
+      return false;
+    }
+    
+    // Check if date is valid (e.g., Feb 30 is invalid)
+    const checkDate = new Date(year, month - 1, day);
+    if (checkDate.getMonth() !== month - 1 || checkDate.getDate() !== day) {
+      setBirthdayError('Invalid date (check month/day combination)');
+      return false;
+    }
+    
+    if (year < 1900 || year > 2100) {
+      setBirthdayError('Please enter a valid year (1900-2100)');
+      return false;
+    }
+    
+    setBirthdayError('');
+    return true;
+  };
+
+  // ✅ Handle birthday change with auto-slash
+  const handleBirthdayChange = (e) => {
+    let value = e.target.value;
+    
+    // Allow only numbers and slashes
+    value = value.replace(/[^0-9/]/g, '');
+    
+    // Auto-add slashes for better UX
+    if (value.length === 2 && !value.includes('/')) {
+      value = value + '/';
+    } else if (value.length === 5 && value.split('/').length === 2 && !value.endsWith('/')) {
+      const parts = value.split('/');
+      if (parts.length === 2 && parts[1].length === 2) {
+        value = value + '/';
+      }
+    }
+    
+    setCustomerDetails(prev => ({ ...prev, birthday: value }));
+    
+    // Validate on change
+    if (value.length === 10) {
+      validateBirthday(value);
+    } else {
+      setBirthdayError('');
+    }
   };
 
   // Search customer history when phone number changes
@@ -76,7 +170,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             
             setCustomerHistory(history);
             
-            // ✅ Show history to EVERYONE (admin and employee both)
             if (history.length > 0) {
               setShowHistory(true);
             } else {
@@ -86,8 +179,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             if (customerData || history.length > 0) {
               const lastInvoice = history[0] || {};
               
-              const formattedBirthday = customerData?.birthday 
-                ? formatDateForInput(customerData.birthday) 
+              // ✅ Convert YYYY-MM-DD to MM/DD/YYYY for display
+              const birthdayValue = customerData?.birthday 
+                ? formatToDisplay(customerData.birthday) 
                 : '';
               
               setCustomerDetails(prev => ({
@@ -96,7 +190,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 email: customerData?.email || lastInvoice.customer_email || prev.email,
                 carNumber: customerData?.car_number || lastInvoice.customer_car_number || prev.carNumber,
                 carModel: customerData?.car_model || lastInvoice.customer_car_model || prev.carModel,
-                birthday: formattedBirthday || prev.birthday || '',
+                birthday: birthdayValue || prev.birthday || '',
               }));
               
               if (customerData?.name || lastInvoice.customer_name) {
@@ -116,21 +210,20 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     };
     
     searchCustomerHistory();
-  }, [customerDetails.phone]); // ✅ Removed isAdmin dependency
+  }, [customerDetails.phone]);
 
+  // ✅ NO VALIDATION AT ALL - Sab fields optional
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!customerDetails.name || !customerDetails.phone || !customerDetails.carNumber) {
-      toast.error('Please fill all required fields (Name, Phone, Car Number)');
-      return;
-    }
+    
+    // ✅ Direct submit - koi validation nahi, koi warning nahi
     onCustomerSubmit({
-      name: customerDetails.name,
-      phone: customerDetails.phone,
-      email: customerDetails.email,
-      carNumber: customerDetails.carNumber,
-      carModel: customerDetails.carModel,
-      birthday: customerDetails.birthday,
+      name: customerDetails.name || '',
+      phone: customerDetails.phone || '',
+      email: customerDetails.email || '',
+      carNumber: customerDetails.carNumber || '',
+      carModel: customerDetails.carModel || '',
+      birthday: customerDetails.birthday || '',
       date: customerDetails.date
     });
   };
@@ -138,6 +231,8 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   const updateField = (field, value) => {
     if (field === 'phone') {
       setCustomerDetails({ ...customerDetails, phone: value, name: '', email: '', carNumber: '', carModel: '', birthday: '' });
+    } else if (field === 'birthday') {
+      // Birthday handled by handleBirthdayChange
     } else {
       setCustomerDetails({ ...customerDetails, [field]: value });
     }
@@ -152,7 +247,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               <FiUser className="text-white text-xl" />
               <h3 className="text-lg font-semibold text-white">Step 1: Customer Details</h3>
             </div>
-            <p className="text-xs text-red-100 mt-1">Enter customer information - Phone number auto-searches history</p>
+            <p className="text-xs text-red-100 mt-1">All fields are optional - Just click Continue to proceed</p>
           </div>
           <div className="text-white text-right">
             <p className="text-xs opacity-80 flex items-center gap-1"><FiCalendar className="text-xs" /> Date</p>
@@ -168,20 +263,22 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       
       <form onSubmit={handleSubmit} className="p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* ✅ Phone Number - Optional */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              <FiPhone className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Phone Number * (Type to search history)
+              <FiPhone className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
+              Phone Number 
+              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
             </label>
             <div className="relative">
               <input
                 type="tel"
                 value={customerDetails.phone}
                 onChange={(e) => updateField('phone', e.target.value)}
-                placeholder="Enter phone number"
+                placeholder="Enter phone number (auto-searches history)"
                 className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
                 }`}
-                required
               />
               {searching && (
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -189,27 +286,35 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 </div>
               )}
             </div>
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              Enter at least 4 digits to search history
+            </p>
           </div>
           
+          {/* ✅ Customer Name - Optional */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              <FiUser className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Customer Name *
+              <FiUser className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
+              Customer Name 
+              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
             </label>
             <input
               type="text"
               value={customerDetails.name}
               onChange={(e) => updateField('name', e.target.value)}
-              placeholder="Enter customer name"
+              placeholder="Enter customer name (optional)"
               className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
               }`}
-              required
             />
           </div>
           
+          {/* ✅ Email Address - Optional */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              <FiMail className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Email Address (Optional)
+              <FiMail className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
+              Email Address 
+              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
             </label>
             <div className="relative">
               <input
@@ -227,25 +332,30 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             </div>
           </div>
           
+          {/* ✅ Car Number Plate - Optional */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              <FiTool className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Car Number Plate *
+              <FiTool className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
+              Car Number Plate 
+              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
             </label>
             <input
               type="text"
               value={customerDetails.carNumber}
               onChange={(e) => updateField('carNumber', e.target.value)}
-              placeholder="e.g., ABC-1234"
+              placeholder="e.g., ABC-1234 (optional)"
               className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
               }`}
-              required
             />
           </div>
           
+          {/* ✅ Car Model - Optional */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              <FiPackage className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Car Model (Optional)
+              <FiPackage className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
+              Car Model 
+              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
             </label>
             <input
               type="text"
@@ -258,24 +368,47 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             />
           </div>
 
-          {/* Birthday Field */}
+          {/* ✅ Birthday - TEXT INPUT (NO DATE PICKER) */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              <FiCalendar className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> Birthday (Optional)
+              <FiCalendar className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
+              Birthday 
+              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional - mm/dd/yyyy)</span>
             </label>
             <div className="relative">
               <input
-                type="date"
-                value={customerDetails.birthday || ''}
-                onChange={(e) => updateField('birthday', e.target.value)}
+                type="text"
+                value={customerDetails.birthday}
+                onChange={handleBirthdayChange}
+                placeholder="e.g. 01/15/1990"
                 className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
-                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
-                } ${customerDetails.birthday ? 'border-green-500' : ''}`}
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
+                } ${customerDetails.birthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`}
+                maxLength={10}
+                inputMode="numeric"
               />
-              <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
-                <FiCalendar className="text-xs" /> We'll show a birthday reminder on this day
-              </p>
+              {customerDetails.birthday && !birthdayError && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✅ Valid</span>
+                </div>
+              )}
+              {birthdayError && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">⚠️</span>
+                </div>
+              )}
             </div>
+            {birthdayError && (
+              <p className="text-xs text-red-500 mt-1">{birthdayError}</p>
+            )}
+            {customerDetails.birthday && !birthdayError && (
+              <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                ✅ Valid date
+              </p>
+            )}
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
+              <FiCalendar className="text-xs" /> Format: mm/dd/yyyy (e.g., 01/15/1990)
+            </p>
           </div>
         </div>
         
@@ -296,7 +429,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                   <tr className={`border-b ${darkMode ? 'border-red-800' : 'border-red-200'}`}>
                     <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Date</th>
                     <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Services</th>
-                    {/* ✅ Admin ko Total aur Status dikhega, Employee ko nahi */}
                     {isAdmin && (
                       <>
                         <th className={`text-left py-2 px-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total</th>
@@ -315,7 +447,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                         {inv.items?.map(i => i.service_name).slice(0, 2).join(', ') || 'N/A'}
                         {inv.items?.length > 2 && ` +${inv.items.length - 2}`}
                       </td>
-                      {/* ✅ Admin ko Total aur Status dikhega, Employee ko nahi */}
                       {isAdmin && (
                         <>
                           <td className={`py-2 px-2 font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
@@ -356,7 +487,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
         <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
           <p className="flex items-center gap-2">
             <FiClock className="text-red-500" />
-            <strong>Note:</strong> If you provide an email address, we'll automatically send a service reminder after 6 months!
+            <strong>Note:</strong> All fields are optional. If you provide an email address, we'll automatically send a service reminder after 6 months!
           </p>
         </div>
       </form>

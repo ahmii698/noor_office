@@ -303,14 +303,28 @@ const Dashboard = () => {
     }));
   }, [filteredInvoices, filteredExpenses, activeProducts]);
 
-  // Product sales data - only active products
-  const productSalesData = useMemo(() => 
-    activeProducts.map(p => ({
-      name: p.name,
-      value: (parseFloat(p.selling_price) || 0) * (parseInt(p.quantity) || 0)
-    })).filter(p => p.value > 0),
-    [activeProducts]
-  );
+  // ✅ FIX: Product sales data - TOP 8 products + "Others" bucket so legend never overflows
+  const productSalesData = useMemo(() => {
+    const allProducts = activeProducts
+      .map(p => ({
+        name: p.name,
+        value: (parseFloat(p.selling_price) || 0) * (parseInt(p.quantity) || 0)
+      }))
+      .filter(p => p.value > 0)
+      .sort((a, b) => b.value - a.value);
+
+    const TOP_N = 8;
+    if (allProducts.length <= TOP_N) return allProducts;
+
+    const top = allProducts.slice(0, TOP_N);
+    const others = allProducts.slice(TOP_N);
+    const othersValue = others.reduce((sum, p) => sum + p.value, 0);
+
+    if (othersValue > 0) {
+      top.push({ name: `Others (${others.length} products)`, value: othersValue });
+    }
+    return top;
+  }, [activeProducts]);
 
   const COLORS = useMemo(() => ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'], []);
 
@@ -849,13 +863,13 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  {/* Product Sales Distribution (Pie Chart) - 35% space */}
+                  {/* ✅ FIXED: Product Sales Distribution (Pie Chart) - top 8 + Others, custom scrollable legend */}
                   {productSalesData.length > 0 && (
                     <div className={`lg:col-span-1 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                       <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                         <FiBarChart2 className="text-red-500" /> Product Sales Distribution
                       </h3>
-                      <div className="h-80">
+                      <div className="h-64">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie 
@@ -863,8 +877,8 @@ const Dashboard = () => {
                               cx="50%" 
                               cy="50%" 
                               labelLine={false} 
-                              label={({ name, percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''} 
-                              outerRadius={100} 
+                              label={({ percent }) => percent > 0.08 ? `${(percent * 100).toFixed(0)}%` : ''} 
+                              outerRadius={85} 
                               dataKey="value"
                             >
                               {productSalesData.map((entry, index) => (
@@ -872,9 +886,26 @@ const Dashboard = () => {
                               ))}
                             </Pie>
                             <Tooltip formatter={(value) => `Rs. ${value.toLocaleString()}`} contentStyle={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff' }} />
-                            <Legend wrapperStyle={{ color: darkMode ? '#ffffff' : '#000000' }} />
                           </PieChart>
                         </ResponsiveContainer>
+                      </div>
+
+                      {/* ✅ Custom scrollable legend - fixed height so it never overflows onto other cards */}
+                      <div className={`mt-3 max-h-36 overflow-y-auto pr-1 space-y-1.5 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                        {productSalesData.map((entry, index) => (
+                          <div key={`legend-${index}`} className="flex items-center gap-2 text-xs">
+                            <span 
+                              className="w-2.5 h-2.5 rounded-sm flex-shrink-0" 
+                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                            ></span>
+                            <span className={`truncate flex-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`} title={entry.name}>
+                              {entry.name}
+                            </span>
+                            <span className={`flex-shrink-0 font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Rs. {entry.value.toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}

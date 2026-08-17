@@ -1,6 +1,6 @@
 // src/components/finance/ExpensesRecord.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheckCircle, FiSearch, FiTrendingDown, FiDollarSign, FiHome, FiGrid } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheckCircle, FiSearch, FiTrendingDown, FiDollarSign, FiHome, FiGrid, FiChevronDown, FiChevronUp, FiFilter, FiFolder, FiFolderPlus } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 
@@ -10,6 +10,12 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('fixed');
   const [localExpenses, setLocalExpenses] = useState(expenses);
+  
+  // ✅ Category filter state - for Other sub-categories
+  const [selectedSubCategory, setSelectedSubCategory] = useState('all');
+  const [showSubCategoryDropdown, setShowSubCategoryDropdown] = useState(false);
+  
+  // ✅ Modal form state
   const [formData, setFormData] = useState({
     description: '',
     amount: '',
@@ -20,25 +26,59 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     lastPaidDate: '',
     nextPaymentDate: ''
   });
+  
+  // ✅ Other sub-category states
+  const [showOtherInput, setShowOtherInput] = useState(false);
+  const [otherSubCategory, setOtherSubCategory] = useState('');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
-  // ✅ Fixed Monthly Categories - Match with your database
+  // ✅ Fixed Monthly Categories
   const fixedCategories = useMemo(() => ['Rent', 'Utilities', 'Salary', 'Office', 'Staff'], []);
-  const otherCategories = useMemo(() => ['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair', 'Other'], []);
+  
+  // ✅ Other Categories (base)
+  const baseOtherCategories = useMemo(() => ['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair'], []);
+
+  // ✅ Get all categories from expenses
+  const allCategories = useMemo(() => {
+    const cats = new Set();
+    localExpenses.forEach(exp => {
+      if (exp.category) {
+        cats.add(exp.category);
+      }
+    });
+    return Array.from(cats).sort();
+  }, [localExpenses]);
+
+  // ✅ Get sub-categories under "Other" (only for other tab)
+  const otherSubCategories = useMemo(() => {
+    return allCategories
+      .filter(cat => cat.startsWith('Other/'))
+      .map(cat => cat.replace('Other/', ''));
+  }, [allCategories]);
 
   useEffect(() => {
     setLocalExpenses(expenses);
   }, [expenses]);
 
-  // Memoized filtered expenses - Yeh sirf tab calculate hoga jab dependencies change hongi
+  // ✅ Filtered expenses based on tab, search, and sub-category filter
   const filteredExpenses = useMemo(() => {
     let filtered = localExpenses;
     
+    // Tab filter
     if (activeTab === 'fixed') {
       filtered = filtered.filter(exp => fixedCategories.includes(exp.category));
     } else {
-      filtered = filtered.filter(exp => otherCategories.includes(exp.category));
+      // ✅ Other tab: show all non-fixed expenses
+      filtered = filtered.filter(exp => !fixedCategories.includes(exp.category));
     }
     
+    // ✅ Sub-category filter (only for Other tab)
+    if (activeTab === 'other' && selectedSubCategory !== 'all') {
+      const fullCategory = `Other/${selectedSubCategory}`;
+      filtered = filtered.filter(exp => exp.category === fullCategory);
+    }
+    
+    // Search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(exp =>
@@ -48,24 +88,35 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     }
     
     return filtered;
-  }, [localExpenses, activeTab, searchTerm, fixedCategories, otherCategories]);
+  }, [localExpenses, activeTab, searchTerm, selectedSubCategory, fixedCategories]);
 
-  // Memoized total expenses
+  // ✅ Total expenses
   const totalExpenses = useMemo(() => 
     filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
     [filteredExpenses]
   );
 
-  // Memoized counts for tabs
+  // ✅ Counts for tabs
   const fixedCount = useMemo(() => 
     localExpenses.filter(e => fixedCategories.includes(e.category)).length,
     [localExpenses, fixedCategories]
   );
 
   const otherCount = useMemo(() => 
-    localExpenses.filter(e => otherCategories.includes(e.category)).length,
-    [localExpenses, otherCategories]
+    localExpenses.filter(e => !fixedCategories.includes(e.category)).length,
+    [localExpenses, fixedCategories]
   );
+
+  // ✅ Get count for a specific sub-category
+  const getSubCategoryCount = (subCat) => {
+    const fullCategory = `Other/${subCat}`;
+    return localExpenses.filter(exp => exp.category === fullCategory).length;
+  };
+
+  // ✅ Get count for base categories (General, Maintenance, etc.)
+  const getCategoryCount = (category) => {
+    return localExpenses.filter(exp => exp.category === category).length;
+  };
 
   const handleInputChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
@@ -74,6 +125,30 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
       [name]: type === 'checkbox' ? checked : value
     }));
   }, []);
+
+  // ✅ Handle category selection from dropdown
+  const handleCategorySelect = (category) => {
+    if (category === 'other') {
+      setShowOtherInput(true);
+      setFormData(prev => ({ ...prev, category: '' }));
+    } else {
+      setShowOtherInput(false);
+      setFormData(prev => ({ ...prev, category: category }));
+    }
+    setShowCategoryDropdown(false);
+  };
+
+  // ✅ Handle sub-category filter selection
+  const handleSubCategorySelect = (subCat) => {
+    setSelectedSubCategory(subCat);
+    setShowSubCategoryDropdown(false);
+  };
+
+  // ✅ Toggle sub-category dropdown
+  const toggleSubCategoryDropdown = (e) => {
+    e.stopPropagation();
+    setShowSubCategoryDropdown(!showSubCategoryDropdown);
+  };
 
   const calculateNextPaymentDate = useCallback((lastPaidDate, recurringType) => {
     if (!lastPaidDate) return '';
@@ -93,6 +168,15 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     
+    // ✅ Handle Other category with sub-category
+    let finalCategory = formData.category;
+    if (showOtherInput && otherSubCategory.trim()) {
+      finalCategory = `Other/${otherSubCategory.trim()}`;
+    } else if (showOtherInput && !otherSubCategory.trim()) {
+      toast.error('Please enter a sub-category name');
+      return;
+    }
+    
     if (!formData.description || !formData.amount || !formData.date) {
       toast.error('Please fill all fields');
       return;
@@ -108,7 +192,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
       description: formData.description,
       amount: amountNum,
       date: formData.date,
-      category: formData.category
+      category: finalCategory || 'General'
     };
 
     if (formData.isRecurring) {
@@ -131,6 +215,8 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     if (success) {
       setIsModalOpen(false);
       setEditingExpense(null);
+      setShowOtherInput(false);
+      setOtherSubCategory('');
       setFormData({
         description: '',
         amount: '',
@@ -142,7 +228,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         nextPaymentDate: ''
       });
     }
-  }, [formData, editingExpense, onAddExpense, onUpdateExpense, calculateNextPaymentDate]);
+  }, [formData, editingExpense, onAddExpense, onUpdateExpense, calculateNextPaymentDate, showOtherInput, otherSubCategory]);
 
   const handlePayNow = useCallback(async (expense) => {
     const today = new Date().toISOString().split('T')[0];
@@ -212,6 +298,16 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
       lastPaidDate: expense.last_paid_date || '',
       nextPaymentDate: expense.next_payment_date || ''
     });
+    
+    // ✅ Check if category starts with "Other/"
+    if (expense.category?.startsWith('Other/')) {
+      setShowOtherInput(true);
+      setOtherSubCategory(expense.category.replace('Other/', ''));
+    } else {
+      setShowOtherInput(false);
+      setOtherSubCategory('');
+    }
+    
     setIsModalOpen(true);
   }, []);
 
@@ -238,6 +334,34 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
 
   const clearSearch = useCallback(() => setSearchTerm(''), []);
 
+  // ✅ Get category color
+  const getCategoryColor = (category) => {
+    if (!category) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+    if (category.startsWith('Other/')) {
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
+    }
+    const colors = {
+      'Rent': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      'Utilities': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+      'Salary': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      'Office': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+      'Staff': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+      'General': 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
+      'Maintenance': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+      'Tea/Coffee': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+      'Stationery': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+      'Marketing': 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+      'Repair': 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
+    };
+    return colors[category] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+  };
+
+  // ✅ Get category display name
+  const getCategoryDisplayName = (category) => {
+    if (!category) return 'General';
+    return category;
+  };
+
   return (
     <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
       <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'}`}>
@@ -246,7 +370,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
             <FiTrendingDown className="text-red-500 text-xl" />
             Expenses Record
           </h3>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
             <div className="relative">
               <input
                 type="text"
@@ -277,7 +401,11 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         {/* Tab Buttons */}
         <div className="flex gap-4 mt-4 border-b border-gray-200 dark:border-gray-700">
           <button
-            onClick={() => setActiveTab('fixed')}
+            onClick={() => { 
+              setActiveTab('fixed'); 
+              setSelectedSubCategory('all'); 
+              setShowSubCategoryDropdown(false);
+            }}
             className={`px-4 py-2 font-semibold transition flex items-center gap-2 ${
               activeTab === 'fixed'
                 ? 'text-red-500 border-b-2 border-red-500'
@@ -289,19 +417,100 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
               {fixedCount}
             </span>
           </button>
-          <button
-            onClick={() => setActiveTab('other')}
-            className={`px-4 py-2 font-semibold transition flex items-center gap-2 ${
-              activeTab === 'other'
-                ? 'text-red-500 border-b-2 border-red-500'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            <FiGrid className="text-lg" /> Other Expenses
-            <span className="ml-1 text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-              {otherCount}
-            </span>
-          </button>
+          
+          {/* ✅ Other Expenses Tab with Sub-Category Dropdown - FIXED: no auto-open */}
+          <div className="relative">
+            <button
+              onClick={() => { 
+                setActiveTab('other');
+                // ✅ Don't toggle dropdown on tab click - only arrow click
+                if (activeTab !== 'other') {
+                  setSelectedSubCategory('all');
+                  setShowSubCategoryDropdown(false);
+                }
+              }}
+              className={`px-4 py-2 font-semibold transition flex items-center gap-2 ${
+                activeTab === 'other'
+                  ? 'text-red-500 border-b-2 border-red-500'
+                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              <FiGrid className="text-lg" /> Other Expenses
+              <span className="ml-1 text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                {otherCount}
+              </span>
+              {/* ✅ Dropdown arrow - click to toggle dropdown */}
+              <button
+                onClick={toggleSubCategoryDropdown}
+                className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition ${activeTab === 'other' ? 'text-red-500' : 'text-gray-400'}`}
+                title="Filter by sub-category"
+              >
+                <FiChevronDown className={`text-sm transition-transform ${showSubCategoryDropdown ? 'rotate-180' : ''}`} />
+              </button>
+            </button>
+            
+            {/* ✅ Sub-Category Dropdown - Only shows when Other tab is active AND dropdown is toggled */}
+            {activeTab === 'other' && showSubCategoryDropdown && (
+              <div className={`absolute left-0 z-10 mt-1 w-64 max-h-60 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                <div className="p-2">
+                  <button
+                    onClick={() => handleSubCategorySelect('all')}
+                    className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === 'all' ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                  >
+                    <span>📊 All Other Expenses</span>
+                    <span className={`text-xs ${selectedSubCategory === 'all' ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      ({otherCount})
+                    </span>
+                  </button>
+                  
+                  {/* Base categories (General, Maintenance, etc.) */}
+                  {baseOtherCategories.map(cat => {
+                    const count = getCategoryCount(cat);
+                    if (count > 0) {
+                      return (
+                        <button
+                          key={cat}
+                          onClick={() => handleSubCategorySelect(cat)}
+                          className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === cat ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                        >
+                          <span>{cat}</span>
+                          <span className={`text-xs ${selectedSubCategory === cat ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            ({count})
+                          </span>
+                        </button>
+                      );
+                    }
+                    return null;
+                  })}
+                  
+                  {/* ✅ Other/ Sub-categories */}
+                  {otherSubCategories.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold text-purple-400 px-3 py-1 mt-2 border-t dark:border-gray-700">📂 Sub-Categories</div>
+                      {otherSubCategories.map(subCat => {
+                        const count = getSubCategoryCount(subCat);
+                        return (
+                          <button
+                            key={subCat}
+                            onClick={() => handleSubCategorySelect(subCat)}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === subCat ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <FiFolder className="text-purple-500 text-xs" />
+                              Other/{subCat}
+                            </span>
+                            <span className={`text-xs ${selectedSubCategory === subCat ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              ({count})
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -314,7 +523,28 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         ) : (
           <div className="flex items-center gap-4">
             <FiGrid className="text-blue-500" />
-            <span>One-time and variable expenses: Maintenance, Tea/Coffee, Stationery, Marketing, Repairs, and other general expenses.</span>
+            <span>
+              One-time and variable expenses: Maintenance, Tea/Coffee, Stationery, Marketing, Repairs, and other general expenses.
+              {selectedSubCategory !== 'all' && (
+                <span className="ml-2 text-purple-500 font-medium">
+                  • Filtered: {selectedSubCategory.startsWith('Other/') ? selectedSubCategory : `Other/${selectedSubCategory}`}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        {activeTab === 'other' && selectedSubCategory !== 'all' && (
+          <div className="mt-1 flex items-center gap-2">
+            <span className="text-xs text-purple-500">Filtered by:</span>
+            <span className={`text-xs px-2 py-0.5 rounded ${getCategoryColor(`Other/${selectedSubCategory}`)}`}>
+              {selectedSubCategory.startsWith('Other/') ? selectedSubCategory : `Other/${selectedSubCategory}`}
+            </span>
+            <button
+              onClick={() => setSelectedSubCategory('all')}
+              className="text-xs text-red-500 hover:text-red-600"
+            >
+              <FiX className="inline" /> Clear
+            </button>
           </div>
         )}
       </div>
@@ -340,6 +570,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                     <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       {searchTerm ? `No expenses found matching "${searchTerm}"` : 
                        activeTab === 'fixed' ? 'No fixed monthly expenses added yet.' : 
+                       selectedSubCategory !== 'all' ? `No expenses in "${selectedSubCategory}" category` :
                        'No other expenses added yet.'}
                     </p>
                   </div>
@@ -355,12 +586,8 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded text-xs whitespace-nowrap ${
-                      fixedCategories.includes(expense.category) 
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' 
-                        : darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {expense.category || 'General'}
+                    <span className={`px-2 py-1 rounded text-xs whitespace-nowrap ${getCategoryColor(expense.category)}`}>
+                      {getCategoryDisplayName(expense.category)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm whitespace-nowrap">
@@ -425,12 +652,13 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         </table>
       </div>
 
+      {/* ✅ Add/Edit Modal with Category Dropdown + Other Sub-category */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
               <h3 className="text-xl font-semibold">{editingExpense ? 'Edit Expense' : 'Add New Expense'}</h3>
-              <button onClick={() => { setIsModalOpen(false); setEditingExpense(null); }} className="text-gray-500 hover:text-gray-700 text-2xl">
+              <button onClick={() => { setIsModalOpen(false); setEditingExpense(null); setShowOtherInput(false); setOtherSubCategory(''); }} className="text-gray-500 hover:text-gray-700 text-2xl">
                 <FiX />
               </button>
             </div>
@@ -473,25 +701,128 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                   required
                 />
               </div>
+              
+              {/* ✅ Category Field with Dropdown and "Other" option */}
               <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category *</label>
-                <select
-                  name="category"
-                  value={formData.category}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                >
-                  <optgroup label="Fixed Monthly Expenses">
-                    <option value="Rent">Rent</option>
-                    <option value="Utilities">Utilities</option>
-                 
-                  </optgroup>
-                  <optgroup label="Other Expenses">
-                    {otherCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </optgroup>
-                </select>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Category *
+                </label>
+                
+                {/* Category Dropdown Button */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
+                  >
+                    <span>
+                      {showOtherInput && otherSubCategory ? `Other/${otherSubCategory}` : 
+                       formData.category || 'Select category...'}
+                    </span>
+                    <FiChevronDown className={`transition-transform ${showCategoryDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {showCategoryDropdown && (
+                    <div className={`absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                      <div className="p-2 space-y-1">
+                        {/* Fixed categories */}
+                        <div className="text-xs font-semibold text-gray-400 px-3 py-1">Fixed Monthly</div>
+                        {['Rent', 'Utilities', 'Salary', 'Office', 'Staff'].map(cat => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => handleCategorySelect(cat)}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                        
+                        <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Other Expenses</div>
+                        {['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair'].map(cat => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => handleCategorySelect(cat)}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                        
+                        {/* ✅ Existing "Other" sub-categories from expenses */}
+                        {otherSubCategories.length > 0 && (
+                          <>
+                            <div className="text-xs font-semibold text-purple-400 px-3 py-1 border-t dark:border-gray-700">📂 Your Sub-Categories</div>
+                            {otherSubCategories.map(subCat => {
+                              const fullCat = `Other/${subCat}`;
+                              return (
+                                <button
+                                  key={fullCat}
+                                  type="button"
+                                  onClick={() => {
+                                    setFormData(prev => ({ ...prev, category: fullCat }));
+                                    setShowOtherInput(true);
+                                    setOtherSubCategory(subCat);
+                                    setShowCategoryDropdown(false);
+                                  }}
+                                  className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex items-center gap-2 ${formData.category === fullCat ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                                >
+                                  <FiFolder className="text-purple-500 text-xs" />
+                                  Other/{subCat}
+                                </button>
+                              );
+                            })}
+                          </>
+                        )}
+                        
+                        {/* ✅ "Other" option to add new category */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowOtherInput(true);
+                            setFormData(prev => ({ ...prev, category: '' }));
+                            setShowCategoryDropdown(false);
+                          }}
+                          className={`w-full px-3 py-2 rounded-lg text-left text-sm transition border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${showOtherInput ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <FiFolderPlus className="text-sm text-purple-500" /> Other (New Sub-Category)
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ✅ Sub-category input for "Other" */}
+                {showOtherInput && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      placeholder="Enter sub-category name (e.g., paana, water, tool)"
+                      value={otherSubCategory}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setOtherSubCategory(val);
+                        if (val.trim()) {
+                          setFormData(prev => ({ ...prev, category: `Other/${val.trim()}` }));
+                        }
+                      }}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
+                      placeholder="e.g., paana, water, tool, etc."
+                      autoFocus
+                    />
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      This will create a new sub-category under "Other"
+                    </p>
+                    {otherSubCategory && (
+                      <div className={`mt-1 text-xs ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                        Category will be: <strong>Other/{otherSubCategory}</strong>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               
               <div className="border-t pt-3">
@@ -554,7 +885,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => { setIsModalOpen(false); setEditingExpense(null); }}
+                  onClick={() => { setIsModalOpen(false); setEditingExpense(null); setShowOtherInput(false); setOtherSubCategory(''); }}
                   className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
                 >
                   Cancel

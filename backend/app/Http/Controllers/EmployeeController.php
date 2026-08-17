@@ -12,16 +12,16 @@ use Illuminate\Support\Facades\Log;
 class EmployeeController extends Controller
 {
     /**
-     * Get all employees with payments and monthly records
+     * Get all employees with payments
      * GET /api/employees
      */
     public function index(Request $request)
     {
         try {
-            $employees = Employee::with(['payments', 'monthlyRecords'])
+            $employees = Employee::with(['payments'])
                 ->orderBy('created_at', 'desc')
                 ->get();
-            
+
             // ✅ Transform data for frontend
             $transformed = $employees->map(function($employee) {
                 return [
@@ -38,18 +38,10 @@ class EmployeeController extends Controller
                             'id' => $payment->id,
                             'amount' => (float) $payment->amount,
                             'payment_date' => $payment->payment_date,
+                            'for_month' => $payment->for_month,           // ✅ NEW
+                            'for_month_name' => $payment->for_month_name, // ✅ NEW
                             'note' => $payment->note,
                             'created_by' => $payment->created_by,
-                        ];
-                    }),
-                    'monthly_records' => $employee->monthlyRecords->map(function($record) {
-                        return [
-                            'id' => $record->id,
-                            'month' => $record->month,
-                            'monthly_salary' => (float) $record->monthly_salary,
-                            'paid_amount' => (float) $record->paid_amount,
-                            'balance_amount' => (float) $record->balance_amount,
-                            'status' => $record->status,
                         ];
                     }),
                     'created_by' => $employee->created_by,
@@ -71,7 +63,7 @@ class EmployeeController extends Controller
                     'paid' => $employees->where('status', 'Paid')->count(),
                 ]
             ]);
-            
+
         } catch (\Exception $e) {
             Log::error('Error fetching employees: ' . $e->getMessage());
             return response()->json([
@@ -88,8 +80,8 @@ class EmployeeController extends Controller
     public function show($id)
     {
         try {
-            $employee = Employee::with(['payments', 'monthlyRecords'])->find($id);
-            
+            $employee = Employee::with(['payments'])->find($id);
+
             if (!$employee) {
                 return response()->json([
                     'success' => false,
@@ -113,18 +105,10 @@ class EmployeeController extends Controller
                             'id' => $payment->id,
                             'amount' => (float) $payment->amount,
                             'payment_date' => $payment->payment_date,
+                            'for_month' => $payment->for_month,
+                            'for_month_name' => $payment->for_month_name,
                             'note' => $payment->note,
                             'created_by' => $payment->created_by,
-                        ];
-                    }),
-                    'monthly_records' => $employee->monthlyRecords->map(function($record) {
-                        return [
-                            'id' => $record->id,
-                            'month' => $record->month,
-                            'monthly_salary' => (float) $record->monthly_salary,
-                            'paid_amount' => (float) $record->paid_amount,
-                            'balance_amount' => (float) $record->balance_amount,
-                            'status' => $record->status,
                         ];
                     }),
                     'created_by' => $employee->created_by,
@@ -173,20 +157,21 @@ class EmployeeController extends Controller
                 'paid_amount' => 0,
                 'balance_amount' => $request->monthly_salary,
                 'salary_date' => $request->salary_date,
-                'join_date' => $request->join_date,
+                'join_date' => $request->join_date ?? now(),
                 'status' => 'Pending',
                 'created_by' => $createdBy,
             ]);
 
-            // ✅ Create monthly record for current month
-            $employee->updateMonthlyRecord();
+            // ✅ Set correct initial balance based on months since join
+            // (e.g. joined 3 months ago with no payments = balance owed for all 3)
+            $employee->updateBalance();
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Employee added successfully!',
-                'data' => $employee->load(['payments', 'monthlyRecords'])
+                'data' => $employee->load(['payments'])
             ], 201);
 
         } catch (\Exception $e) {
@@ -207,7 +192,7 @@ class EmployeeController extends Controller
     {
         try {
             $employee = Employee::find($id);
-            
+
             if (!$employee) {
                 return response()->json([
                     'success' => false,
@@ -232,17 +217,15 @@ class EmployeeController extends Controller
             DB::beginTransaction();
 
             $updateData = [];
-            
+
             if ($request->has('name')) {
                 $updateData['name'] = $request->name;
             }
-            
+
             if ($request->has('monthly_salary')) {
                 $updateData['monthly_salary'] = $request->monthly_salary;
-                // ✅ Recalculate balance
-                $updateData['balance_amount'] = $request->monthly_salary - $employee->paid_amount;
             }
-            
+
             if ($request->has('salary_date')) {
                 $updateData['salary_date'] = $request->salary_date;
             }
@@ -252,8 +235,8 @@ class EmployeeController extends Controller
             }
 
             $employee->update($updateData);
-            
-            // ✅ Update balance and monthly record
+
+            // ✅ Recalculate balance/status across all months since join
             $employee->updateBalance();
 
             DB::commit();
@@ -261,7 +244,7 @@ class EmployeeController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Employee updated successfully!',
-                'data' => $employee->load(['payments', 'monthlyRecords'])
+                'data' => $employee->load(['payments'])
             ]);
 
         } catch (\Exception $e) {
@@ -282,7 +265,7 @@ class EmployeeController extends Controller
     {
         try {
             $employee = Employee::find($id);
-            
+
             if (!$employee) {
                 return response()->json([
                     'success' => false,
@@ -291,12 +274,11 @@ class EmployeeController extends Controller
             }
 
             DB::beginTransaction();
-            
-            // ✅ Delete payments, monthly records, and employee
+
+            // ✅ Delete payments and employee
             $employee->payments()->delete();
-            $employee->monthlyRecords()->delete();
             $employee->delete();
-            
+
             DB::commit();
 
             return response()->json([
@@ -315,7 +297,37 @@ class EmployeeController extends Controller
     }
 
     /**
-     * Make payment to employee
+     * ✅ NEW: Get list of unpaid months for an employee (for the payment dropdown)
+     * GET /api/employees/{id}/unpaid-months
+     */
+    public function unpaidMonths($id)
+    {
+        try {
+            $employee = Employee::find($id);
+
+            if (!$employee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $employee->getUnpaidMonths()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching unpaid months: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch unpaid months: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Make payment to employee for a SPECIFIC month
      * POST /api/employee-payments
      */
     public function makePayment(Request $request)
@@ -324,6 +336,7 @@ class EmployeeController extends Controller
             $validator = Validator::make($request->all(), [
                 'employee_id' => 'required|exists:employees,id',
                 'amount' => 'required|numeric|min:1',
+                'for_month' => 'required|date_format:Y-m', // ✅ NEW: e.g. "2026-05"
                 'note' => 'nullable|string|max:500',
             ]);
 
@@ -337,43 +350,59 @@ class EmployeeController extends Controller
             DB::beginTransaction();
 
             $employee = Employee::find($request->employee_id);
-            
+
             if (!$employee) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
                     'message' => 'Employee not found'
                 ], 404);
             }
 
-            if ($request->amount > $employee->balance_amount) {
+            // ✅ Find how much is already paid + still owed for THIS specific month
+            $monthBreakdown = collect($employee->getMonthlyBreakdown())
+                ->firstWhere('month', $request->for_month);
+
+            if (!$monthBreakdown) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => 'Payment amount (Rs. ' . number_format($request->amount) . ') cannot exceed balance amount (Rs. ' . number_format($employee->balance_amount) . ')'
+                    'message' => 'Invalid month — employee was not active during ' . $request->for_month
+                ], 422);
+            }
+
+            // ✅ Check if payment exceeds THIS month's remaining balance
+            if ($request->amount > $monthBreakdown['balance_amount']) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment amount (Rs. ' . number_format($request->amount) . ') cannot exceed ' . $monthBreakdown['month_name'] . '\'s remaining balance (Rs. ' . number_format($monthBreakdown['balance_amount']) . ')'
                 ], 422);
             }
 
             $createdBy = $this->getCreatedBy($request);
 
-            // ✅ Create payment record
+            // ✅ Create payment record tagged to the chosen month
             $payment = EmployeePayment::create([
                 'employee_id' => $employee->id,
                 'amount' => $request->amount,
                 'payment_date' => now(),
+                'for_month' => $request->for_month,
                 'note' => $request->note ?? 'Salary payment',
                 'created_by' => $createdBy,
             ]);
 
-            // ✅ Update employee balance (auto updates monthly record)
+            // ✅ Update employee's overall balance (also auto-runs via EmployeePayment::booted())
             $employee->updateBalance();
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Payment of Rs. ' . number_format($request->amount) . ' recorded successfully!',
+                'message' => 'Payment of Rs. ' . number_format($request->amount) . ' recorded for ' . $monthBreakdown['month_name'] . '!',
                 'data' => [
                     'payment' => $payment,
-                    'employee' => $employee->load(['payments', 'monthlyRecords'])
+                    'employee' => $employee->load(['payments'])
                 ]
             ]);
 
@@ -395,7 +424,7 @@ class EmployeeController extends Controller
     {
         try {
             $payment = EmployeePayment::find($id);
-            
+
             if (!$payment) {
                 return response()->json([
                     'success' => false,
@@ -406,17 +435,21 @@ class EmployeeController extends Controller
             DB::beginTransaction();
 
             $employee = $payment->employee;
+
+            // ✅ Store amount before deleting
+            $deletedAmount = $payment->amount;
+
             $payment->delete();
-            
-            // ✅ Update employee balance (auto updates monthly record)
+
+            // ✅ Update employee balance
             $employee->updateBalance();
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Payment deleted successfully!',
-                'data' => $employee->load(['payments', 'monthlyRecords'])
+                'message' => 'Payment of Rs. ' . number_format($deletedAmount) . ' deleted successfully!',
+                'data' => $employee->load(['payments'])
             ]);
 
         } catch (\Exception $e) {
@@ -430,53 +463,15 @@ class EmployeeController extends Controller
     }
 
     /**
-     * Reset salary for new month
-     * POST /api/employees/{id}/reset-salary
-     */
-    public function resetSalary($id)
-    {
-        try {
-            $employee = Employee::find($id);
-            
-            if (!$employee) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Employee not found'
-                ], 404);
-            }
-
-            DB::beginTransaction();
-
-            // ✅ Reset salary using model method
-            $employee->resetSalary();
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => '✅ Salary reset successfully for new month! Previous month record saved.',
-                'data' => $employee->load(['payments', 'monthlyRecords'])
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error resetting salary: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to reset salary: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * ✅ Get monthly history of an employee
+     * ✅ UPDATED: Full month-by-month history since join_date
+     * Every month shows up — Paid, Partial, or Pending — not just months with a record.
      * GET /api/employees/{id}/monthly-history
      */
     public function monthlyHistory($id)
     {
         try {
             $employee = Employee::find($id);
-            
+
             if (!$employee) {
                 return response()->json([
                     'success' => false,
@@ -484,9 +479,7 @@ class EmployeeController extends Controller
                 ], 404);
             }
 
-            $history = $employee->monthlyRecords()
-                ->orderBy('month', 'desc')
-                ->get();
+            $history = $employee->getMonthlyBreakdown();
 
             return response()->json([
                 'success' => true,
@@ -498,19 +491,7 @@ class EmployeeController extends Controller
                         'salary_date' => $employee->salary_date,
                         'join_date' => $employee->join_date ? $employee->join_date->format('Y-m-d') : null,
                     ],
-                    'history' => $history->map(function($record) {
-                        return [
-                            'id' => $record->id,
-                            'month' => $record->month,
-                            'month_name' => $record->month_name,
-                            'monthly_salary' => (float) $record->monthly_salary,
-                            'paid_amount' => (float) $record->paid_amount,
-                            'balance_amount' => (float) $record->balance_amount,
-                            'status' => $record->status,
-                            'is_current_month' => $record->is_current_month,
-                            'created_at' => $record->created_at,
-                        ];
-                    }),
+                    'history' => $history,
                     'current_month' => now()->format('F Y'),
                     'total_months' => $history->count(),
                     'totals' => [
@@ -536,7 +517,7 @@ class EmployeeController extends Controller
     private function getCreatedBy(Request $request)
     {
         $createdBy = 'System';
-        
+
         try {
             // Try sanctum guard
             if (auth()->guard('sanctum')->check()) {
@@ -545,7 +526,7 @@ class EmployeeController extends Controller
                     return $user->name ?? $user->email ?? 'Admin';
                 }
             }
-            
+
             // Try web guard
             if (auth()->guard('web')->check()) {
                 $user = auth()->guard('web')->user();
@@ -553,7 +534,7 @@ class EmployeeController extends Controller
                     return $user->name ?? $user->email ?? 'Admin';
                 }
             }
-            
+
             // Try default auth
             if (auth()->check()) {
                 $user = auth()->user();
@@ -561,17 +542,17 @@ class EmployeeController extends Controller
                     return $user->name ?? $user->email ?? 'Admin';
                 }
             }
-            
+
             // Try request user
             if ($request->user()) {
                 $user = $request->user();
                 return $user->name ?? $user->email ?? 'Admin';
             }
-            
+
         } catch (\Exception $e) {
             Log::error('Auth check error: ' . $e->getMessage());
         }
-        
+
         return $createdBy;
     }
 }

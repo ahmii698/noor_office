@@ -121,13 +121,23 @@ const EmployeeSalary = ({ darkMode }) => {
     name: '',
     monthly_salary: '',
     salary_date: '',
-    join_date: ''   // ✅ new
+    join_date: ''
   });
   
+  // ✅ NEW: paymentData now carries for_month instead of relying on overall balance
   const [paymentData, setPaymentData] = useState({
     amount: '',
-    note: ''
+    note: '',
+    for_month: ''
   });
+
+  // ✅ NEW: unpaid months for the Pay Now dropdown
+  const [unpaidMonths, setUnpaidMonths] = useState([]);
+  const [loadingUnpaidMonths, setLoadingUnpaidMonths] = useState(false);
+
+  // ✅ NEW: month-by-month breakdown for the History modal
+  const [monthlyBreakdown, setMonthlyBreakdown] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   
   // Loading states
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -168,6 +178,40 @@ const EmployeeSalary = ({ darkMode }) => {
     return null;
   }, []);
 
+  // ✅ NEW: Fetch unpaid months for an employee (Pay Now dropdown)
+  const fetchUnpaidMonths = useCallback(async (id) => {
+    setLoadingUnpaidMonths(true);
+    try {
+      const response = await api.get(`/employees/${id}/unpaid-months`);
+      if (response.data.success) {
+        return response.data.data || [];
+      }
+    } catch (error) {
+      console.error('Error fetching unpaid months:', error);
+      toast.error('Failed to load unpaid months');
+    } finally {
+      setLoadingUnpaidMonths(false);
+    }
+    return [];
+  }, []);
+
+  // ✅ NEW: Fetch full monthly history breakdown (History modal)
+  const fetchMonthlyHistory = useCallback(async (id) => {
+    setLoadingHistory(true);
+    try {
+      const response = await api.get(`/employees/${id}/monthly-history`);
+      if (response.data.success) {
+        return response.data.data.history || [];
+      }
+    } catch (error) {
+      console.error('Error fetching monthly history:', error);
+      toast.error('Failed to load monthly history');
+    } finally {
+      setLoadingHistory(false);
+    }
+    return [];
+  }, []);
+
   // Filter and pagination
   const filteredEmployees = employees.filter(emp =>
     emp.name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -205,7 +249,7 @@ const EmployeeSalary = ({ darkMode }) => {
         name: formData.name,
         monthly_salary: parseFloat(formData.monthly_salary),
         salary_date: parseInt(formData.salary_date),
-        join_date: formData.join_date || null   // ✅ new
+        join_date: formData.join_date || null
       });
       
       if (response.data.success) {
@@ -221,7 +265,22 @@ const EmployeeSalary = ({ darkMode }) => {
     }
   };
 
-  // ✅ Make Payment - FIXED
+  // ✅ NEW: Open the Pay Now modal — loads unpaid months first
+  const openPayModal = async (employee) => {
+    setSelectedEmployee(employee);
+    setPaymentData({ amount: '', note: '', for_month: '' });
+    setUnpaidMonths([]);
+    setIsPayModalOpen(true);
+
+    const months = await fetchUnpaidMonths(employee.id);
+    setUnpaidMonths(months);
+    // ✅ Default to the oldest unpaid month so Ahmii pays in order
+    if (months.length > 0) {
+      setPaymentData(prev => ({ ...prev, for_month: months[0].month }));
+    }
+  };
+
+  // ✅ UPDATED: Make Payment — now requires for_month, validates against that month's balance
   const handleMakePayment = async (e) => {
     e.preventDefault();
     if (isPaying) return;
@@ -231,9 +290,15 @@ const EmployeeSalary = ({ darkMode }) => {
       toast.error('Please enter a valid amount');
       return;
     }
-    
-    if (amount > (parseFloat(selectedEmployee.balance_amount) || 0)) {
-      toast.error('Payment amount cannot exceed balance amount!');
+
+    if (!paymentData.for_month) {
+      toast.error('Please select which month you are paying for');
+      return;
+    }
+
+    const monthInfo = unpaidMonths.find(m => m.month === paymentData.for_month);
+    if (monthInfo && amount > monthInfo.balance_amount) {
+      toast.error(`Payment amount cannot exceed ${monthInfo.month_name}'s remaining balance (Rs. ${formatCurrency(monthInfo.balance_amount)})`);
       return;
     }
 
@@ -242,25 +307,29 @@ const EmployeeSalary = ({ darkMode }) => {
       const response = await api.post('/employee-payments', {
         employee_id: selectedEmployee.id,
         amount: amount,
+        for_month: paymentData.for_month,
         note: paymentData.note || 'Salary payment'
       });
       
       if (response.data.success) {
-        toast.success(`✅ Payment of Rs. ${formatCurrency(amount)} recorded successfully!`);
+        toast.success(response.data.message || `✅ Payment of Rs. ${formatCurrency(amount)} recorded successfully!`);
         
         // ✅ Refresh employees list
         await fetchEmployees();
         
-        // ✅ If view modal is open, refresh selected employee data
+        // ✅ If view modal is open, refresh selected employee + history data
         if (isViewModalOpen && selectedEmployee) {
           const updatedEmployee = await fetchSingleEmployee(selectedEmployee.id);
           if (updatedEmployee) {
             setSelectedEmployee(updatedEmployee);
           }
+          const history = await fetchMonthlyHistory(selectedEmployee.id);
+          setMonthlyBreakdown(history);
         }
         
         setIsPayModalOpen(false);
-        setPaymentData({ amount: '', note: '' });
+        setPaymentData({ amount: '', note: '', for_month: '' });
+        setUnpaidMonths([]);
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to record payment');
@@ -283,22 +352,7 @@ const EmployeeSalary = ({ darkMode }) => {
     }
   };
 
-  // ✅ Reset Salary
-  const handleResetSalary = async (id) => {
-    if (!window.confirm('⚠️ Are you sure you want to reset this employee\'s salary for new month?\n\nThis will:\n• Set balance = monthly salary\n• Set paid = 0\n• Save current month record')) return;
-    
-    try {
-      const response = await api.post(`/employees/${id}/reset-salary`);
-      if (response.data.success) {
-        toast.success('✅ Salary reset successfully! New month started.');
-        await fetchEmployees();
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to reset salary');
-    }
-  };
-
-  // ✅ Delete Payment - FIXED
+  // ✅ Delete Payment
   const handleDeletePayment = async (paymentId) => {
     if (!window.confirm('Are you sure you want to delete this payment?')) return;
     try {
@@ -312,6 +366,8 @@ const EmployeeSalary = ({ darkMode }) => {
           if (updatedEmployee) {
             setSelectedEmployee(updatedEmployee);
           }
+          const history = await fetchMonthlyHistory(selectedEmployee.id);
+          setMonthlyBreakdown(history);
         }
       }
     } catch (error) {
@@ -330,7 +386,7 @@ const EmployeeSalary = ({ darkMode }) => {
         name: formData.name || selectedEmployee.name,
         monthly_salary: parseFloat(formData.monthly_salary) || selectedEmployee.monthly_salary,
         salary_date: parseInt(formData.salary_date) || selectedEmployee.salary_date,
-        join_date: formData.join_date || null   // ✅ new
+        join_date: formData.join_date || null
       });
       
       if (response.data.success) {
@@ -344,6 +400,16 @@ const EmployeeSalary = ({ darkMode }) => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // ✅ NEW: Open the History modal — loads the full monthly breakdown
+  const openViewModal = async (employee) => {
+    setSelectedEmployee(employee);
+    setMonthlyBreakdown([]);
+    setIsViewModalOpen(true);
+
+    const history = await fetchMonthlyHistory(employee.id);
+    setMonthlyBreakdown(history);
   };
 
   // Get status badge
@@ -361,6 +427,9 @@ const EmployeeSalary = ({ darkMode }) => {
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // ✅ Currently selected month's info (for the Pay Now summary box)
+  const selectedMonthInfo = unpaidMonths.find(m => m.month === paymentData.for_month);
 
   if (loading) {
     return (
@@ -453,7 +522,6 @@ const EmployeeSalary = ({ darkMode }) => {
               ) : (
                 currentEmployees.map(employee => {
                   const isDue = isSalaryDue(employee.salary_date);
-                  // ✅ FIX: Pay Now button visible ALWAYS if balance > 0
                   const canPay = employee.balance_amount > 0;
                   
                   return (
@@ -499,10 +567,7 @@ const EmployeeSalary = ({ darkMode }) => {
                         <div className="employee-salary-actions">
                           {/* ✅ View History */}
                           <button 
-                            onClick={() => {
-                              setSelectedEmployee(employee);
-                              setIsViewModalOpen(true);
-                            }} 
+                            onClick={() => openViewModal(employee)} 
                             className="employee-salary-btn-view" 
                             title="View History"
                           >
@@ -517,7 +582,7 @@ const EmployeeSalary = ({ darkMode }) => {
                                 name: employee.name,
                                 monthly_salary: employee.monthly_salary,
                                 salary_date: employee.salary_date || '',
-                                join_date: employee.join_date || ''   // ✅ new
+                                join_date: employee.join_date || ''
                               });
                               setIsEditModalOpen(true);
                             }} 
@@ -536,28 +601,19 @@ const EmployeeSalary = ({ darkMode }) => {
                             <FiTrash2 />
                           </button>
                           
-                          {/* ✅ Pay Now - ALWAYS SHOW if balance > 0 */}
+                          {/* ✅ Pay Now — opens modal + loads unpaid months */}
                           {canPay && (
                             <button 
-                              onClick={() => {
-                                setSelectedEmployee(employee);
-                                setPaymentData({ amount: '', note: '' });
-                                setIsPayModalOpen(true);
-                              }} 
+                              onClick={() => openPayModal(employee)} 
                               className="employee-salary-btn-pay"
                             >
                               Pay Now
                             </button>
                           )}
                           
-                          {/* ✅ Reset Button */}
-                          <button 
-                            onClick={() => handleResetSalary(employee.id)} 
-                            className="employee-salary-btn-reset"
-                            title="Reset Salary for New Month"
-                          >
-                            <FiCalendar /> Reset
-                          </button>
+                          {/* ❌ Reset button removed — no longer needed.
+                              Every month now tracks its own Paid/Partial/Pending
+                              status automatically based on join_date. */}
                         </div>
                       </td>
                     </tr>
@@ -682,6 +738,7 @@ const EmployeeSalary = ({ darkMode }) => {
                         <tr>
                           <th>#</th>
                           <th>Date & Time (Karachi)</th>
+                          <th>For Month</th>
                           <th className="employee-salary-text-right">Amount (Rs.)</th>
                           <th>Note</th>
                           <th>Created By</th>
@@ -701,6 +758,11 @@ const EmployeeSalary = ({ darkMode }) => {
                                     <span className="font-medium">{date}</span>
                                     <span className="text-xs text-gray-500">{time}</span>
                                   </div>
+                                </td>
+                                <td>
+                                  <span className="font-medium">
+                                    {payment.for_month_name || payment.for_month || '-'}
+                                  </span>
                                 </td>
                                 <td className="employee-salary-text-right employee-salary-amount-paid">
                                   Rs.{formatCurrency(payment.amount)}
@@ -722,7 +784,7 @@ const EmployeeSalary = ({ darkMode }) => {
                       </tbody>
                       <tfoot className={darkMode ? 'dark' : ''}>
                         <tr>
-                          <td colSpan="2" className="employee-salary-text-right employee-salary-total-label font-bold">
+                          <td colSpan="3" className="employee-salary-text-right employee-salary-total-label font-bold">
                             Total Paid:
                           </td>
                           <td className="employee-salary-text-right employee-salary-total-amount font-bold">
@@ -738,16 +800,21 @@ const EmployeeSalary = ({ darkMode }) => {
                 )}
               </div>
 
-              {/* Monthly History */}
+              {/* ✅ Monthly History — now shows EVERY month since join_date, paid or not */}
               <div className="mt-4">
                 <h3 className="employee-salary-history-title">
                   <FiCalendar className="employee-salary-history-icon text-blue-500" /> Monthly History
                   <span className="ml-2 text-sm font-normal text-gray-500">
-                    ({selectedEmployee.monthly_records?.length || 0} months)
+                    ({monthlyBreakdown.length} months)
                   </span>
                 </h3>
                 
-                {!selectedEmployee.monthly_records || selectedEmployee.monthly_records.length === 0 ? (
+                {loadingHistory ? (
+                  <div className="employee-salary-empty-history">
+                    <FiLoader className="employee-salary-empty-history-icon animate-spin" />
+                    <p>Loading monthly history...</p>
+                  </div>
+                ) : monthlyBreakdown.length === 0 ? (
                   <div className="employee-salary-empty-history">
                     <FiInbox className="employee-salary-empty-history-icon" />
                     <p>No monthly records found</p>
@@ -766,42 +833,33 @@ const EmployeeSalary = ({ darkMode }) => {
                         </tr>
                       </thead>
                       <tbody>
-                        {[...selectedEmployee.monthly_records]
-                          .sort((a, b) => b.month.localeCompare(a.month))
-                          .map((record, idx) => {
-                            const [year, month] = record.month.split('-');
-                            const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
-                            const monthDisplay = `${monthName} ${year}`;
-                            const isCurrentMonth = record.month === new Date().toISOString().slice(0, 7);
-                            
-                            return (
-                              <tr key={record.id}>
-                                <td>{idx + 1}</td>
-                                <td>
-                                  <span className="font-medium">{monthDisplay}</span>
-                                  {isCurrentMonth && (
-                                    <span className="ml-2 text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">Current</span>
-                                  )}
-                                </td>
-                                <td className="employee-salary-text-right employee-salary-amount-total">
-                                  Rs.{formatCurrency(record.monthly_salary)}
-                                </td>
-                                <td className="employee-salary-text-right employee-salary-amount-paid">
-                                  Rs.{formatCurrency(record.paid_amount)}
-                                </td>
-                                <td className="employee-salary-text-right">
-                                  <span className={`employee-salary-balance ${record.balance_amount > 0 ? 'due' : 'paid'}`}>
-                                    Rs.{formatCurrency(record.balance_amount)}
-                                  </span>
-                                </td>
-                                <td>
-                                  <span className={getStatusBadge(record.status)}>
-                                    {record.status}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
+                        {monthlyBreakdown.map((record, idx) => (
+                          <tr key={record.month}>
+                            <td>{idx + 1}</td>
+                            <td>
+                              <span className="font-medium">{record.month_name}</span>
+                              {record.is_current_month && (
+                                <span className="ml-2 text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">Current</span>
+                              )}
+                            </td>
+                            <td className="employee-salary-text-right employee-salary-amount-total">
+                              Rs.{formatCurrency(record.monthly_salary)}
+                            </td>
+                            <td className="employee-salary-text-right employee-salary-amount-paid">
+                              Rs.{formatCurrency(record.paid_amount)}
+                            </td>
+                            <td className="employee-salary-text-right">
+                              <span className={`employee-salary-balance ${record.balance_amount > 0 ? 'due' : 'paid'}`}>
+                                Rs.{formatCurrency(record.balance_amount)}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={getStatusBadge(record.status)}>
+                                {record.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                       <tfoot className={darkMode ? 'dark' : ''}>
                         <tr>
@@ -809,13 +867,13 @@ const EmployeeSalary = ({ darkMode }) => {
                             Totals:
                           </td>
                           <td className="employee-salary-text-right employee-salary-total-amount font-bold">
-                            Rs.{formatCurrency(selectedEmployee.monthly_salary)}
+                            Rs.{formatCurrency(monthlyBreakdown.reduce((s, m) => s + m.monthly_salary, 0))}
                           </td>
                           <td className="employee-salary-text-right employee-salary-total-amount font-bold">
-                            Rs.{formatCurrency(selectedEmployee.paid_amount)}
+                            Rs.{formatCurrency(monthlyBreakdown.reduce((s, m) => s + m.paid_amount, 0))}
                           </td>
                           <td className="employee-salary-text-right employee-salary-total-amount font-bold">
-                            Rs.{formatCurrency(selectedEmployee.balance_amount)}
+                            Rs.{formatCurrency(monthlyBreakdown.reduce((s, m) => s + m.balance_amount, 0))}
                           </td>
                           <td></td>
                         </tr>
@@ -895,6 +953,9 @@ const EmployeeSalary = ({ darkMode }) => {
                   onChange={(e) => setFormData({ ...formData, join_date: e.target.value })}
                   className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
                 />
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Every month from this date to now will count toward the balance (e.g. joining 3 months ago means 3 months owed).
+                </p>
               </div>
               <div className="employee-salary-form-actions">
                 <button type="button" onClick={() => setIsAddModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
@@ -978,7 +1039,7 @@ const EmployeeSalary = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Pay Now Modal - FIXED */}
+      {/* ✅ Pay Now Modal — now has a "which month" dropdown */}
       {isPayModalOpen && selectedEmployee && (
         <div className="employee-salary-modal-overlay">
           <div className={`employee-salary-modal ${darkMode ? 'dark' : ''}`}>
@@ -996,11 +1057,35 @@ const EmployeeSalary = ({ darkMode }) => {
                 <p className="employee-salary-payment-vendor">{selectedEmployee.name}</p>
                 <p className="employee-salary-payment-label">Monthly Salary</p>
                 <p className="employee-salary-payment-balance" style={{color: '#111827'}}>Rs.{formatCurrency(selectedEmployee.monthly_salary)}</p>
-                <p className="employee-salary-payment-label">Already Paid</p>
-                <p className="employee-salary-payment-balance" style={{color: '#16a34a'}}>Rs.{formatCurrency(selectedEmployee.paid_amount)}</p>
-                <p className="employee-salary-payment-label">Remaining Balance</p>
+                <p className="employee-salary-payment-label">Total Balance (all unpaid months)</p>
                 <p className="employee-salary-payment-balance" style={{color: '#dc2626', fontWeight: 'bold'}}>Rs.{formatCurrency(selectedEmployee.balance_amount)}</p>
               </div>
+
+              {/* ✅ NEW: Month selector */}
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Which Month Are You Paying? *</label>
+                {loadingUnpaidMonths ? (
+                  <div className={`employee-salary-form-input flex items-center gap-2 ${darkMode ? 'dark' : ''}`}>
+                    <FiLoader className="animate-spin" /> Loading months...
+                  </div>
+                ) : unpaidMonths.length === 0 ? (
+                  <p className="text-sm text-green-600">🎉 All months are fully paid!</p>
+                ) : (
+                  <select
+                    value={paymentData.for_month}
+                    onChange={(e) => setPaymentData({ ...paymentData, for_month: e.target.value, amount: '' })}
+                    className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                    required
+                  >
+                    {unpaidMonths.map(m => (
+                      <option key={m.month} value={m.month}>
+                        {m.month_name} — {m.status} (Balance: Rs. {formatCurrency(m.balance_amount)})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <div className="employee-salary-form-group">
                 <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Payment Amount (Rs.) *</label>
                 <input
@@ -1010,13 +1095,16 @@ const EmployeeSalary = ({ darkMode }) => {
                   className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
                   placeholder="Enter amount to pay"
                   min="1"
-                  max={selectedEmployee.balance_amount || 0}
+                  max={selectedMonthInfo?.balance_amount || 0}
                   step="0.01"
                   required
+                  disabled={unpaidMonths.length === 0}
                 />
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Maximum: Rs. {formatCurrency(selectedEmployee.balance_amount)}
-                </p>
+                {selectedMonthInfo && (
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Maximum for {selectedMonthInfo.month_name}: Rs. {formatCurrency(selectedMonthInfo.balance_amount)}
+                  </p>
+                )}
               </div>
               <div className="employee-salary-form-group">
                 <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Note (Optional)</label>
@@ -1030,7 +1118,7 @@ const EmployeeSalary = ({ darkMode }) => {
               </div>
               <div className="employee-salary-form-actions">
                 <button type="button" onClick={() => setIsPayModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
-                <button type="submit" className="employee-salary-btn-pay-submit" disabled={isPaying}>
+                <button type="submit" className="employee-salary-btn-pay-submit" disabled={isPaying || unpaidMonths.length === 0}>
                   {isPaying ? <><FiLoader className="animate-spin mr-2" /> Processing...</> : 'Pay Now'}
                 </button>
               </div>

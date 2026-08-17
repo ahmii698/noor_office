@@ -6,9 +6,19 @@ import {
   FiCheck, FiX, FiRefreshCw, FiGift, FiUsers, FiTool, 
   FiDroplet, FiEdit2, FiSend, FiMessageSquare, 
   FiClock, FiAlertTriangle, FiMessageCircle, FiTrash2,
-  FiStar, FiHeart, FiDollarSign, FiEdit
+  FiStar, FiHeart, FiDollarSign, FiEdit,
+  FiEye // ✅ ADDED
 } from 'react-icons/fi';
 import api from '../services/api';
+
+// ✅ Bank Names List - Same as Billing
+const BANK_NAMES = [
+  { value: 'allied', label: 'Allied Bank' },
+  { value: 'alfalah', label: 'Bank Alfalah' },
+  { value: 'hbl', label: 'HBL (Habib Bank Limited)' },
+  { value: 'meezan', label: 'Meezan Bank' },
+  { value: 'ubl', label: 'UBL (United Bank Limited)' },
+];
 
 const Reminders = ({ darkMode }) => {
   const [activeTab, setActiveTab] = useState('birthday');
@@ -23,6 +33,8 @@ const Reminders = ({ darkMode }) => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [selectedBank, setSelectedBank] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editForm, setEditForm] = useState({
     service_type: '',
@@ -30,6 +42,24 @@ const Reminders = ({ darkMode }) => {
     whatsapp_number: ''
   });
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // ✅ Payment History States
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [selectedInvoiceNo, setSelectedInvoiceNo] = useState('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // ✅ Get payment method display with bank name
+  const getPaymentMethodDisplay = () => {
+    if (paymentMethod === 'cash') return 'Cash';
+    if (paymentMethod === 'card') return 'Credit/Debit Card';
+    if (paymentMethod === 'bank') {
+      const bank = BANK_NAMES.find(b => b.value === selectedBank);
+      return bank ? `Bank Transfer (${bank.label})` : 'Bank Transfer';
+    }
+    if (paymentMethod === 'online') return 'Mobile Wallet';
+    return paymentMethod;
+  };
 
   // ✅ Check user role on mount
   useEffect(() => {
@@ -67,7 +97,6 @@ const Reminders = ({ darkMode }) => {
       setOilChangeReminders(serviceRes.data.oil_change || []);
       setMessages(serviceRes.data.messages || {});
       
-      // ✅ Fetch pending payments (only if admin)
       if (isAdmin) {
         const paymentRes = await api.get('/pending-payments');
         setPendingPayments(paymentRes.data.data || []);
@@ -87,12 +116,44 @@ const Reminders = ({ darkMode }) => {
     return () => clearInterval(interval);
   }, [isAdmin]);
 
+  // ✅ Fetch payment history for specific invoice
+  const fetchPaymentHistory = async (invoiceNo) => {
+    setLoadingHistory(true);
+    setSelectedInvoiceNo(invoiceNo);
+    try {
+      const response = await api.get(`/payment-history/${invoiceNo}`);
+      if (response.data.success) {
+        setPaymentHistory(response.data.data);
+        setShowHistoryModal(true);
+      } else {
+        toast.error('Failed to fetch payment history');
+      }
+    } catch (error) {
+      console.error('Error fetching payment history:', error);
+      toast.error('Failed to load payment history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   const formatDate = (date) => {
     if (!date) return 'N/A';
     return new Date(date).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric'
+    });
+  };
+
+  const formatDateTime = (date) => {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -175,7 +236,7 @@ const Reminders = ({ darkMode }) => {
     }
   };
 
-  // ✅ Handle payment update (Admin only)
+  // ✅ Handle payment update with payment method + bank name + date/time
   const handlePaymentUpdate = async () => {
     if (!isAdmin) {
       toast.error('Only admin can record payments');
@@ -193,13 +254,37 @@ const Reminders = ({ darkMode }) => {
       return;
     }
 
+    if (paymentMethod === 'bank' && !selectedBank) {
+      toast.error('Please select a bank for bank transfer');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await api.put(`/pending-payments/${selectedPayment.id}`, { amount });
-      toast.success(`✅ Rs. ${amount.toLocaleString()} payment recorded successfully!`);
+      const paymentMethodDisplay = getPaymentMethodDisplay();
+      const currentDateTime = new Date().toISOString();
+      
+      await api.put(`/pending-payments/${selectedPayment.id}`, { 
+        amount,
+        payment_method: paymentMethodDisplay,
+        paid_at: currentDateTime
+      });
+      
+      const formattedTime = new Date(currentDateTime).toLocaleString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+      
+      toast.success(`✅ Rs. ${amount.toLocaleString()} payment recorded via ${paymentMethodDisplay} at ${formattedTime}!`);
       setShowPaymentModal(false);
       setSelectedPayment(null);
       setPaymentAmount('');
+      setPaymentMethod('cash');
+      setSelectedBank('');
       fetchAllData();
     } catch (error) {
       console.error('Error updating payment:', error);
@@ -216,6 +301,8 @@ const Reminders = ({ darkMode }) => {
     }
     setSelectedPayment(payment);
     setPaymentAmount('');
+    setPaymentMethod('cash');
+    setSelectedBank('');
     setShowPaymentModal(true);
   };
 
@@ -376,6 +463,7 @@ const Reminders = ({ darkMode }) => {
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Total</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Paid</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Pending</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Date & Time</th>
                       </>
                     ) : (
                       <>
@@ -444,6 +532,24 @@ const Reminders = ({ darkMode }) => {
                                 Rs. {item.remaining_amount?.toLocaleString() || 0}
                               </span>
                             </td>
+                            <td className="px-4 py-3 text-sm">
+                              {item.paid_at ? (
+                                <span className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                  {new Date(item.paid_at).toLocaleString('en-US', {
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: true
+                                  })}
+                                </span>
+                              ) : (
+                                <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                  Not paid yet
+                                </span>
+                              )}
+                            </td>
                           </>
                         ) : (
                           <>
@@ -464,15 +570,28 @@ const Reminders = ({ darkMode }) => {
                         )}
                         <td className="px-4 py-3 text-center">
                           {isPending ? (
-                            <button
-                              onClick={() => openPaymentModal(item)}
-                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 mx-auto ${
-                                darkMode ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                              }`}
-                            >
-                              <FiEdit className="text-sm" />
-                              Record Payment
-                            </button>
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => openPaymentModal(item)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+                                  darkMode ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                }`}
+                              >
+                                <FiEdit className="text-sm" />
+                                Record Payment
+                              </button>
+                              {/* ✅ View History Button */}
+                              <button
+                                onClick={() => fetchPaymentHistory(item.invoice_no)}
+                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+                                  darkMode ? 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30' : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                }`}
+                                title="View Payment History"
+                              >
+                                <FiEye className="text-sm" />
+                                History
+                              </button>
+                            </div>
                           ) : (
                             <button
                               onClick={() => {
@@ -606,7 +725,7 @@ const Reminders = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Payment Modal - Admin only */}
+      {/* ✅ Payment Modal - WITH BANK DROPDOWN like Billing */}
       {showPaymentModal && selectedPayment && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -616,7 +735,7 @@ const Reminders = ({ darkMode }) => {
                 Record Payment
               </h3>
               <button 
-                onClick={() => { setShowPaymentModal(false); setSelectedPayment(null); setPaymentAmount(''); }} 
+                onClick={() => { setShowPaymentModal(false); setSelectedPayment(null); setPaymentAmount(''); setPaymentMethod('cash'); setSelectedBank(''); }} 
                 className="text-gray-500 hover:text-gray-700 text-2xl"
               >
                 <FiX />
@@ -644,6 +763,7 @@ const Reminders = ({ darkMode }) => {
                 </div>
               </div>
 
+              {/* Amount Input */}
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Payment Amount (Rs.)
@@ -664,10 +784,67 @@ const Reminders = ({ darkMode }) => {
                 />
               </div>
 
+              {/* Payment Method Dropdown */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Payment Method
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => {
+                    setPaymentMethod(e.target.value);
+                    if (e.target.value !== 'bank') {
+                      setSelectedBank('');
+                    }
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                  }`}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank">Bank Transfer</option>
+                  <option value="card">Credit/Debit Card</option>
+                  <option value="online">Mobile Wallet</option>
+                </select>
+              </div>
+
+              {/* Bank Selection - Only when Bank Transfer selected */}
+              {paymentMethod === 'bank' && (
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Select Bank
+                  </label>
+                  <select
+                    value={selectedBank}
+                    onChange={(e) => setSelectedBank(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    }`}
+                  >
+                    <option value="">-- Select Bank --</option>
+                    {BANK_NAMES.map((bank) => (
+                      <option key={bank.value} value={bank.value}>
+                        {bank.label}
+                      </option>
+                    ))}
+                  </select>
+                  {!selectedBank && paymentMethod === 'bank' && (
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+                      ⚠️ Please select a bank
+                    </p>
+                  )}
+                  {selectedBank && paymentMethod === 'bank' && (
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                      ✅ Selected: {BANK_NAMES.find(b => b.value === selectedBank)?.label}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => { setShowPaymentModal(false); setSelectedPayment(null); setPaymentAmount(''); }}
+                  onClick={() => { setShowPaymentModal(false); setSelectedPayment(null); setPaymentAmount(''); setPaymentMethod('cash'); setSelectedBank(''); }}
                   className={`flex-1 px-4 py-2 rounded-lg transition ${
                     darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                   }`}
@@ -677,9 +854,9 @@ const Reminders = ({ darkMode }) => {
                 <button
                   type="button"
                   onClick={handlePaymentUpdate}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || (paymentMethod === 'bank' && !selectedBank)}
                   className={`flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2 shadow-md ${
-                    isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                    isSubmitting || (paymentMethod === 'bank' && !selectedBank) ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
                   {isSubmitting ? (
@@ -692,6 +869,110 @@ const Reminders = ({ darkMode }) => {
                       <FiCheck className="text-sm" /> Record Payment
                     </>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Payment History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-2xl w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
+              <h3 className="text-xl font-semibold flex items-center gap-2">
+                <FiClock className="text-purple-500" />
+                Payment History - {selectedInvoiceNo}
+              </h3>
+              <button 
+                onClick={() => { setShowHistoryModal(false); setPaymentHistory([]); }} 
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                <FiX />
+              </button>
+            </div>
+            <div className="p-6">
+              {loadingHistory ? (
+                <div className="text-center py-8">
+                  <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading history...</p>
+                </div>
+              ) : paymentHistory.length === 0 ? (
+                <div className="text-center py-8">
+                  <FiClock className="text-4xl text-gray-400 mx-auto mb-3" />
+                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No payment history found</p>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                        <tr>
+                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase">#</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase">Amount</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase">Payment Method</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase">Date & Time</th>
+                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase">Received By</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                        {paymentHistory.map((payment, index) => (
+                          <tr key={payment.id || index} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}>
+                            <td className="px-4 py-2 text-sm text-center">{index + 1}</td>
+                            <td className="px-4 py-2 text-sm font-semibold text-green-600 dark:text-green-400">
+                              Rs. {parseFloat(payment.amount).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs ${
+                                darkMode ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'
+                              }`}>
+                                {payment.payment_method || 'Cash'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              {payment.paid_at ? (
+                                new Date(payment.paid_at).toLocaleString('en-US', {
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  hour12: true
+                                })
+                              ) : 'N/A'}
+                            </td>
+                            <td className="px-4 py-2 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs ${
+                                darkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                Admin
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} font-semibold`}>
+                        <tr>
+                          <td colSpan="1" className="px-4 py-3 text-right">Total Paid:</td>
+                          <td className="px-4 py-3 text-green-600 dark:text-green-400">
+                            Rs. {paymentHistory.reduce((sum, p) => sum + parseFloat(p.amount), 0).toLocaleString()}
+                          </td>
+                          <td colSpan="3"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              )}
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => { setShowHistoryModal(false); setPaymentHistory([]); }}
+                  className={`px-4 py-2 rounded-lg transition ${
+                    darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                  }`}
+                >
+                  Close
                 </button>
               </div>
             </div>

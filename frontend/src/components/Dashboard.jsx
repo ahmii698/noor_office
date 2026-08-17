@@ -29,6 +29,7 @@ const Records = lazy(() => import('./Records'));
 const Reminders = lazy(() => import('./Reminders'));
 const Users = lazy(() => import('./Users'));
 const Credit = lazy(() => import('./finance/Credit'));
+const DiscardedBillsPage = lazy(() => import('./billing/DiscardedBillsPage'));
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -491,7 +492,8 @@ const Dashboard = () => {
       billing: 'Billing System',
       record: 'Records Archive',
       reminders: 'Reminders',
-      users: 'User Management'
+      users: 'User Management',
+      discarded: 'Discarded Bills'
     };
     return titles[activeMenu] || 'Dashboard';
   }, [activeMenu]);
@@ -509,7 +511,8 @@ const Dashboard = () => {
       billing: 'Create bills, print invoices, export data',
       record: 'View all transaction history',
       reminders: 'Birthday, Tuning & Oil Change reminders',
-      users: 'Manage system users and employees'
+      users: 'Manage system users and employees',
+      discarded: 'View and restore discarded bills'
     };
     return descriptions[activeMenu] || '';
   }, [activeMenu]);
@@ -527,7 +530,8 @@ const Dashboard = () => {
       billing: <FiFileText className="text-2xl" />,
       record: <FiBarChart2 className="text-2xl" />,
       reminders: <FiBell className="text-2xl" />,
-      users: <FiUsers className="text-2xl" />
+      users: <FiUsers className="text-2xl" />,
+      discarded: <FiClock className="text-2xl" />
     };
     return icons[activeMenu] || <FiPackage className="text-2xl" />;
   }, [activeMenu]);
@@ -703,7 +707,7 @@ const Dashboard = () => {
             {/* ALL DATA VIEW - Admin only */}
             {activeMenu === 'all-data' && userRole !== 'employee' && (
               <div className="space-y-6">
-                {/* ✅ FILTER BUTTONS with Custom Date */}
+                {/* FILTER BUTTONS with Custom Date */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2 mr-4">
                     <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -809,7 +813,7 @@ const Dashboard = () => {
                   </span>
                 </div>
 
-                {/* ✅ CHART TYPE BUTTONS - Line, Bar, Area, Composed */}
+                {/* CHART TYPE BUTTONS - Line, Bar, Area, Composed */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2 mr-4">
                     <FiBarChart2 className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -864,7 +868,7 @@ const Dashboard = () => {
                   </button>
                 </div>
 
-                {/* ✅ 5 STATS CARDS - Sales, Profit, Expenses, Products, Discount */}
+                {/* 5 STATS CARDS - Sales, Profit, Expenses, Products, Discount */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                   <StatsCard 
                     title="Total Sales" 
@@ -905,7 +909,7 @@ const Dashboard = () => {
                   />
                 </div>
 
-                {/* ✅ CHARTS SECTION - SIDE BY SIDE (65% / 35%) */}
+                {/* CHARTS SECTION - SIDE BY SIDE (65% / 35%) */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Main Chart - 65% space */}
                   <div className={`lg:col-span-2 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -927,7 +931,7 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  {/* ✅ FIXED: Product Sales Distribution (Pie Chart) - top 8 + Others, custom scrollable legend */}
+                  {/* Product Sales Distribution (Pie Chart) - top 8 + Others */}
                   {productSalesData.length > 0 && (
                     <div className={`lg:col-span-1 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                       <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -954,7 +958,7 @@ const Dashboard = () => {
                         </ResponsiveContainer>
                       </div>
 
-                      {/* ✅ Custom scrollable legend - fixed height so it never overflows onto other cards */}
+                      {/* Custom scrollable legend */}
                       <div className={`mt-3 max-h-36 overflow-y-auto pr-1 space-y-1.5 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         {productSalesData.map((entry, index) => (
                           <div key={`legend-${index}`} className="flex items-center gap-2 text-xs">
@@ -1026,7 +1030,7 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* ✅ Low Stock Alerts - COLLAPSIBLE (closed by default) - NOW USES PER-PRODUCT THRESHOLD */}
+                {/* Low Stock Alerts - COLLAPSIBLE (closed by default) */}
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   {/* Header - Click to toggle */}
                   <div 
@@ -1107,7 +1111,7 @@ const Dashboard = () => {
                   )}
                 </div>
 
-                {/* Quick Actions - UPDATED: Add Expense now goes to finance-expenses */}
+                {/* Quick Actions */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <button onClick={() => setActiveMenu('billing')} className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-md flex items-center justify-center gap-2">
                     <FiFileText /> New Bill
@@ -1118,7 +1122,6 @@ const Dashboard = () => {
                   <button onClick={() => setActiveMenu('record')} className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-md flex items-center justify-center gap-2">
                     <FiShoppingCart /> View Records
                   </button>
-                  {/* ✅ FIXED: Add Expense button now goes to finance-expenses page */}
                   <button 
                     onClick={() => setActiveMenu('finance-expenses')} 
                     className="w-full py-3 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600 transition shadow-md flex items-center justify-center gap-2"
@@ -1156,7 +1159,14 @@ const Dashboard = () => {
               )}
               
               {activeMenu === 'billing' && (
-                <Billing darkMode={darkMode} />
+                <Billing 
+                  darkMode={darkMode} 
+                  services={servicesArray}
+                  invoices={invoicesArray}
+                  setInvoices={setInvoices}
+                  products={productsArray}
+                  setProducts={setProducts}
+                />
               )}
               
               {activeMenu === 'record' && userRole !== 'employee' && (
@@ -1169,6 +1179,11 @@ const Dashboard = () => {
 
               {activeMenu === 'users' && userRole === 'admin' && (
                 <Users darkMode={darkMode} />
+              )}
+
+              {/* ✅ NEW: Discarded Bills Page */}
+              {activeMenu === 'discarded' && (
+                <DiscardedBillsPage darkMode={darkMode} />
               )}
             </Suspense>
           </div>

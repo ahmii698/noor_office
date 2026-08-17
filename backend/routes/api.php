@@ -14,6 +14,7 @@ use App\Http\Controllers\ServiceReminderController;
 use App\Http\Controllers\CreditVendorController;
 use App\Http\Controllers\CreditPaymentController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\SavedCartController;
 
 /*
 |--------------------------------------------------------------------------
@@ -129,10 +130,12 @@ Route::prefix('employees')->group(function () {
     Route::get('/', [EmployeeController::class, 'index']);
     Route::get('/{id}', [EmployeeController::class, 'show']);
     Route::get('/{id}/monthly-history', [EmployeeController::class, 'monthlyHistory']);
+    Route::get('/{id}/unpaid-months', [EmployeeController::class, 'unpaidMonths']); // ✅ NEW: for the "pay which month?" dropdown
     Route::post('/', [EmployeeController::class, 'store']);
     Route::put('/{id}', [EmployeeController::class, 'update']);
     Route::delete('/{id}', [EmployeeController::class, 'destroy']);
-    Route::post('/{id}/reset-salary', [EmployeeController::class, 'resetSalary']);
+    // ❌ reset-salary route removed — not used in the new month-based system,
+    // every month tracks its own paid/pending status automatically
 });
 
 // ==================== EMPLOYEE PAYMENT ROUTES ====================
@@ -169,7 +172,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/{id}', [InvoiceController::class, 'show']);
         Route::post('/', [InvoiceController::class, 'store']);
-        Route::put('/{id}', [InvoiceController::class, 'update']);  // ✅ ADDED
+        Route::put('/{id}', [InvoiceController::class, 'update']);
         Route::delete('/{id}', [InvoiceController::class, 'destroy']);
     });
     
@@ -179,12 +182,28 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/{id}', [InvoiceController::class, 'updatePendingPayment']);
     });
     
+    // ✅ PAYMENT HISTORY ROUTE - ADDED
+    Route::prefix('payment-history')->group(function () {
+        Route::get('/{invoiceNo}', [InvoiceController::class, 'getPaymentHistory']);
+    });
+    
     // Expenses Routes
     Route::get('/expenses', [ExpenseController::class, 'index']);
     Route::get('/expenses/{id}', [ExpenseController::class, 'show']);
     Route::post('/expenses', [ExpenseController::class, 'store']);
     Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
+    
+    // ==================== SAVED CARTS / DISCARDED BILLS ====================
+    Route::prefix('saved-carts')->group(function () {
+        Route::get('/', [SavedCartController::class, 'index']);
+        Route::get('/count', [SavedCartController::class, 'count']);
+        Route::get('/{id}', [SavedCartController::class, 'show']);
+        Route::post('/', [SavedCartController::class, 'store']);
+        Route::post('/{id}/restore', [SavedCartController::class, 'restore']);
+        Route::delete('/{id}', [SavedCartController::class, 'destroy']);
+        Route::delete('/clear-all', [SavedCartController::class, 'clearAll']);
+    });
     
     // Additional Stats Routes
     Route::get('/sales/stats', function() {

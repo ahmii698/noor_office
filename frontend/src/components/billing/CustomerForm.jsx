@@ -18,6 +18,17 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     date: new Date().toISOString().split('T')[0]
   });
   
+  // ✅ Invoice Date & Time states
+  const [invoiceDate, setInvoiceDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
+  
+  const [invoiceTime, setInvoiceTime] = useState(() => {
+    const now = new Date();
+    return now.toTimeString().slice(0, 5);
+  });
+  
   const [customerHistory, setCustomerHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -53,27 +64,19 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   };
 
   // ✅ Format date from YYYY-MM-DD (or ISO datetime) to MM/DD/YYYY for display
-  // 🔧 FIXED: backend sometimes sends full ISO timestamps like
-  // "2026-06-24T00:00:00.000000Z" — the old code split that on "-" directly,
-  // which corrupted the day/time chunk. Now we strip the time part first.
   const formatToDisplay = (dateStr) => {
     if (!dateStr) return '';
     
-    // ✅ If already in MM/DD/YYYY format, return as is
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
       return dateStr;
     }
     
-    // ✅ Strip time portion first (handles ISO datetimes like "...T00:00:00.000000Z")
     const datePart = dateStr.split('T')[0];
-    
-    // ✅ Try to parse YYYY-MM-DD format
     const parts = datePart.split('-');
     if (parts.length === 3 && parts[0].length === 4) {
       return `${parts[1]}/${parts[2]}/${parts[0]}`;
     }
     
-    // ✅ Fallback: try to parse from any date string (use UTC to avoid timezone shift)
     try {
       const date = new Date(dateStr);
       if (!isNaN(date.getTime())) {
@@ -106,7 +109,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       return true;
     }
     
-    // Check format mm/dd/yyyy
     if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
       setBirthdayError('Please use mm/dd/yyyy format');
       return false;
@@ -127,7 +129,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       return false;
     }
     
-    // Check if date is valid (e.g., Feb 30 is invalid)
     const checkDate = new Date(year, month - 1, day);
     if (checkDate.getMonth() !== month - 1 || checkDate.getDate() !== day) {
       setBirthdayError('Invalid date (check month/day combination)');
@@ -146,11 +147,8 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   // ✅ Handle birthday change with auto-slash
   const handleBirthdayChange = (e) => {
     let value = e.target.value;
-    
-    // Allow only numbers and slashes
     value = value.replace(/[^0-9/]/g, '');
     
-    // Auto-add slashes for better UX
     if (value.length === 2 && !value.includes('/')) {
       value = value + '/';
     } else if (value.length === 5 && value.split('/').length === 2 && !value.endsWith('/')) {
@@ -162,7 +160,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     
     setCustomerDetails(prev => ({ ...prev, birthday: value }));
     
-    // Validate on change
     if (value.length === 10) {
       validateBirthday(value);
     } else {
@@ -176,7 +173,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       if (customerDetails.phone && customerDetails.phone.length >= 4) {
         setSearching(true);
         try {
-          // STEP 1: Get customer from customers table
           let customerData = null;
           try {
             const customerRes = await api.get(`/customers/phone/${customerDetails.phone}`);
@@ -187,7 +183,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             console.log('Customer not found in customers table, checking invoices...');
           }
 
-          // STEP 2: Get invoice history
           const response = await api.get('/invoices');
           if (response.data && Array.isArray(response.data)) {
             const history = response.data
@@ -206,7 +201,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             if (customerData || history.length > 0) {
               const lastInvoice = history[0] || {};
               
-              // ✅ Convert any date format to MM/DD/YYYY for display
               const birthdayValue = customerData?.birthday 
                 ? formatToDisplay(customerData.birthday) 
                 : lastInvoice.customer_birthday 
@@ -241,11 +235,20 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     searchCustomerHistory();
   }, [customerDetails.phone]);
 
-  // ✅ NO VALIDATION AT ALL - Sab fields optional
+  // ✅ Handle submit with Date & Time
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // ✅ Direct submit - koi validation nahi, koi warning nahi
+    // ✅ Combine date and time into full datetime
+    const dateTime = new Date(`${invoiceDate}T${invoiceTime}:00`);
+    const fullDateTime = dateTime.toISOString();
+    
+    console.log('📅 Invoice DateTime:', {
+      date: invoiceDate,
+      time: invoiceTime,
+      full: fullDateTime
+    });
+    
     onCustomerSubmit({
       name: customerDetails.name || '',
       phone: customerDetails.phone || '',
@@ -253,7 +256,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       carNumber: customerDetails.carNumber || '',
       carModel: customerDetails.carModel || '',
       birthday: customerDetails.birthday || '',
-      date: customerDetails.date
+      date: fullDateTime // ✅ Full datetime with time
     });
   };
 
@@ -282,9 +285,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             <p className="text-xs opacity-80 flex items-center gap-1"><FiCalendar className="text-xs" /> Date</p>
             <input
               type="date"
-              value={customerDetails.date}
-              onChange={(e) => updateField('date', e.target.value)}
-              className="px-3 py-1 rounded-lg bg-white/20 text-white border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
+              value={customerDetails.date ? customerDetails.date.split('T')[0] : invoiceDate}
+              onChange={(e) => setInvoiceDate(e.target.value)}
+              className="px-3 py-1 rounded-lg bg-white/20 text-white border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 w-36"
             />
           </div>
         </div>
@@ -397,7 +400,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             />
           </div>
 
-          {/* ✅ Birthday - TEXT INPUT with proper formatting */}
+          {/* ✅ Birthday - TEXT INPUT */}
           <div>
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiCalendar className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
@@ -439,9 +442,42 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               <FiCalendar className="text-xs" /> Format: mm/dd/yyyy (e.g., 01/15/1990)
             </p>
           </div>
+
+          {/* ✅ Invoice Date & Time - Two inputs side by side */}
+          <div className="md:col-span-2">
+            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <FiClock className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
+              Invoice Date & Time
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(e) => setInvoiceDate(e.target.value)}
+                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                    darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
+                  }`}
+                />
+              </div>
+              <div>
+                <input
+                  type="time"
+                  value={invoiceTime}
+                  onChange={(e) => setInvoiceTime(e.target.value)}
+                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                    darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
+                  }`}
+                />
+              </div>
+            </div>
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
+              <FiClock className="text-xs" /> This date & time will be used for the invoice
+            </p>
+          </div>
         </div>
         
-        {/* ✅ Customer History Section - SHOW TO EVERYONE, but different columns for admin/employee */}
+        {/* ✅ Customer History Section */}
         {showHistory && customerHistory.length > 0 && (
           <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-red-900/20 border border-red-800' : 'bg-red-50 border border-red-200'}`}>
             <div className="flex justify-between items-center mb-3">

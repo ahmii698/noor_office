@@ -4,7 +4,7 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
-  FiLogOut, FiCreditCard
+  FiLogOut, FiCreditCard, FiClock  // ✅ ADDED FiClock
 } from 'react-icons/fi';
 import { HiMenu, HiX } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +15,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [reminderCount, setReminderCount] = useState(0);
+  const [discardedCount, setDiscardedCount] = useState(0); // ✅ NEW
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
@@ -26,6 +27,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
+    { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount }, // ✅ ADDED
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
     { id: 'users', label: 'Users', icon: FiUsers, path: '/users' },
   ];
@@ -35,9 +37,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
+    { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount }, // ✅ ADDED
   ];
 
-  // Finance Submenu - All red theme, no purple, no "New" badge
+  // Finance Submenu
   const financeSubmenu = [
     { id: 'finance-overview', label: 'Overview', icon: FiTrendingUp, path: '/finance' },
     { id: 'finance-expenses', label: 'Expenses', icon: FiList, path: '/finance-expenses' },
@@ -85,6 +88,18 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
+  // ✅ NEW: Fetch discarded count
+  const fetchDiscardedCount = async () => {
+    try {
+      const response = await api.get('/saved-carts/count');
+      if (response.data?.success) {
+        setDiscardedCount(response.data.count || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching discarded count:', error);
+    }
+  };
+
   // Logout
   const handleLogout = async () => {
     try {
@@ -120,20 +135,31 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     img.onerror = () => setLogoExists(false);
   }, []);
 
-  // Fetch user data and reminder count on mount
+  // Fetch user data and counts on mount
   useEffect(() => {
     fetchUserData();
     fetchReminderCount();
-    const interval = setInterval(fetchReminderCount, 60000);
+    fetchDiscardedCount(); // ✅ NEW
+    
+    const reminderInterval = setInterval(fetchReminderCount, 60000);
+    const discardedInterval = setInterval(fetchDiscardedCount, 30000); // ✅ NEW
     
     const handleReminderUpdate = () => {
       fetchReminderCount();
     };
     window.addEventListener('reminder-update', handleReminderUpdate);
     
+    // ✅ NEW: Listen for discarded update event
+    const handleDiscardedUpdate = () => {
+      fetchDiscardedCount();
+    };
+    window.addEventListener('discarded-update', handleDiscardedUpdate);
+    
     return () => {
-      clearInterval(interval);
+      clearInterval(reminderInterval);
+      clearInterval(discardedInterval);
       window.removeEventListener('reminder-update', handleReminderUpdate);
+      window.removeEventListener('discarded-update', handleDiscardedUpdate);
     };
   }, []);
 
@@ -214,7 +240,11 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   {isOpen && (
                     <div className="flex items-center gap-2">
                       {showBadge && (
-                        <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center animate-pulse">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center ${
+                          item.id === 'discarded' 
+                            ? 'bg-yellow-500 text-white' 
+                            : 'bg-red-500 text-white'
+                        } animate-pulse`}>
                           {item.badge}
                         </span>
                       )}
@@ -225,13 +255,15 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   )}
                   {/* Badge show when sidebar is closed */}
                   {!isOpen && showBadge && (
-                    <span className="absolute -right-1 -top-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    <span className={`absolute -right-1 -top-1 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center ${
+                      item.id === 'discarded' ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}>
                       {item.badge}
                     </span>
                   )}
                 </button>
                 
-                {/* Finance Submenu - Admin only - All red theme */}
+                {/* Finance Submenu - Admin only */}
                 {isOpen && isAdmin && item.hasSubmenu && isFinanceOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {financeSubmenu.map((subItem) => {

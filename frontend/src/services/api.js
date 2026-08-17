@@ -119,6 +119,37 @@ export const getErrorMessage = (error) => {
     }
 };
 
+// ==================== SAVED CARTS / DISCARDED BILLS ====================
+export const saveCart = async (cartData) => {
+    const response = await api.post('/saved-carts', cartData);
+    return response.data;
+};
+
+export const getDiscardedCarts = async () => {
+    const response = await api.get('/saved-carts');
+    return response.data;
+};
+
+export const getDiscardedCount = async () => {
+    const response = await api.get('/saved-carts/count');
+    return response.data;
+};
+
+export const restoreCart = async (cartId) => {
+    const response = await api.post(`/saved-carts/${cartId}/restore`);
+    return response.data;
+};
+
+export const deleteDiscardedCart = async (cartId) => {
+    const response = await api.delete(`/saved-carts/${cartId}`);
+    return response.data;
+};
+
+export const clearAllDiscarded = async () => {
+    const response = await api.delete('/saved-carts/clear-all');
+    return response.data;
+};
+
 // API methods for common operations
 export const apiService = {
     // Auth
@@ -160,6 +191,14 @@ export const apiService = {
     getDashboardStats: () => api.get('/dashboard/stats'),
     getRecentInvoices: () => api.get('/dashboard/recent-invoices'),
     getLowStockProducts: () => api.get('/dashboard/low-stock'),
+    
+    // Discarded Bills (Saved Carts)
+    getDiscardedCarts: () => api.get('/saved-carts'),
+    getDiscardedCount: () => api.get('/saved-carts/count'),
+    saveCart: (data) => api.post('/saved-carts', data),
+    restoreCart: (id) => api.post(`/saved-carts/${id}/restore`),
+    deleteDiscardedCart: (id) => api.delete(`/saved-carts/${id}`),
+    clearAllDiscarded: () => api.delete('/saved-carts/clear-all'),
 };
 
 export default api;

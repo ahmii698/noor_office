@@ -33,13 +33,14 @@ class InvoiceController extends Controller
                     'paid_amount' => $invoice->paid_amount,
                     'remaining_amount' => $invoice->remaining_amount,
                     'payment_method' => $invoice->payment_method,
+                    'paid_at' => $invoice->paid_at,
                     'status' => $invoice->status,
                     'customer_name' => $invoice->customer_name,
                     'customer_phone' => $invoice->customer_phone,
                     'customer_email' => $invoice->customer_email,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
-                    'customer_birthday' => $birthday, // ✅ From customer table
+                    'customer_birthday' => $birthday,
                     'created_by' => $invoice->created_by,
                     'creator_name' => $invoice->creator ? $invoice->creator->name : 'System',
                     'creator_role' => $invoice->creator ? $invoice->creator->role : 'system',
@@ -86,13 +87,14 @@ class InvoiceController extends Controller
                 'paid_amount' => $invoice->paid_amount,
                 'remaining_amount' => $invoice->remaining_amount,
                 'payment_method' => $invoice->payment_method,
+                'paid_at' => $invoice->paid_at,
                 'status' => $invoice->status,
                 'customer_name' => $invoice->customer_name,
                 'customer_phone' => $invoice->customer_phone,
                 'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
-                'customer_birthday' => $birthday, // ✅ From customer table
+                'customer_birthday' => $birthday,
                 'created_by' => $invoice->created_by,
                 'creator_name' => $invoice->creator ? $invoice->creator->name : 'System',
                 'creator_role' => $invoice->creator ? $invoice->creator->role : 'system',
@@ -126,12 +128,12 @@ class InvoiceController extends Controller
 
             $validated = $request->validate([
                 'invoice_no' => 'required|string|max:50',
+                'invoice_date' => 'nullable|date',
                 'customer_name' => 'required|string|max:255',
                 'customer_phone' => 'nullable|string|max:20',
                 'customer_email' => 'nullable|email|max:255',
                 'customer_car_number' => 'nullable|string|max:50',
                 'customer_car_model' => 'nullable|string|max:100',
-                // ❌ REMOVED: 'customer_birthday' => 'nullable|date',
                 'subtotal' => 'required|numeric|min:0',
                 'discount' => 'required|numeric|min:0',
                 'discount_note' => 'nullable|string|max:255',
@@ -160,7 +162,6 @@ class InvoiceController extends Controller
                         'email' => $validated['customer_email'] ?? null,
                         'car_number' => $validated['customer_car_number'] ?? null,
                         'car_model' => $validated['customer_car_model'] ?? null,
-                        // ❌ REMOVED: 'birthday' => $validated['customer_birthday'] ?? null
                     ]);
                     Log::info('✅ New customer created: ID ' . $customer->id);
                 } else {
@@ -169,7 +170,6 @@ class InvoiceController extends Controller
                         'email' => $validated['customer_email'] ?? $customer->email,
                         'car_number' => $validated['customer_car_number'] ?? $customer->car_number,
                         'car_model' => $validated['customer_car_model'] ?? $customer->car_model,
-                        // ❌ REMOVED: 'birthday' => $validated['customer_birthday'] ?? $customer->birthday
                     ]);
                     Log::info('✅ Customer updated: ID ' . $customer->id);
                 }
@@ -187,7 +187,10 @@ class InvoiceController extends Controller
                 $status = 'Pending';
             }
 
-            // ✅ INSERT WITHOUT customer_birthday
+            $invoiceDateTime = !empty($validated['invoice_date'])
+                ? Carbon::parse($validated['invoice_date'])
+                : Carbon::now();
+
             $invoiceId = DB::table('invoices')->insertGetId([
                 'invoice_no' => $validated['invoice_no'],
                 'customer_id' => $customer ? $customer->id : null,
@@ -196,7 +199,6 @@ class InvoiceController extends Controller
                 'customer_email' => $validated['customer_email'] ?? null,
                 'customer_car_number' => $validated['customer_car_number'] ?? null,
                 'customer_car_model' => $validated['customer_car_model'] ?? null,
-                // ❌ REMOVED: 'customer_birthday' => $validated['customer_birthday'] ?? null,
                 'subtotal' => $validated['subtotal'],
                 'discount' => $validated['discount'],
                 'discount_note' => $validated['discount_note'] ?? null,
@@ -205,13 +207,36 @@ class InvoiceController extends Controller
                 'remaining_amount' => $remainingAmount,
                 'payment_method' => $validated['payment_method'] ?? 'cash',
                 'status' => $status,
-                'invoice_date' => Carbon::now(),
+                'invoice_date' => $invoiceDateTime,
                 'created_by' => auth()->id(),
                 'created_at' => Carbon::now(),
                 'updated_at' => Carbon::now()
             ]);
 
             Log::info('✅ Invoice created: ID ' . $invoiceId . ' by user: ' . auth()->id());
+
+            // ✅ FIX: agar invoice creation ke waqt hi koi advance/partial
+            // payment li gayi ho (paidAmount > 0), tw usay bhi payment_histories
+            // table mein log karo. $invoiceDateTime already Carbon object hai
+            // (upar Carbon::parse / Carbon::now se bana), isliye MySQL datetime
+            // format ka masla yahan nahi ata.
+            if ($paidAmount > 0) {
+                try {
+                    DB::table('payment_histories')->insert([
+                        'invoice_id' => $invoiceId,
+                        'invoice_no' => $validated['invoice_no'],
+                        'amount' => $paidAmount,
+                        'payment_method' => $validated['payment_method'] ?? 'cash',
+                        'paid_at' => $invoiceDateTime->format('Y-m-d H:i:s'),
+                        'created_by' => auth()->id(),
+                        'created_at' => Carbon::now(),
+                        'updated_at' => Carbon::now()
+                    ]);
+                    Log::info('✅ Initial payment history saved for invoice: ' . $validated['invoice_no'] . ' | Amount: ' . $paidAmount);
+                } catch (\Exception $e) {
+                    Log::warning('Initial payment history save skipped: ' . $e->getMessage());
+                }
+            }
 
             foreach ($validated['items'] as $item) {
                 DB::table('invoice_items')->insert([
@@ -251,7 +276,6 @@ class InvoiceController extends Controller
                 'customer_email' => $invoice->customer_email,
                 'customer_car_number' => $invoice->customer_car_number,
                 'customer_car_model' => $invoice->customer_car_model,
-                // ❌ REMOVED: 'customer_birthday' => $invoice->customer_birthday,
                 'created_by' => $invoice->created_by,
                 'items' => $items->map(function($item) {
                     return [
@@ -430,13 +454,14 @@ class InvoiceController extends Controller
                     'paid_amount' => $invoice->paid_amount,
                     'remaining_amount' => $invoice->remaining_amount,
                     'payment_method' => $invoice->payment_method,
+                    'paid_at' => $invoice->paid_at,
                     'status' => $invoice->status,
                     'customer_name' => $invoice->customer_name,
                     'customer_phone' => $invoice->customer_phone,
                     'customer_email' => $invoice->customer_email,
                     'customer_car_number' => $invoice->customer_car_number,
                     'customer_car_model' => $invoice->customer_car_model,
-                    'customer_birthday' => $birthday, // ✅ From customer table
+                    'customer_birthday' => $birthday,
                     'items' => $invoice->items->map(function($item) {
                         return [
                             'id' => $item->id,
@@ -521,6 +546,8 @@ class InvoiceController extends Controller
                     'total_amount' => (float) $invoice->total_amount,
                     'paid_amount' => (float) $invoice->paid_amount,
                     'remaining_amount' => $remaining,
+                    'payment_method' => $invoice->payment_method,
+                    'paid_at' => $invoice->paid_at,
                     'status' => $invoice->status,
                     'invoice_date' => $invoice->invoice_date,
                     'items' => $invoice->items->map(function($item) {
@@ -548,11 +575,14 @@ class InvoiceController extends Controller
         }
     }
 
+    // ✅ ==================== UPDATE PENDING PAYMENT - WITH PAYMENT HISTORY ====================
     public function updatePendingPayment(Request $request, $id)
     {
         try {
             $request->validate([
-                'amount' => 'required|numeric|min:0.01'
+                'amount' => 'required|numeric|min:0.01',
+                'payment_method' => 'nullable|string|max:100',
+                'paid_at' => 'nullable|date'
             ]);
 
             $invoice = Invoice::findOrFail($id);
@@ -574,18 +604,53 @@ class InvoiceController extends Controller
                 $status = 'Partial';
             }
 
+            $paymentMethod = $request->payment_method ?? $invoice->payment_method ?? 'Cash';
+
+            // ✅ FIX: Frontend JS ka new Date().toISOString() format bhejta hai
+            // jaise "2026-08-17T19:49:50.895Z" - MySQL datetime column ye
+            // format directly accept nahi karta (raw string DB::table insert
+            // mein bina cast ke jati hai), isliye Carbon::parse() se convert
+            // karna zaroori hai. Ye fix na hone ki wajah se payment_histories
+            // insert har baar silently fail ho raha tha (sirf invoice ka
+            // paid_amount update hota tha, history row nahi banti thi).
+            $paidAt = $request->paid_at ? Carbon::parse($request->paid_at) : Carbon::now();
+
+            // ✅ UPDATE INVOICE
             $invoice->update([
                 'paid_amount' => $newPaidAmount,
                 'remaining_amount' => $newRemainingAmount,
                 'status' => $status,
+                'payment_method' => $paymentMethod,
+                'paid_at' => $paidAt,
                 'updated_at' => Carbon::now()
             ]);
 
-            Log::info('✅ Payment updated for invoice: ' . $invoice->invoice_no . ' | Amount: ' . $request->amount . ' | Remaining: ' . $newRemainingAmount);
+            // ✅ SAVE PAYMENT HISTORY
+            try {
+                DB::table('payment_histories')->insert([
+                    'invoice_id' => $invoice->id,
+                    'invoice_no' => $invoice->invoice_no,
+                    'amount' => $request->amount,
+                    'payment_method' => $paymentMethod,
+                    'paid_at' => $paidAt->format('Y-m-d H:i:s'),   // ✅ ab sahi MySQL format mein
+                    'created_by' => auth()->id(),
+                    'created_at' => Carbon::now(),
+                    'updated_at' => Carbon::now()
+                ]);
+                Log::info('✅ Payment history saved for invoice: ' . $invoice->invoice_no . ' | Amount: ' . $request->amount);
+            } catch (\Exception $e) {
+                Log::warning('Payment history save skipped: ' . $e->getMessage());
+            }
+
+            Log::info('✅ Payment updated for invoice: ' . $invoice->invoice_no . 
+                      ' | Amount: ' . $request->amount . 
+                      ' | Payment Method: ' . $paymentMethod . 
+                      ' | Paid At: ' . $paidAt .
+                      ' | Remaining: ' . $newRemainingAmount);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Payment recorded successfully!',
+                'message' => 'Payment recorded successfully via ' . $paymentMethod . '!',
                 'data' => [
                     'id' => $invoice->id,
                     'invoice_no' => $invoice->invoice_no,
@@ -596,6 +661,8 @@ class InvoiceController extends Controller
                     'total_amount' => $invoice->total_amount,
                     'paid_amount' => $invoice->paid_amount,
                     'remaining_amount' => $invoice->remaining_amount,
+                    'payment_method' => $invoice->payment_method,
+                    'paid_at' => $invoice->paid_at,
                     'status' => $invoice->status
                 ]
             ]);
@@ -615,6 +682,30 @@ class InvoiceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to update payment: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ✅ ==================== GET PAYMENT HISTORY ====================
+    public function getPaymentHistory($invoiceNo)
+    {
+        try {
+            $histories = DB::table('payment_histories')
+                ->where('invoice_no', $invoiceNo)
+                ->orderBy('paid_at', 'desc')
+                ->get();
+
+            Log::info('Payment history fetched for invoice: ' . $invoiceNo . ' | Count: ' . $histories->count());
+
+            return response()->json([
+                'success' => true,
+                'data' => $histories
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching payment history: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch payment history: ' . $e->getMessage()
             ], 500);
         }
     }

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 
 class Invoice extends Model
 {
@@ -16,10 +17,10 @@ class Invoice extends Model
         'customer_id', 
         'customer_name', 
         'customer_phone',
-        'customer_email',        // ✅ ADDED
+        'customer_email',
         'customer_car_number', 
         'customer_car_model',
-        'customer_birthday',     // ✅ ADDED
+        'customer_birthday',
         'invoice_date',
         'subtotal',
         'discount',
@@ -27,14 +28,16 @@ class Invoice extends Model
         'total_amount', 
         'paid_amount', 
         'remaining_amount', 
-        'payment_method', 
+        'payment_method',
+        'paid_at', // ✅ ADDED - Payment date/time
         'status',
         'created_by',
     ];
 
     protected $casts = [
-        'invoice_date' => 'date',
-        'customer_birthday' => 'date',  // ✅ ADDED
+        'invoice_date' => 'datetime',
+        'customer_birthday' => 'date',
+        'paid_at' => 'datetime', // ✅ ADDED - Cast to datetime
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'subtotal' => 'decimal:2',
@@ -88,10 +91,54 @@ class Invoice extends Model
         return 'Rs. ' . number_format($this->subtotal, 2);
     }
 
+    // ✅ Accessor for formatted paid amount
+    public function getFormattedPaidAmountAttribute()
+    {
+        return 'Rs. ' . number_format($this->paid_amount, 2);
+    }
+
+    // ✅ Accessor for formatted remaining amount
+    public function getFormattedRemainingAmountAttribute()
+    {
+        return 'Rs. ' . number_format($this->remaining_amount, 2);
+    }
+
+    // ✅ Accessor for formatted total amount
+    public function getFormattedTotalAmountAttribute()
+    {
+        return 'Rs. ' . number_format($this->total_amount, 2);
+    }
+
+    // ✅ Accessor for formatted paid_at
+    public function getFormattedPaidAtAttribute()
+    {
+        if (!$this->paid_at) return 'N/A';
+        return $this->paid_at->format('m/d/Y, h:i A');
+    }
+
+    // ✅ Accessor for paid_at in 12-hour format with AM/PM
+    public function getPaidAtFormattedAttribute()
+    {
+        if (!$this->paid_at) return null;
+        return $this->paid_at->format('m/d/Y, h:i A');
+    }
+
     // ✅ Check if discount was applied
     public function getHasDiscountAttribute()
     {
         return $this->discount > 0;
+    }
+
+    // ✅ Check if invoice is fully paid
+    public function getIsFullyPaidAttribute()
+    {
+        return $this->remaining_amount <= 0.01;
+    }
+
+    // ✅ Check if invoice has pending payment
+    public function getHasPendingAttribute()
+    {
+        return $this->remaining_amount > 0.01;
     }
 
     // ✅ NEW - Get formatted birthday (MM/DD/YYYY)
@@ -122,7 +169,7 @@ class Invoice extends Model
     {
         if (!$this->customer_birthday) return null;
         $birthday = $this->customer_birthday;
-        $next = \Carbon\Carbon::create(now()->year, $birthday->month, $birthday->day);
+        $next = Carbon::create(now()->year, $birthday->month, $birthday->day);
         if ($next->isPast()) {
             $next->addYear();
         }
@@ -234,5 +281,40 @@ class Invoice extends Model
         return self::whereMonth('customer_birthday', $today->month)
                    ->whereDay('customer_birthday', $today->day)
                    ->get();
+    }
+
+    // ✅ Get pending invoices
+    public static function getPendingInvoices()
+    {
+        return self::whereIn('status', ['Pending', 'Partial'])
+                   ->orderBy('created_at', 'desc')
+                   ->get();
+    }
+
+    // ✅ Get invoices paid today
+    public static function getPaidToday()
+    {
+        return self::whereDate('paid_at', now()->toDateString())
+                   ->where('status', 'Paid')
+                   ->get();
+    }
+
+    // ✅ Get total paid today
+    public static function getTotalPaidToday()
+    {
+        return (float) self::whereDate('paid_at', now()->toDateString())
+                           ->sum('paid_amount');
+    }
+
+    // ✅ Get invoices by payment method
+    public function scopeByPaymentMethod($query, $method)
+    {
+        return $query->where('payment_method', 'LIKE', "%{$method}%");
+    }
+
+    // ✅ Get Bank Transfer invoices
+    public function scopeBankTransfer($query)
+    {
+        return $query->where('payment_method', 'LIKE', 'Bank Transfer%');
     }
 }

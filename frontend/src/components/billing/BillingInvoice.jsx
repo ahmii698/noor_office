@@ -15,10 +15,9 @@ import {
   FiGlobe, FiLock, FiUnlock, FiSettings, FiHome, FiBriefcase, FiCoffee,
   FiMusic, FiFilm, FiBook, FiCamera, FiCode, FiDatabase, FiServer,
   FiCpu, FiHardDrive, FiMonitor,
-  FiFacebook, FiInstagram, FiGift
+  FiFacebook, FiInstagram, FiGift, FiArchive
 } from 'react-icons/fi';
-import api from '../../services/api';
-
+import api, { saveCart } from '../../services/api';
 import logo from '/logo.jpg';
 
 // Icon list for dropdown
@@ -147,10 +146,20 @@ const loadImageAsBase64 = (src) => {
   });
 };
 
-const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
+// ✅ Bank Names List
+const BANK_NAMES = [
+  { value: 'allied', label: 'Allied Bank' },
+  { value: 'alfalah', label: 'Bank Alfalah' },
+  { value: 'hbl', label: 'HBL (Habib Bank Limited)' },
+  { value: 'meezan', label: 'Meezan Bank' },
+  { value: 'ubl', label: 'UBL (United Bank Limited)' },
+];
+
+const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredData }) => {
   const [cart, setCart] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [selectedBank, setSelectedBank] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [activeTab, setActiveTab] = useState('services');
@@ -187,10 +196,13 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     quantity: ''
   });
   
-  // ✅ Oil Change Modal states
+  // Oil Change Modal states
   const [isOilChangeModalOpen, setIsOilChangeModalOpen] = useState(false);
   const [oilChangeMileage, setOilChangeMileage] = useState('');
   const [oilChangeService, setOilChangeService] = useState(null);
+  
+  // Discard Bill states
+  const [isDiscarding, setIsDiscarding] = useState(false);
   
   const isProcessingRef = useRef(false);
   const paymentExecutedRef = useRef(false);
@@ -198,8 +210,22 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
   const userRole = getUserRole();
   const isAdmin = userRole === 'admin';
 
-  // ✅ Get current date
+  // Get current date
   const currentDate = new Date().toISOString().split('T')[0];
+
+  // Check for restored data and set cart
+  useEffect(() => {
+    if (restoredData && restoredData.cart_items && restoredData.cart_items.length > 0) {
+      const restoredItems = restoredData.cart_items.map(item => ({
+        ...item,
+        type: item.type || 'service',
+        price: item.price || 0,
+        quantity: item.quantity || 1
+      }));
+      setCart(restoredItems);
+      toast.success(`✅ ${restoredItems.length} items restored!`);
+    }
+  }, [restoredData]);
 
   const subtotal = useMemo(() => {
     const total = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -234,6 +260,18 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
   const isFullyPaid = useMemo(() => {
     return remainingAmount <= 0.01;
   }, [remainingAmount]);
+
+  // ✅ Get payment method display name
+  const getPaymentMethodDisplay = () => {
+    if (paymentMethod === 'cash') return 'Cash';
+    if (paymentMethod === 'card') return 'Credit/Debit Card';
+    if (paymentMethod === 'bank') {
+      const bank = BANK_NAMES.find(b => b.value === selectedBank);
+      return bank ? `Bank Transfer (${bank.label})` : 'Bank Transfer';
+    }
+    if (paymentMethod === 'online') return 'Mobile Wallet';
+    return paymentMethod;
+  };
 
   const validateBirthday = (value) => {
     if (!value) {
@@ -404,6 +442,60 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     loadData();
   }, []);
 
+  // ==================== DISCARD BILL FUNCTION ====================
+  const handleDiscard = async () => {
+    if (cart.length === 0) {
+      toast.error('No items to discard');
+      return;
+    }
+
+    setIsDiscarding(true);
+    try {
+      const cartData = {
+        cart_items: cart.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: roundToTwo(item.price),
+          quantity: item.quantity,
+          type: item.type || 'service',
+          mileage: item.mileage || null,
+          category: item.category || null
+        })),
+        cart_summary: {
+          total_items: cart.reduce((sum, i) => sum + i.quantity, 0),
+          total_amount: billTotal,
+          subtotal: subtotal,
+          discount: discountAmount
+        },
+        customer_phone: customerDetails.phone || '',
+        customer_name: customerDetails.name || '',
+        customer_email: customerDetails.email || '',
+        customer_car_number: customerDetails.carNumber || '',
+        customer_car_model: customerDetails.carModel || '',
+        customer_birthday: customerBirthday || ''
+      };
+
+      const response = await saveCart(cartData);
+      if (response.success) {
+        toast.success('Bill discarded successfully!');
+        setCart([]);
+        setPaymentAmount('');
+        setDiscountValue('');
+        setDiscountNote('');
+        setShowDiscount(false);
+        setCustomerBirthday('');
+        setSelectedBank('');
+        window.dispatchEvent(new Event('discarded-update'));
+        if (onPaymentSuccess) onPaymentSuccess();
+      }
+    } catch (error) {
+      console.error('Error discarding bill:', error);
+      toast.error('Failed to discard bill');
+    } finally {
+      setIsDiscarding(false);
+    }
+  };
+
   // ==================== SERVICE FUNCTIONS ====================
   const handleAddService = async () => {
     if (!serviceFormData.name || !serviceFormData.price || !serviceFormData.category) {
@@ -494,11 +586,12 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     try {
       const payload = {
         name: productFormData.name,
-        purchasePrice: parseFloat(productFormData.purchase_price),
-        sellingPrice: parseFloat(productFormData.selling_price),
+        purchase_price: parseFloat(productFormData.purchase_price),
+        selling_price: parseFloat(productFormData.selling_price),
         quantity: parseInt(productFormData.quantity),
         is_hidden: 0
       };
+      console.log('📤 Adding product payload:', payload);
       const response = await api.post('/products', payload);
       if (response.data) {
         toast.success('Product added successfully!');
@@ -528,10 +621,11 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     try {
       const payload = {
         name: productFormData.name,
-        purchasePrice: parseFloat(productFormData.purchase_price),
-        sellingPrice: parseFloat(productFormData.selling_price),
+        purchase_price: parseFloat(productFormData.purchase_price),
+        selling_price: parseFloat(productFormData.selling_price),
         quantity: parseInt(productFormData.quantity)
       };
+      console.log('📤 Updating product payload:', payload);
       const response = await api.put(`/products/${editingProduct.id}`, payload);
       if (response.data) {
         toast.success('Product updated successfully!');
@@ -599,25 +693,21 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     return product ? product.quantity : 0;
   };
 
-  // ✅ Add to bill - WITH OIL CHANGE MODAL
+  // Add to bill - WITH OIL CHANGE MODAL
   const addToBill = (item, type) => {
-    // ✅ Check if it's an oil change service
     const isOilChange = item.name?.toLowerCase().includes('oil') || 
                         item.name?.toLowerCase().includes('engine oil') ||
                         item.name?.toLowerCase().includes('oil change');
 
     if (isOilChange && type === 'service') {
-      // ✅ Open oil change modal
       setOilChangeService(item);
       setIsOilChangeModalOpen(true);
       return;
     }
 
-    // ✅ Normal add to cart
     addItemToBill(item, type);
   };
 
-  // ✅ Add item to bill (called after oil change modal)
   const addItemToBill = (item, type, mileage = null) => {
     const currentStock = type === 'product' ? getProductStock(item.id) : null;
     if (currentStock !== null && currentStock <= 0) {
@@ -634,20 +724,17 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
       quantity: 1, 
       type: type,
       price: type === 'service' ? item.price : item.selling_price,
-      mileage: mileage // ✅ Save mileage for oil change
+      mileage: mileage
     }]);
     toast.success(`${item.name} added`);
   };
 
-  // ✅ Handle oil change modal submit
   const handleOilChangeSubmit = () => {
     const mileage = parseInt(oilChangeMileage);
     if (!oilChangeMileage || isNaN(mileage) || mileage < 0) {
       toast.error('Please enter a valid mileage');
       return;
     }
-    
-    // ✅ Add oil change service with mileage
     addItemToBill(oilChangeService, 'service', mileage);
     setIsOilChangeModalOpen(false);
     setOilChangeMileage('');
@@ -713,6 +800,14 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
       return;
     }
     
+    // Get the formatted date
+    const invoiceDate = customerDetails.date ? new Date(customerDetails.date) : new Date();
+    const formattedDate = invoiceDate.toLocaleDateString('en-US', { 
+      month: '2-digit', 
+      day: '2-digit', 
+      year: 'numeric' 
+    });
+    
     const cartItemsHtml = cart.map((item, idx) => `
       <tr>
         <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
@@ -763,9 +858,16 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
             table { width: calc(100% - 40px); margin: 20px; border-collapse: collapse; }
             th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
             th { background: #1f2937; color: white; font-weight: 600; }
+            th:nth-child(1) { text-align: center; }
+            th:nth-child(3) { text-align: center; }
+            th:nth-child(4) { text-align: center; }
+            th:nth-child(5) { text-align: right; }
+            th:nth-child(6) { text-align: right; }
             .payment-details { margin: 20px; padding: 18px; border: 1px solid #e5e7eb; border-radius: 8px; }
             .payment-details h4 { margin-bottom: 10px; color: #1f2937; font-size: 14px; }
             .payment-details p { margin: 4px 0; font-size: 13px; }
+            .payment-status-paid { color: #16a34a; font-weight: bold; }
+            .payment-status-pending { color: #ea580c; font-weight: bold; }
             .total-row { font-size: 20px; font-weight: bold; text-align: right; margin: 20px; padding-top: 12px; border-top: 2px solid #e5e7eb; color: #dc2626; }
             .signature { margin: 20px; display: flex; justify-content: space-between; padding-top: 30px; font-size: 12px; }
             .footer { padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #e5e7eb; font-size: 12px; color: #4b5563; }
@@ -799,11 +901,18 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
             </div>
             <div class="invoice-details">
               <p><strong>Invoice #:</strong> INV-${Date.now()}</p>
-              <p><strong>Date:</strong> ${customerDetails.date || new Date().toLocaleDateString()}</p>
+              <p><strong>Date:</strong> ${formattedDate}</p>
             </div>
             <table>
               <thead>
-                <tr><th style="text-align:center;">#</th><th>Item</th><th style="text-align:center;">Type</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Total</th></tr>
+                <tr>
+                  <th style="text-align:center;">#</th>
+                  <th>Item</th>
+                  <th style="text-align:center;">Type</th>
+                  <th style="text-align:center;">Qty</th>
+                  <th style="text-align:right;">Price</th>
+                  <th style="text-align:right;">Total</th>
+                </tr>
               </thead>
               <tbody>
                 ${cartItemsHtml}
@@ -816,9 +925,9 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
               ${discountAmount > 0 ? `<p><strong>Discount:</strong> - Rs. ${displayDiscount.toLocaleString()}</p>` : ''}
               <p><strong>Total Amount:</strong> Rs. ${roundToTwo(billTotal).toLocaleString()}</p>
               <p><strong>Paid Amount:</strong> Rs. ${displayPaidAmount.toLocaleString()}</p>
-              <p><strong>Payment Method:</strong> ${paymentMethod.toUpperCase()}</p>
+              <p><strong>Payment Method:</strong> ${getPaymentMethodDisplay()}</p>
               <p><strong>Remaining Balance:</strong> Rs. ${displayRemainingAmount.toLocaleString()}</p>
-              <p><strong>Payment Status:</strong> ${isFullyPaid ? 'FULLY PAID ✅' : 'PENDING ⚠️'}</p>
+              <p><strong>Payment Status:</strong> ${isFullyPaid ? '<span class="payment-status-paid">FULLY PAID</span>' : '<span class="payment-status-pending">PENDING</span>'}</p>
             </div>
             <div class="total-row">Total: Rs. ${roundToTwo(billTotal).toLocaleString()}</div>
             <div class="signature">
@@ -827,12 +936,10 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
             </div>
             <div class="footer">
               <div class="address">
-                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="14" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                 Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
               </div>
               <div>
-                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="14" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-                0337 3267363
+                📞 0337 3267363
               </div>
               <div class="social">
                 <span>📘 Facebook: Noorani.Car.AC</span>
@@ -875,7 +982,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
         'Total Amount': `Rs. ${roundToTwo(billTotal).toLocaleString()}`,
         'Paid Amount': `Rs. ${displayPaidAmount.toLocaleString()}`,
         'Remaining': `Rs. ${displayRemainingAmount.toLocaleString()}`,
-        'Payment Method': paymentMethod.toUpperCase(),
+        'Payment Method': getPaymentMethodDisplay(),
         'Status': isFullyPaid ? 'FULLY PAID' : 'PENDING'
       },
       ...cart.map((item, idx) => ({
@@ -894,7 +1001,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     toast.success('Exported to Excel');
   };
 
-  // ✅ PDF Export - WITH OIL CHANGE MILEAGE
+  // ==================== PDF EXPORT - WITHOUT EMOJIS ====================
   const exportToPDF = async () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     let yPos = 12;
@@ -918,7 +1025,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
 
     doc.setFontSize(20);
     doc.setTextColor(26, 26, 46);
-    doc.text('NOORANI CAR AC & AUTOS', textX, yPos + 12);
+    doc.text('NOORANI CAR A/C & AUTOS', textX, yPos + 12);
 
     doc.setFontSize(11);
     doc.setTextColor(100, 100, 100);
@@ -944,6 +1051,13 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     
+    const invoiceDate = customerDetails.date ? new Date(customerDetails.date) : new Date();
+    const formattedDate = invoiceDate.toLocaleDateString('en-US', { 
+      month: '2-digit', 
+      day: '2-digit', 
+      year: 'numeric' 
+    });
+    
     const customerFields = [
       ['Name:', customerDetails.name || 'N/A'],
       ['Phone:', customerDetails.phone || 'N/A'],
@@ -951,7 +1065,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
       ['Car Number:', customerDetails.carNumber || 'N/A'],
       ['Car Model:', customerDetails.carModel || 'N/A'],
       ['Birthday:', customerBirthday ? getFormattedBirthday(customerBirthday) : 'Not Provided'],
-      ['Date:', customerDetails.date || new Date().toLocaleDateString()]
+      ['Date:', formattedDate]
     ];
     
     const col1Width = 45;
@@ -1010,14 +1124,16 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     
+    const isFullyPaidStatus = isFullyPaid;
+    
     const paymentFields = [
       ['Subtotal:', `Rs. ${roundToTwo(subtotal).toLocaleString()}`],
       ...(discountAmount > 0 ? [['Discount:', `- Rs. ${displayDiscount.toLocaleString()}`]] : []),
       ['Total Amount:', `Rs. ${roundToTwo(billTotal).toLocaleString()}`],
       ['Paid Amount:', `Rs. ${displayPaidAmount.toLocaleString()}`],
-      ['Payment Method:', paymentMethod.toUpperCase()],
+      ['Payment Method:', getPaymentMethodDisplay()],
       ['Remaining Balance:', `Rs. ${displayRemainingAmount.toLocaleString()}`],
-      ['Payment Status:', isFullyPaid ? 'FULLY PAID ✅' : 'PENDING ⚠️']
+      ['Payment Status:', isFullyPaidStatus ? 'FULLY PAID' : 'PENDING']
     ];
     
     paymentFields.forEach(([label, value]) => {
@@ -1036,7 +1152,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
       } else if (isStatus) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
-        doc.setTextColor(isFullyPaid ? 34 : 220, isFullyPaid ? 197 : 38, isFullyPaid ? 94 : 38);
+        doc.setTextColor(isFullyPaidStatus ? 34 : 220, isFullyPaidStatus ? 197 : 38, isFullyPaidStatus ? 94 : 38);
       } else {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(10);
@@ -1067,20 +1183,23 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     toast.success('PDF exported successfully!');
   };
 
-  // ✅ handlePayment — WITHOUT customer_birthday
+  // handlePayment — Payment amount is OPTIONAL, 0 allowed
   const handlePayment = async () => {
     if (isProcessingRef.current || paymentExecutedRef.current) return;
     if (cart.length === 0) {
       toast.error('No items in bill');
       return;
     }
-    if (!paymentAmount || paidAmount <= 0) {
-      toast.error('Please enter payment amount');
+    
+    if (paymentMethod === 'bank' && !selectedBank) {
+      toast.error('Please select a bank for bank transfer');
       return;
     }
     
-    if (paidAmount > billTotal) {
-      toast.error(`Payment amount (Rs. ${paidAmount.toLocaleString()}) cannot exceed total amount (Rs. ${billTotal.toLocaleString()})`);
+    const exactPaidAmount = paymentAmount && paymentAmount !== '' ? parseFloat(paymentAmount) : 0;
+    
+    if (exactPaidAmount > billTotal) {
+      toast.error(`Payment amount (Rs. ${exactPaidAmount.toLocaleString()}) cannot exceed total amount (Rs. ${billTotal.toLocaleString()})`);
       return;
     }
     
@@ -1094,9 +1213,10 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
     const roundedSubtotal = roundToTwo(subtotal);
     const roundedDiscount = roundToTwo(discountAmount);
     const roundedBillTotal = roundToTwo(billTotal);
-    const exactPaidAmount = paidAmount;
-    const exactRemainingAmount = billTotal - paidAmount;
-    const finalStatus = exactRemainingAmount <= 0.01 ? 'Paid' : 'Partial';
+    const exactRemainingAmount = roundedBillTotal - exactPaidAmount;
+    const finalStatus = exactRemainingAmount <= 0.01 ? 'Paid' : (exactPaidAmount > 0 ? 'Partial' : 'Pending');
+    
+    const paymentMethodDisplay = getPaymentMethodDisplay();
     
     try {
       for (const item of cartSnapshot) {
@@ -1116,8 +1236,6 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
       const customerCarNumber = customerDetails.carNumber?.trim() || 'N/A';
       const customerCarModel = customerDetails.carModel?.trim() || null;
       
-      // ❌ REMOVED: customerBirthdayValue - Birthday only in customers table
-      
       const payload = {
         invoice_no: invoiceNo,
         customer_name: customerName,
@@ -1125,14 +1243,13 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
         customer_email: customerEmail,
         customer_car_number: customerCarNumber,
         customer_car_model: customerCarModel,
-        // ❌ REMOVED: customer_birthday: customerBirthdayValue,
         subtotal: roundedSubtotal,
         discount: roundedDiscount,
         discount_note: discountNote?.trim() || null,
         total_amount: roundedBillTotal,
         paid_amount: roundToTwo(exactPaidAmount),
         remaining_amount: roundToTwo(exactRemainingAmount),
-        payment_method: paymentMethod,
+        payment_method: paymentMethodDisplay,
         status: finalStatus,
         invoice_date: customerDetails?.date || currentDate,
         items: cartSnapshot.map(item => ({
@@ -1150,9 +1267,9 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
       
       const reminderAdded = await addServiceReminder(invoiceNo, cartSnapshot);
       if (reminderAdded) {
-        toast.success(customerDetails.email ? 'Payment successful! 6-month reminder scheduled!' : 'Payment successful! Reminder saved');
+        toast.success(customerDetails.email ? 'Invoice created! 6-month reminder scheduled!' : 'Invoice created! Reminder saved');
       } else {
-        toast.success('Payment successful!');
+        toast.success('Invoice created successfully!');
       }
       
       setCart([]);
@@ -1160,12 +1277,10 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
       setDiscountValue('');
       setDiscountNote('');
       setShowDiscount(false);
+      setCustomerBirthday('');
+      setSelectedBank('');
       await fetchProducts();
 
-      // ✅ NEW: Clear local birthday field and tell the parent (Billing.jsx)
-      // that payment is done, so it can reset customerDetails and send
-      // the user back to Step 1 (fresh, empty Customer Form).
-      setCustomerBirthday('');
       if (onPaymentSuccess) {
         onPaymentSuccess();
       }
@@ -1180,11 +1295,11 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
         });
         toast.error(`Validation failed: ${errorMessages.join('; ')}`);
       } else if (err.response?.data?.message) {
-        toast.error(`Payment failed: ${err.response.data.message}`);
+        toast.error(`Failed: ${err.response.data.message}`);
       } else if (err.response?.data?.error) {
-        toast.error(`Payment failed: ${err.response.data.error}`);
+        toast.error(`Failed: ${err.response.data.error}`);
       } else {
-        toast.error('Payment failed. Please try again.');
+        toast.error('Failed to create invoice. Please try again.');
       }
     } finally {
       setTimeout(() => {
@@ -1225,140 +1340,50 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
 
       {/* Customer Info - All fields optional */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-5 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          Step 1: Customer Details
-        </h3>
-        <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Enter customer information - Phone number auto-searches history
-        </p>
+        <h3 className={`text-lg font-semibold mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Step 1: Customer Details</h3>
+        <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Enter customer information - Phone number auto-searches history</p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Phone Number 
-              <span className="text-xs text-gray-400 block">Type to search history</span>
-            </label>
-            <input
-              type="text"
-              value={customerDetails.phone || ''}
-              readOnly
-              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
-              }`}
-            />
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Phone Number <span className="text-xs text-gray-400 block">Type to search history</span></label>
+            <input type="text" value={customerDetails.phone || ''} readOnly className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'}`} />
           </div>
-
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Customer Name
-            </label>
-            <input
-              type="text"
-              value={customerDetails.name || ''}
-              readOnly
-              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
-              }`}
-            />
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Customer Name</label>
+            <input type="text" value={customerDetails.name || ''} readOnly className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'}`} />
           </div>
-
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Email Address <span className="text-xs text-gray-400">(Optional)</span>
-            </label>
-            <input
-              type="email"
-              value={customerDetails.email || ''}
-              readOnly
-              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
-              }`}
-            />
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Email Address <span className="text-xs text-gray-400">(Optional)</span></label>
+            <input type="email" value={customerDetails.email || ''} readOnly className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'}`} />
           </div>
-
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Car Number Plate <span className="text-xs text-gray-400">(Optional)</span>
-            </label>
-            <input
-              type="text"
-              value={customerDetails.carNumber || ''}
-              readOnly
-              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
-              }`}
-            />
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Car Number Plate <span className="text-xs text-gray-400">(Optional)</span></label>
+            <input type="text" value={customerDetails.carNumber || ''} readOnly className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'}`} />
           </div>
-
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Car Model <span className="text-xs text-gray-400">(Optional)</span>
-            </label>
-            <input
-              type="text"
-              value={customerDetails.carModel || ''}
-              readOnly
-              className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'
-              }`}
-            />
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Car Model <span className="text-xs text-gray-400">(Optional)</span></label>
+            <input type="text" value={customerDetails.carModel || ''} readOnly className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-100 border-gray-300 text-gray-900'}`} />
           </div>
-
           <div>
-            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Birthday <span className="text-xs text-gray-400">(Optional - mm/dd/yyyy)</span>
-            </label>
+            <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Birthday <span className="text-xs text-gray-400">(Optional - mm/dd/yyyy)</span></label>
             <div className="relative">
-              <input
-                type="text"
-                value={customerBirthday}
-                onChange={handleBirthdayChange}
-                placeholder="e.g. 01/15/1990"
-                className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                  darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
-                } ${customerBirthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`}
-                maxLength={10}
-                inputMode="numeric"
-              />
-              {customerBirthday && !birthdayError && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✅ Valid</span>
-                </div>
-              )}
-              {birthdayError && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">⚠️</span>
-                </div>
-              )}
+              <input type="text" value={customerBirthday} onChange={handleBirthdayChange} placeholder="e.g. 01/15/1990" className={`w-full px-4 py-2 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'} ${customerBirthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`} maxLength={10} inputMode="numeric" />
+              {customerBirthday && !birthdayError && <div className="absolute right-3 top-1/2 -translate-y-1/2"><span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">✅ Valid</span></div>}
+              {birthdayError && <div className="absolute right-3 top-1/2 -translate-y-1/2"><span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">⚠️</span></div>}
             </div>
-            {birthdayError && (
-              <p className="text-xs text-red-500 mt-1">{birthdayError}</p>
-            )}
-            {customerBirthday && !birthdayError && (
-              <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                ✅ Birthday: {getFormattedBirthday(customerBirthday)}
-              </p>
-            )}
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Format: mm/dd/yyyy (e.g., 01/15/1990)
-            </p>
+            {birthdayError && <p className="text-xs text-red-500 mt-1">{birthdayError}</p>}
+            {customerBirthday && !birthdayError && <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>✅ Birthday: {getFormattedBirthday(customerBirthday)}</p>}
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Format: mm/dd/yyyy (e.g., 01/15/1990)</p>
           </div>
         </div>
 
         {isAdmin && previousVisits.length > 0 && (
           <div className="mt-6">
-            <h4 className={`font-semibold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              <FiClock className="text-red-500" /> Previous Visits ({previousVisits.length})
-            </h4>
+            <h4 className={`font-semibold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}><FiClock className="text-red-500" /> Previous Visits ({previousVisits.length})</h4>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                  <tr>
-                    <th className="px-4 py-2 text-left">Date</th>
-                    <th className="px-4 py-2 text-left">Services</th>
-                    <th className="px-4 py-2 text-right">Total</th>
-                    <th className="px-4 py-2 text-center">Status</th>
-                  </tr>
+                  <tr><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Services</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Status</th></tr>
                 </thead>
                 <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {previousVisits.map((visit, index) => (
@@ -1366,37 +1391,21 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
                       <td className="px-4 py-2">{visit.date}</td>
                       <td className="px-4 py-2">{visit.services}</td>
                       <td className="px-4 py-2 text-right font-semibold">Rs. {visit.total.toLocaleString()}</td>
-                      <td className="px-4 py-2 text-center">
-                        <span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">
-                          {visit.status}
-                        </span>
-                      </td>
+                      <td className="px-4 py-2 text-center"><span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">{visit.status}</span></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Showing last {previousVisits.length} visits
-            </p>
+            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Showing last {previousVisits.length} visits</p>
           </div>
         )}
       </div>
 
       {/* Tab Buttons */}
       <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => setActiveTab('services')}
-          className={`px-6 py-3 font-semibold transition flex items-center gap-2 ${activeTab === 'services' ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-        >
-          <FiTool className="text-lg" /> Services
-        </button>
-        <button
-          onClick={() => setActiveTab('products')}
-          className={`px-6 py-3 font-semibold transition flex items-center gap-2 ${activeTab === 'products' ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
-        >
-          <FiPackage className="text-lg" /> Parts & Accessories
-        </button>
+        <button onClick={() => setActiveTab('services')} className={`px-6 py-3 font-semibold transition flex items-center gap-2 ${activeTab === 'services' ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><FiTool className="text-lg" /> Services</button>
+        <button onClick={() => setActiveTab('products')} className={`px-6 py-3 font-semibold transition flex items-center gap-2 ${activeTab === 'products' ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}><FiPackage className="text-lg" /> Parts & Accessories</button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1409,29 +1418,14 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
                 <h3 className="text-lg font-semibold text-white">{activeTab === 'services' ? 'Available Services' : 'Parts & Accessories'}</h3>
               </div>
               <div className="flex gap-2">
-                <button 
-                  onClick={activeTab === 'services' ? openAddServiceModal : openAddProductModal}
-                  className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center gap-1 text-white text-sm"
-                >
-                  <FiPlus className="text-sm" /> Add
-                </button>
-                <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition ${viewMode === 'grid' ? 'bg-white/20' : 'hover:bg-white/10'}`}>
-                  <FiGrid className="text-white" />
-                </button>
-                <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition ${viewMode === 'list' ? 'bg-white/20' : 'hover:bg-white/10'}`}>
-                  <FiListIcon className="text-white" />
-                </button>
+                <button onClick={activeTab === 'services' ? openAddServiceModal : openAddProductModal} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center gap-1 text-white text-sm"><FiPlus className="text-sm" /> Add</button>
+                <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition ${viewMode === 'grid' ? 'bg-white/20' : 'hover:bg-white/10'}`}><FiGrid className="text-white" /></button>
+                <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition ${viewMode === 'list' ? 'bg-white/20' : 'hover:bg-white/10'}`}><FiListIcon className="text-white" /></button>
               </div>
             </div>
             <div className="relative mt-3">
               <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/60" />
-              <input
-                type="text"
-                placeholder={`Search ${activeTab === 'services' ? 'services' : 'parts'}...`}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/20 text-white placeholder-white/60 border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50"
-              />
+              <input type="text" placeholder={`Search ${activeTab === 'services' ? 'services' : 'parts'}...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 rounded-lg bg-white/20 text-white placeholder-white/60 border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50" />
             </div>
           </div>
           
@@ -1651,6 +1645,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
                     <span className="text-3xl font-bold text-red-500">Rs. {roundToTwo(billTotal).toLocaleString()}</span>
                   </div>
 
+                  {/* Payment Details with Bank Dropdown */}
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} mt-4`}>
                     <h4 className={`font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                       <FiCreditCard className="text-red-500" /> Payment Details
@@ -1665,15 +1660,25 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
                             const val = e.target.value.replace(/[^0-9.]/g, '');
                             setPaymentAmount(val);
                           }} 
-                          placeholder="Enter amount" 
+                          placeholder="Enter amount (optional)" 
                           className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} 
                           disabled={isProcessing} 
                         />
-                        <p className="text-xs text-gray-400 mt-1">Bill Total: Rs. {billTotal.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400 mt-1">Bill Total: Rs. {billTotal.toLocaleString()} • Leave empty for pending</p>
                       </div>
                       <div>
                         <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Payment Method</label>
-                        <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} disabled={isProcessing}>
+                        <select 
+                          value={paymentMethod} 
+                          onChange={(e) => {
+                            setPaymentMethod(e.target.value);
+                            if (e.target.value !== 'bank') {
+                              setSelectedBank('');
+                            }
+                          }} 
+                          className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`} 
+                          disabled={isProcessing}
+                        >
                           <option value="cash">Cash</option>
                           <option value="card">Credit/Debit Card</option>
                           <option value="bank">Bank Transfer</option>
@@ -1681,6 +1686,35 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
                         </select>
                       </div>
                     </div>
+
+                    {paymentMethod === 'bank' && (
+                      <div className="mt-3">
+                        <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Select Bank</label>
+                        <select
+                          value={selectedBank}
+                          onChange={(e) => setSelectedBank(e.target.value)}
+                          className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`}
+                          disabled={isProcessing}
+                        >
+                          <option value="">-- Select Bank --</option>
+                          {BANK_NAMES.map((bank) => (
+                            <option key={bank.value} value={bank.value}>
+                              {bank.label}
+                            </option>
+                          ))}
+                        </select>
+                        {!selectedBank && (
+                          <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+                            ⚠️ Please select a bank
+                          </p>
+                        )}
+                        {selectedBank && (
+                          <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                            ✅ Selected: {BANK_NAMES.find(b => b.value === selectedBank)?.label}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     
                     {paidAmount > 0 && (
                       <div className="mt-4 pt-4 border-t dark:border-gray-600">
@@ -1701,30 +1735,72 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
                           <span>Status:</span>
                           <span className={`font-semibold flex items-center gap-2 ${isFullyPaid ? 'text-green-600' : 'text-orange-500'}`}>
                             {isFullyPaid ? <FiCheckCircle /> : <FiAlertCircle />}
-                            {isFullyPaid ? 'FULLY PAID' : 'PARTIAL PAYMENT'}
+                            {isFullyPaid ? 'FULLY PAID' : 'PENDING'}
                           </span>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
+                  {/* ROW 1: CREATE INVOICE, PRINT, EXCEL, PDF */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2">
                     <button 
                       onClick={handlePayment} 
-                      disabled={isProcessing || paidAmount > billTotal} 
-                      className={`px-4 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 ${(isProcessing || paidAmount > billTotal) ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'}`}
+                      disabled={isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank)} 
+                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
+                        isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank)
+                          ? 'bg-gray-400 cursor-not-allowed' 
+                          : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
+                      }`}
                     >
-                      {isProcessing ? <FiLoader className="animate-spin" /> : <FiDollarSign />} 
-                      {isProcessing ? 'PROCESSING...' : paidAmount > billTotal ? 'EXCEEDS TOTAL' : 'PAY NOW'}
+                      {isProcessing ? <FiLoader className="animate-spin" size={16} /> : <FiDollarSign size={16} />} 
+                      <span className="truncate">{isProcessing ? 'PROCESSING...' : 'CREATE'}</span>
                     </button>
-                    <button onClick={printBill} className="px-4 py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-lg flex items-center justify-center gap-2">
-                      <FiPrinter /> PRINT
+                    
+                    <button 
+                      onClick={printBill} 
+                      disabled={cart.length === 0}
+                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
+                        cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-white'
+                      }`}
+                    >
+                      <FiPrinter size={16} /> PRINT
                     </button>
-                    <button onClick={exportToExcel} className="px-4 py-3 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition shadow-lg flex items-center justify-center gap-2">
-                      <FiFileText /> EXCEL
+                    
+                    <button 
+                      onClick={exportToExcel} 
+                      disabled={cart.length === 0}
+                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
+                        cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      <FiFileText size={16} /> EXCEL
                     </button>
-                    <button onClick={exportToPDF} className="px-4 py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-lg flex items-center justify-center gap-2">
-                      <FiDownload /> PDF
+                    
+                    <button 
+                      onClick={exportToPDF} 
+                      disabled={cart.length === 0}
+                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
+                        cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white'
+                      }`}
+                    >
+                      <FiDownload size={16} /> PDF
+                    </button>
+                  </div>
+
+                  {/* ROW 2: DISCARD ONLY */}
+                  <div className="grid grid-cols-1 gap-2 pt-1">
+                    <button 
+                      onClick={handleDiscard} 
+                      disabled={isDiscarding || cart.length === 0} 
+                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
+                        isDiscarding || cart.length === 0 
+                          ? 'bg-gray-400 cursor-not-allowed' 
+                          : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                      }`}
+                    >
+                      {isDiscarding ? <FiLoader className="animate-spin" size={16} /> : <FiArchive size={16} />} 
+                      {isDiscarding ? 'DISCARDING...' : 'DISCARD BILL'}
                     </button>
                   </div>
                 </div>
@@ -1743,18 +1819,9 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
               <button onClick={() => { setIsServiceModalOpen(false); setEditingService(null); }} className="text-gray-500 hover:text-gray-700 text-2xl"><FiX /></button>
             </div>
             <div className="p-6 space-y-4">
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Service Name *</label>
-                <input type="text" value={serviceFormData.name} onChange={(e) => setServiceFormData({ ...serviceFormData, name: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter service name" />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Price * (Rs.)</label>
-                <input type="number" value={serviceFormData.price} onChange={(e) => setServiceFormData({ ...serviceFormData, price: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter price" min="0" step="0.01" />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category *</label>
-                <input type="text" value={serviceFormData.category} onChange={(e) => setServiceFormData({ ...serviceFormData, category: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter category" />
-              </div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Service Name *</label><input type="text" value={serviceFormData.name} onChange={(e) => setServiceFormData({ ...serviceFormData, name: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter service name" /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Price * (Rs.)</label><input type="number" value={serviceFormData.price} onChange={(e) => setServiceFormData({ ...serviceFormData, price: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter price" min="0" step="0.01" /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category *</label><input type="text" value={serviceFormData.category} onChange={(e) => setServiceFormData({ ...serviceFormData, category: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter category" /></div>
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Icon</label>
                 <div className="relative">
@@ -1793,22 +1860,10 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
               <button onClick={() => { setIsProductModalOpen(false); setEditingProduct(null); }} className="text-gray-500 hover:text-gray-700 text-2xl"><FiX /></button>
             </div>
             <div className="p-6 space-y-4">
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Product Name *</label>
-                <input type="text" value={productFormData.name} onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter product name" />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Purchase Price * (Rs.)</label>
-                <input type="number" value={productFormData.purchase_price} onChange={(e) => setProductFormData({ ...productFormData, purchase_price: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter purchase price" min="0" step="0.01" />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Selling Price * (Rs.)</label>
-                <input type="number" value={productFormData.selling_price} onChange={(e) => setProductFormData({ ...productFormData, selling_price: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter selling price" min="0" step="0.01" />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Quantity *</label>
-                <input type="number" value={productFormData.quantity} onChange={(e) => setProductFormData({ ...productFormData, quantity: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter quantity" min="0" />
-              </div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Product Name *</label><input type="text" value={productFormData.name} onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter product name" /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Purchase Price * (Rs.)</label><input type="number" value={productFormData.purchase_price} onChange={(e) => setProductFormData({ ...productFormData, purchase_price: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter purchase price" min="0" step="0.01" /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Selling Price * (Rs.)</label><input type="number" value={productFormData.selling_price} onChange={(e) => setProductFormData({ ...productFormData, selling_price: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter selling price" min="0" step="0.01" /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Quantity *</label><input type="number" value={productFormData.quantity} onChange={(e) => setProductFormData({ ...productFormData, quantity: e.target.value })} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'border-gray-300'}`} placeholder="Enter quantity" min="0" /></div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => { setIsProductModalOpen(false); setEditingProduct(null); }} className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>Cancel</button>
                 <button type="button" onClick={editingProduct ? handleUpdateProduct : handleAddProduct} className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2 shadow-md"><FiCheckCircle className="text-sm" /> {editingProduct ? 'Update Product' : 'Add Product'}</button>
@@ -1818,7 +1873,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess }) => {
         </div>
       )}
 
-      {/* ✅ Oil Change Modal */}
+      {/* Oil Change Modal */}
       {isOilChangeModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-xl max-w-md w-full p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

@@ -1,5 +1,5 @@
 // src/components/Billing.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CustomerForm from './billing/CustomerForm';
 import BillingInvoice from './billing/BillingInvoice';
 import api from '../services/api';
@@ -9,6 +9,42 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
   const [step, setStep] = useState(1);
   const [customerDetails, setCustomerDetails] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [restoredData, setRestoredData] = useState(null);
+
+  // ✅ Check for restored bill data on mount
+  useEffect(() => {
+    const savedData = localStorage.getItem('restoredBill');
+    if (savedData) {
+      try {
+        const data = JSON.parse(savedData);
+        if (data && data.cart_items && data.cart_items.length > 0) {
+          setRestoredData(data);
+          
+          // ✅ Get current date/time for restored bill
+          const now = new Date();
+          const currentDate = now.toISOString();
+          
+          // Set customer details from restored data
+          setCustomerDetails({
+            name: data.customer_name || '',
+            phone: data.customer_phone || '',
+            email: data.customer_email || '',
+            carNumber: data.customer_car_number || '',
+            carModel: data.customer_car_model || '',
+            birthday: data.customer_birthday || '',
+            date: currentDate // ✅ Use current date/time for restored bill
+          });
+          setStep(2);
+          toast.success('📦 Restored bill loaded!');
+        }
+        // Clear localStorage after reading
+        localStorage.removeItem('restoredBill');
+      } catch (e) {
+        console.error('Error parsing restored data:', e);
+        localStorage.removeItem('restoredBill');
+      }
+    }
+  }, []);
 
   // Function to add service reminder for 6 months later
   const addServiceReminder = async (invoiceData, serviceItems) => {
@@ -43,7 +79,7 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
     }
   };
 
-  // ✅ Handle customer submit - Ensure birthday is passed
+  // ✅ Handle customer submit - Ensure birthday and date are passed
   const handleCustomerSubmit = async (details) => {
     console.log('📝 Customer details received in Billing:', details);
     
@@ -55,7 +91,7 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
       carNumber: details.carNumber || '',
       carModel: details.carModel || '',
       birthday: details.birthday || '',
-      date: details.date || new Date().toISOString().split('T')[0] // ✅ Current date
+      date: details.date || new Date().toISOString() // ✅ Full datetime with time
     };
     
     console.log('✅ Setting customer details with date:', customerData);
@@ -81,7 +117,7 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
         payment_method: invoiceData.payment_method,
         status: invoiceData.status,
         items: serviceItems,
-        invoice_date: customerDetails?.date || new Date().toISOString().split('T')[0] // ✅ Use customer date or current date
+        invoice_date: customerDetails?.date || new Date().toISOString() // ✅ Use customer date with time or current datetime
       });
       
       if (response.data) {
@@ -99,11 +135,11 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
     }
   };
 
-  // ✅ NEW: Called by BillingInvoice after a payment is successfully saved.
-  // Resets customer data + sends user back to Step 1 (empty form) so old
-  // Email/Car Number/Model/Birthday don't stay visible on screen.
+  // ✅ Called by BillingInvoice after a payment is successfully saved.
+  // Resets customer data + sends user back to Step 1 (empty form)
   const handlePaymentSuccess = () => {
     setCustomerDetails(null);
+    setRestoredData(null);
     setStep(1);
   };
 
@@ -130,6 +166,7 @@ const Billing = ({ services, invoices, setInvoices, cart, setCart, products, set
           onInvoiceComplete={handleInvoiceComplete}
           onPaymentSuccess={handlePaymentSuccess}
           loading={loading}
+          restoredData={restoredData}
         />
       )}
     </div>

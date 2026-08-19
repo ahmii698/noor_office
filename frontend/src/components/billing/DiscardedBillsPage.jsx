@@ -168,7 +168,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
             <div>
               <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center gap-3`}>
                 <FiClock className="text-yellow-500" />
-                Discarded Bills
+                Drafted Bills
                 <span className={`ml-2 text-sm font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   ({discardedBills.length})
                 </span>

@@ -13,17 +13,105 @@ import {
   FiUserX, FiUserPlus, FiEyeOff, FiTrash2, FiAlertTriangle
 } from 'react-icons/fi';
 import api from '../services/api';
-
 import logo from '/logo.jpg';
+
+// ✅ Convert date to Pakistan Time - handles both ISO and plain dates
+const toPakistanTime = (dateString) => {
+  if (!dateString) return null;
+  
+  if (dateString.includes('T') || dateString.includes('Z')) {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return null;
+    return date;
+  }
+  
+  try {
+    const parts = dateString.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (parts) {
+      const date = new Date(Date.UTC(
+        parseInt(parts[1]),
+        parseInt(parts[2]) - 1,
+        parseInt(parts[3]),
+        parseInt(parts[4]),
+        parseInt(parts[5]),
+        parseInt(parts[6])
+      ));
+      date.setHours(date.getHours() + 5);
+      if (!isNaN(date.getTime())) return date;
+    }
+  } catch (e) {
+    console.error('Date parse error:', e);
+  }
+  
+  const date = new Date(dateString);
+  if (!isNaN(date.getTime())) return date;
+  
+  return null;
+};
+
+// ✅ Format date for table - PAKISTAN TIME
+const formatTableDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  
+  const date = toPakistanTime(dateString);
+  if (!date) return 'N/A';
+  
+  return date.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Karachi'
+  });
+};
+
+// ✅ Format date for invoice details modal - PAKISTAN TIME
+const formatInvoiceDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  
+  const date = toPakistanTime(dateString);
+  if (!date) return 'N/A';
+  
+  return date.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Karachi'
+  });
+};
+
+// ✅ Format payment history date - PAKISTAN TIME
+const formatPaymentHistoryDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  
+  const date = toPakistanTime(dateString);
+  if (!date) return 'N/A';
+  
+  return date.toLocaleString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Karachi'
+  });
+};
 
 // ✅ Helper: Format date in Pakistan Time (UTC+5)
 const formatPakistanDateTime = (dateString) => {
   if (!dateString) return { date: 'N/A', time: '' };
   
+  const date = toPakistanTime(dateString);
+  if (!date) return { date: 'N/A', time: '' };
+  
   try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return { date: 'N/A', time: '' };
-    
     const formattedDate = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
@@ -81,7 +169,7 @@ const roundToTwo = (num) => {
   return Math.round(num * 100) / 100;
 };
 
-// ✅ NEW: LocalStorage key for hidden invoices
+// ✅ LocalStorage key for hidden invoices
 const HIDDEN_INVOICES_KEY = 'noorani_hidden_invoices';
 
 const loadHiddenIds = () => {
@@ -104,39 +192,6 @@ const saveHiddenIds = (ids) => {
   }
 };
 
-// ✅ UPDATED: Format date for table (shows both date & time)
-const formatTableDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return 'N/A';
-  return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Karachi'
-  });
-};
-
-// ✅ UPDATED: Format date for invoice details modal (date & time)
-const formatInvoiceDate = (dateString) => {
-  if (!dateString) return 'N/A';
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return 'N/A';
-  return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Karachi'
-  });
-};
-
 const Records = ({ darkMode }) => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -148,8 +203,7 @@ const Records = ({ darkMode }) => {
   const [editFormData, setEditFormData] = useState({
     discountType: 'fixed',
     discountValue: '',
-    discountNote: '',
-    additionalPayment: ''
+    discountNote: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -159,13 +213,22 @@ const Records = ({ darkMode }) => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
   
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  
+  const [singleDate, setSingleDate] = useState('');
+  const [showSingleDate, setShowSingleDate] = useState(false);
+  
   const [customerTypeFilter, setCustomerTypeFilter] = useState('all');
 
-  // ✅ NEW: Hide / Delete states
   const [hiddenIds, setHiddenIds] = useState(() => loadHiddenIds());
   const [visibilityFilter, setVisibilityFilter] = useState('active');
   const [deleteConfirmInvoice, setDeleteConfirmInvoice] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const fetchInvoices = useCallback(async () => {
     const abortController = new AbortController();
@@ -227,7 +290,27 @@ const Records = ({ darkMode }) => {
     };
   }, [fetchInvoices]);
 
-  // ✅ NEW: Toggle hide/unhide
+  const fetchPaymentHistory = useCallback(async (invoiceNo) => {
+    if (!invoiceNo) {
+      setPaymentHistory([]);
+      return;
+    }
+    setLoadingHistory(true);
+    try {
+      const response = await api.get(`/payment-history/${invoiceNo}`);
+      if (response.data && response.data.success) {
+        setPaymentHistory(response.data.data || []);
+      } else {
+        setPaymentHistory([]);
+      }
+    } catch (err) {
+      console.error('Error fetching payment history:', err);
+      setPaymentHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
   const toggleHideInvoice = useCallback((invoiceId) => {
     setHiddenIds(prev => {
       let updated;
@@ -243,7 +326,6 @@ const Records = ({ darkMode }) => {
     });
   }, []);
 
-  // ✅ NEW: Open delete confirmation
   const openDeleteConfirm = useCallback((invoice) => {
     setDeleteConfirmInvoice(invoice);
   }, []);
@@ -252,7 +334,6 @@ const Records = ({ darkMode }) => {
     setDeleteConfirmInvoice(null);
   }, []);
 
-  // ✅ NEW: Permanently delete invoice from database
   const handleDeleteInvoice = useCallback(async () => {
     if (!deleteConfirmInvoice) return;
     
@@ -291,14 +372,33 @@ const Records = ({ darkMode }) => {
   const filteredInvoices = useMemo(() => {
     let filtered = invoices;
     
-    // ✅ NEW: Visibility filter
     if (visibilityFilter === 'active') {
       filtered = filtered.filter(inv => !hiddenIds.includes(inv.id));
     } else if (visibilityFilter === 'hidden') {
       filtered = filtered.filter(inv => hiddenIds.includes(inv.id));
     }
     
-    if (dateFilter !== 'all') {
+    if (dateFilter === 'single' && singleDate) {
+      const selectedDate = new Date(singleDate);
+      const startOfDay = new Date(selectedDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(selectedDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      filtered = filtered.filter(inv => {
+        const invDate = new Date(inv.date);
+        return invDate >= startOfDay && invDate <= endOfDay;
+      });
+    } else if (dateFilter === 'custom' && customDateFrom && customDateTo) {
+      const fromDate = new Date(customDateFrom);
+      const toDate = new Date(customDateTo);
+      toDate.setHours(23, 59, 59, 999);
+      
+      filtered = filtered.filter(inv => {
+        const invDate = new Date(inv.date);
+        return invDate >= fromDate && invDate <= toDate;
+      });
+    } else if (dateFilter !== 'all' && dateFilter !== 'custom' && dateFilter !== 'single') {
       const now = new Date();
       let startDate;
       
@@ -349,33 +449,17 @@ const Records = ({ darkMode }) => {
     if (customerTypeFilter === 'walkin') {
       filtered = filtered.filter(inv => {
         const name = inv.customer?.name || '';
-        const phone = inv.customer?.phone || '';
-        const carNumber = inv.customer?.carNumber || '';
-        
-        const isWalkin = 
-          !name || name === '' || name === 'Guest' || name === 'Walk-in' ||
-          !phone || phone === '' || phone === 'N/A' ||
-          !carNumber || carNumber === '' || carNumber === 'N/A';
-        
-        return isWalkin;
+        return !name || name === '' || name === 'Guest' || name === 'Walk-in';
       });
     } else if (customerTypeFilter === 'registered') {
       filtered = filtered.filter(inv => {
         const name = inv.customer?.name || '';
-        const phone = inv.customer?.phone || '';
-        const carNumber = inv.customer?.carNumber || '';
-        
-        const isRegistered = 
-          name && name !== '' && name !== 'Guest' && name !== 'Walk-in' &&
-          phone && phone !== '' && phone !== 'N/A' &&
-          carNumber && carNumber !== '' && carNumber !== 'N/A';
-        
-        return isRegistered;
+        return name && name !== '' && name !== 'Guest' && name !== 'Walk-in';
       });
     }
     
     return filtered;
-  }, [invoices, searchTerm, filterStatus, dateFilter, customerTypeFilter, visibilityFilter, hiddenIds]);
+  }, [invoices, searchTerm, filterStatus, dateFilter, customerTypeFilter, visibilityFilter, hiddenIds, customDateFrom, customDateTo, singleDate]);
 
   const visibleInvoices = useMemo(() => 
     invoices.filter(inv => !hiddenIds.includes(inv.id)),
@@ -385,28 +469,17 @@ const Records = ({ darkMode }) => {
   const walkinCount = useMemo(() => {
     return visibleInvoices.filter(inv => {
       const name = inv.customer?.name || '';
-      const phone = inv.customer?.phone || '';
-      const carNumber = inv.customer?.carNumber || '';
-      
-      return !name || name === '' || name === 'Guest' || name === 'Walk-in' ||
-             !phone || phone === '' || phone === 'N/A' ||
-             !carNumber || carNumber === '' || carNumber === 'N/A';
+      return !name || name === '' || name === 'Guest' || name === 'Walk-in';
     }).length;
   }, [visibleInvoices]);
 
   const registeredCount = useMemo(() => {
     return visibleInvoices.filter(inv => {
       const name = inv.customer?.name || '';
-      const phone = inv.customer?.phone || '';
-      const carNumber = inv.customer?.carNumber || '';
-      
-      return name && name !== '' && name !== 'Guest' && name !== 'Walk-in' &&
-             phone && phone !== '' && phone !== 'N/A' &&
-             carNumber && carNumber !== '' && carNumber !== 'N/A';
+      return name && name !== '' && name !== 'Guest' && name !== 'Walk-in';
     }).length;
   }, [visibleInvoices]);
 
-  // ✅ NEW: Count of hidden invoices
   const hiddenCount = useMemo(() => {
     return invoices.filter(inv => hiddenIds.includes(inv.id)).length;
   }, [invoices, hiddenIds]);
@@ -432,6 +505,22 @@ const Records = ({ darkMode }) => {
   const handleDateFilterChange = useCallback((filter) => {
     setDateFilter(filter);
     setCurrentPage(1);
+    if (filter === 'custom') {
+      setShowCustomDate(true);
+      setShowSingleDate(false);
+      setSingleDate('');
+    } else if (filter === 'single') {
+      setShowSingleDate(true);
+      setShowCustomDate(false);
+      setCustomDateFrom('');
+      setCustomDateTo('');
+    } else {
+      setShowCustomDate(false);
+      setShowSingleDate(false);
+      setCustomDateFrom('');
+      setCustomDateTo('');
+      setSingleDate('');
+    }
   }, []);
 
   const handleCustomerTypeFilter = useCallback((type) => {
@@ -439,7 +528,6 @@ const Records = ({ darkMode }) => {
     setCurrentPage(1);
   }, []);
 
-  // ✅ NEW: Handle visibility filter
   const handleVisibilityFilter = useCallback((type) => {
     setVisibilityFilter(type);
     setCurrentPage(1);
@@ -456,8 +544,16 @@ const Records = ({ darkMode }) => {
       today: 'Today',
       week: 'This Week',
       month: 'This Month',
-      year: 'This Year'
+      year: 'This Year',
+      single: 'Single Date',
+      custom: 'Custom Range'
     };
+    if (dateFilter === 'single' && singleDate) {
+      return `Single Date: ${singleDate}`;
+    }
+    if (dateFilter === 'custom' && customDateFrom && customDateTo) {
+      return `${customDateFrom} to ${customDateTo}`;
+    }
     return labels[dateFilter] || 'All Time';
   };
 
@@ -466,8 +562,7 @@ const Records = ({ darkMode }) => {
     setEditFormData({
       discountType: 'fixed',
       discountValue: invoice.discount > 0 ? invoice.discount.toString() : '',
-      discountNote: invoice.discountNote || '',
-      additionalPayment: ''
+      discountNote: invoice.discountNote || ''
     });
     setIsEditModalOpen(true);
   }, []);
@@ -478,14 +573,13 @@ const Records = ({ darkMode }) => {
     setEditFormData({
       discountType: 'fixed',
       discountValue: '',
-      discountNote: '',
-      additionalPayment: ''
+      discountNote: ''
     });
   }, []);
 
   const handleEditChange = useCallback((e) => {
     const { name, value } = e.target;
-    if (name === 'discountValue' || name === 'additionalPayment') {
+    if (name === 'discountValue') {
       const val = value.replace(/[^0-9.]/g, '');
       setEditFormData(prev => ({ ...prev, [name]: val }));
     } else {
@@ -499,7 +593,7 @@ const Records = ({ darkMode }) => {
     setIsSubmitting(true);
     
     try {
-      const { discountValue, discountNote, additionalPayment, discountType } = editFormData;
+      const { discountValue, discountNote, discountType } = editFormData;
       
       const subtotal = editingInvoice.subtotal || editingInvoice.total;
       let discountAmount = 0;
@@ -515,8 +609,7 @@ const Records = ({ darkMode }) => {
       
       const newTotal = subtotal - discountAmount;
       const existingPaid = editingInvoice.paidAmount || 0;
-      const additionalPaid = parseFloat(additionalPayment) || 0;
-      const newPaidAmount = existingPaid + additionalPaid;
+      const newPaidAmount = existingPaid;
       const newRemainingAmount = newTotal - newPaidAmount;
       const newStatus = newRemainingAmount <= 0.01 ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Pending');
       
@@ -549,6 +642,7 @@ const Records = ({ darkMode }) => {
           if (updatedInvoice) {
             setSelectedInvoice(updatedInvoice);
           }
+          fetchPaymentHistory(editingInvoice.invoiceNo);
         }
       }
     } catch (err) {
@@ -557,48 +651,14 @@ const Records = ({ darkMode }) => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [editingInvoice, editFormData, fetchInvoices, closeEditModal, isModalOpen, selectedInvoice, invoices]);
+  }, [editingInvoice, editFormData, fetchInvoices, closeEditModal, isModalOpen, selectedInvoice, invoices, fetchPaymentHistory]);
 
-  // ✅ UPDATED: Export to Excel with Date & Time
   const exportToExcel = useCallback(() => {
-    const ws = XLSX.utils.json_to_sheet(filteredInvoices.map(inv => ({
-      'Invoice #': inv.invoiceNo,
-      'Date & Time': new Date(inv.date).toLocaleString('en-GB', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Karachi'
-      }),
-      'Customer Name': inv.customer?.name || 'Walk-in',
-      'Phone': inv.customer?.phone || 'N/A',
-      'Car Number': inv.customer?.carNumber || 'N/A',
-      'Services': inv.items.map(i => i.name).join(', '),
-      'Subtotal': `Rs. ${(inv.subtotal || inv.total).toLocaleString()}`,
-      'Discount': inv.discount > 0 ? `Rs. ${inv.discount.toLocaleString()}` : 'None',
-      'Total': `Rs. ${inv.total.toLocaleString()}`,
-      'Paid': `Rs. ${(inv.paidAmount || inv.total).toLocaleString()}`,
-      'Remaining': `Rs. ${(inv.remainingAmount || 0).toLocaleString()}`,
-      'Status': inv.status || 'Paid',
-      'Created By': inv.creatorName || 'System'
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Records');
-    XLSX.writeFile(wb, `All_Records.xlsx`);
-    toast.success('Exported to Excel');
-  }, [filteredInvoices]);
-
-  // ✅ UPDATED: Export to PDF with Date & Time
-  const exportToPDF = useCallback(() => {
-    const doc = new jsPDF('landscape');
-    doc.text(`All Invoice Records - ${getDateFilterLabel()}`, 14, 10);
-    doc.autoTable({
-      head: [['Invoice #', 'Date & Time', 'Customer', 'Phone', 'Car No', 'Services', 'Subtotal', 'Discount', 'Total', 'Status', 'Created By']],
-      body: filteredInvoices.map(inv => [
-        inv.invoiceNo,
-        new Date(inv.date).toLocaleString('en-GB', {
+    const ws = XLSX.utils.json_to_sheet(filteredInvoices.map(inv => {
+      const date = toPakistanTime(inv.date) || new Date();
+      return {
+        'Invoice #': inv.invoiceNo,
+        'Date & Time': date.toLocaleString('en-GB', {
           day: '2-digit',
           month: '2-digit',
           year: 'numeric',
@@ -607,16 +667,54 @@ const Records = ({ darkMode }) => {
           hour12: true,
           timeZone: 'Asia/Karachi'
         }),
-        inv.customer?.name || 'Walk-in',
-        inv.customer?.phone || 'N/A',
-        inv.customer?.carNumber || 'N/A',
-        inv.items.map(i => i.name).join(', ').substring(0, 30) + (inv.items.length > 2 ? '...' : ''),
-        `Rs. ${(inv.subtotal || inv.total).toLocaleString()}`,
-        inv.discount > 0 ? `Rs. ${inv.discount.toLocaleString()}` : 'None',
-        `Rs. ${inv.total.toLocaleString()}`,
-        inv.status || 'Paid',
-        inv.creatorName || 'System'
-      ]),
+        'Customer Name': inv.customer?.name || 'Walk-in',
+        'Phone': inv.customer?.phone || 'N/A',
+        'Car Number': inv.customer?.carNumber || 'N/A',
+        'Services': inv.items.map(i => i.name).join(', '),
+        'Subtotal': `Rs. ${(inv.subtotal || inv.total).toLocaleString()}`,
+        'Discount': inv.discount > 0 ? `Rs. ${inv.discount.toLocaleString()}` : 'None',
+        'Total': `Rs. ${inv.total.toLocaleString()}`,
+        'Paid': `Rs. ${(inv.paidAmount || inv.total).toLocaleString()}`,
+        'Remaining': `Rs. ${(inv.remainingAmount || 0).toLocaleString()}`,
+        'Status': inv.status || 'Paid',
+        'Created By': inv.creatorName || 'System'
+      };
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Records');
+    XLSX.writeFile(wb, `All_Records.xlsx`);
+    toast.success('Exported to Excel');
+  }, [filteredInvoices]);
+
+  const exportToPDF = useCallback(() => {
+    const doc = new jsPDF('landscape');
+    doc.text(`All Invoice Records - ${getDateFilterLabel()}`, 14, 10);
+    doc.autoTable({
+      head: [['Invoice #', 'Date & Time', 'Customer', 'Phone', 'Car No', 'Services', 'Subtotal', 'Discount', 'Total', 'Status', 'Created By']],
+      body: filteredInvoices.map(inv => {
+        const date = toPakistanTime(inv.date) || new Date();
+        return [
+          inv.invoiceNo,
+          date.toLocaleString('en-GB', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Karachi'
+          }),
+          inv.customer?.name || 'Walk-in',
+          inv.customer?.phone || 'N/A',
+          inv.customer?.carNumber || 'N/A',
+          inv.items.map(i => i.name).join(', ').substring(0, 30) + (inv.items.length > 2 ? '...' : ''),
+          `Rs. ${(inv.subtotal || inv.total).toLocaleString()}`,
+          inv.discount > 0 ? `Rs. ${inv.discount.toLocaleString()}` : 'None',
+          `Rs. ${inv.total.toLocaleString()}`,
+          inv.status || 'Paid',
+          inv.creatorName || 'System'
+        ];
+      }),
       startY: 20,
     });
     doc.save(`Records_${getDateFilterLabel()}.pdf`);
@@ -626,11 +724,13 @@ const Records = ({ darkMode }) => {
   const viewInvoiceDetails = useCallback((invoice) => {
     setSelectedInvoice(invoice);
     setIsModalOpen(true);
-  }, []);
+    fetchPaymentHistory(invoice.invoiceNo);
+  }, [fetchPaymentHistory]);
 
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
     setSelectedInvoice(null);
+    setPaymentHistory([]);
   }, []);
 
   const printSingleInvoice = useCallback(() => {
@@ -665,7 +765,7 @@ const Records = ({ darkMode }) => {
     const paidAmount = selectedInvoice.paidAmount || selectedInvoice.total;
     const subtotal = selectedInvoice.subtotal || selectedInvoice.total;
 
-    const invoiceDate = new Date(selectedInvoice.date);
+    const invoiceDate = toPakistanTime(selectedInvoice.date) || new Date();
     const formattedDate = invoiceDate.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
@@ -799,36 +899,33 @@ const Records = ({ darkMode }) => {
               border-top: 2px solid #e5e7eb; 
               color: #dc2626; 
             }
-            .signature { 
-              margin: 20px; 
-              display: flex; 
-              justify-content: space-between; 
-              padding-top: 30px; 
-              border-top: 1px solid #e5e7eb; 
-              margin-top: 20px;
-              font-size: 12px; 
-            }
-            .signature p {
-              font-size: 12px;
-              color: #333;
-            }
             .footer { 
-              padding: 15px 20px; 
+              padding: 18px 20px; 
               background: #f8f9fa; 
               border-top: 1px solid #e5e7eb; 
-              font-size: 12px; 
-              color: #4b5563; 
+              font-size: 14px; 
+              color: #1f2937; 
               margin-top: 20px;
+              text-align: center;
             }
             .footer .address { 
-              margin-bottom: 4px; 
+              margin-bottom: 6px; 
+              font-weight: 700;
+              font-size: 14px;
+            }
+            .footer .phone { 
+              margin-bottom: 6px;
+              font-weight: 700;
+              font-size: 14px;
             }
             .footer .social { 
               margin-top: 6px; 
             }
             .footer .social span { 
               display: block; 
-              margin: 2px 0; 
+              margin: 3px 0;
+              font-weight: 700;
+              font-size: 13px;
             }
             .print-actions { 
               text-align: center; 
@@ -924,29 +1021,16 @@ const Records = ({ darkMode }) => {
             </div>
             <div class="total-row">Total: Rs. ${selectedInvoice.total.toLocaleString()}</div>
             
-            <div class="signature">
-              <p>Customer Signature: _________________</p>
-              <p>Authorized Signature: _________________</p>
-            </div>
-            
             <div class="footer">
               <div class="address">
-                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="14" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
+                🏪 Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
               </div>
-              <div>
-                <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="14" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-                0337 3267363
+              <div class="phone">
+                📞 0337 3267363
               </div>
               <div class="social">
-                <span>
-                  <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="16" width="16" xmlns="http://www.w3.org/2000/svg"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                  Facebook: https://www.facebook.com/Noorani.Car.AC/
-                </span>
-                <span>
-                  <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 24 24" height="16" width="16" xmlns="http://www.w3.org/2000/svg"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-                  Instagram: https://www.instagram.com/nooranicarac/
-                </span>
+                <span>📘 Facebook: https://www.facebook.com/Noorani.Car.AC/</span>
+                <span>📷 Instagram: https://www.instagram.com/nooranicarac/</span>
               </div>
             </div>
           </div>
@@ -1074,7 +1158,7 @@ const Records = ({ darkMode }) => {
                 : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            <FiUserX className="text-xs" /> Walk-in / No Records ({walkinCount})
+            <FiUserX className="text-xs" /> Walk-in ({walkinCount})
           </button>
         </div>
         
@@ -1134,6 +1218,22 @@ const Records = ({ darkMode }) => {
             >
               This Year
             </button>
+            <button
+              onClick={() => handleDateFilterChange('single')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'single' ? 'bg-teal-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <FiCalendar className="inline mr-1" /> Single Date
+            </button>
+            <button
+              onClick={() => handleDateFilterChange('custom')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'custom' ? 'bg-purple-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <FiCalendar className="inline mr-1" /> Custom Range
+            </button>
           </div>
           
           <div className="flex gap-1 flex-wrap">
@@ -1171,6 +1271,90 @@ const Records = ({ darkMode }) => {
             </button>
           </div>
         </div>
+
+        {/* Single Date Input */}
+        {showSingleDate && (
+          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 bg-teal-50 dark:bg-teal-900/10`}>
+            <div className="flex items-center gap-2">
+              <FiCalendar className={`${darkMode ? 'text-teal-400' : 'text-teal-600'}`} />
+              <span className={`text-sm font-medium ${darkMode ? 'text-teal-400' : 'text-teal-700'}`}>Select Date:</span>
+            </div>
+            <input
+              type="date"
+              value={singleDate}
+              onChange={(e) => setSingleDate(e.target.value)}
+              className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-teal-500 outline-none text-sm ${
+                darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+              }`}
+            />
+            <button
+              onClick={() => {
+                if (singleDate) {
+                  toast.success(`Showing records for ${singleDate}`);
+                } else {
+                  toast.warning('Please select a date');
+                }
+              }}
+              className="px-4 py-1.5 bg-teal-500 text-white rounded-lg text-sm hover:bg-teal-600 transition flex items-center gap-1 shadow-md"
+            >
+              <FiCalendar className="text-sm" /> View
+            </button>
+            {singleDate && (
+              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Showing: {singleDate} ({filteredInvoices.length} records)
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Custom Date Range Inputs */}
+        {showCustomDate && (
+          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 bg-purple-50 dark:bg-purple-900/10`}>
+            <div className="flex items-center gap-2">
+              <FiCalendar className={`${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+              <span className={`text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-700'}`}>Custom Date Range:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>From</label>
+              <input
+                type="date"
+                value={customDateFrom}
+                onChange={(e) => setCustomDateFrom(e.target.value)}
+                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                }`}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>To</label>
+              <input
+                type="date"
+                value={customDateTo}
+                onChange={(e) => setCustomDateTo(e.target.value)}
+                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                }`}
+              />
+            </div>
+            <button
+              onClick={() => {
+                if (customDateFrom && customDateTo) {
+                  toast.success(`Showing records from ${customDateFrom} to ${customDateTo}`);
+                } else {
+                  toast.warning('Please select both From and To dates');
+                }
+              }}
+              className="px-4 py-1.5 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition flex items-center gap-1 shadow-md"
+            >
+              <FiCalendar className="text-sm" /> Apply Range
+            </button>
+            {customDateFrom && customDateTo && (
+              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Showing: {customDateFrom} → {customDateTo} ({filteredInvoices.length} records)
+              </span>
+            )}
+          </div>
+        )}
         
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1250px]">
@@ -1203,11 +1387,7 @@ const Records = ({ darkMode }) => {
               ) : (
                 currentInvoices.map(inv => {
                   const name = inv.customer?.name || '';
-                  const phone = inv.customer?.phone || '';
-                  const carNumber = inv.customer?.carNumber || '';
-                  const isWalkin = !name || name === '' || name === 'Guest' || name === 'Walk-in' ||
-                                   !phone || phone === '' || phone === 'N/A' ||
-                                   !carNumber || carNumber === '' || carNumber === 'N/A';
+                  const isWalkin = !name || name === '' || name === 'Guest' || name === 'Walk-in';
                   const isHidden = hiddenIds.includes(inv.id);
                   
                   return (
@@ -1457,6 +1637,64 @@ const Records = ({ darkMode }) => {
                 )}
               </div>
 
+              {/* Payment History Section */}
+              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-purple-900/10 border-purple-800' : 'bg-purple-50 border-purple-200'}`}>
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+                  <FiClock className="text-lg text-purple-500" /> Payment History
+                </h3>
+                {loadingHistory ? (
+                  <div className="text-center py-6">
+                    <FiLoader className="text-3xl text-purple-500 animate-spin mx-auto mb-2" />
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading history...</p>
+                  </div>
+                ) : paymentHistory.length === 0 ? (
+                  <div className="text-center py-6">
+                    <FiClock className="text-3xl text-gray-400 mx-auto mb-2" />
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No payment history found</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className={darkMode ? 'bg-purple-900/30' : 'bg-purple-100'}>
+                        <tr>
+                          <th className="px-3 py-2 text-left text-xs font-semibold uppercase">#</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Amount</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Payment Method</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Date &amp; Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${darkMode ? 'divide-purple-900/30' : 'divide-purple-100'}`}>
+                        {paymentHistory.map((payment, idx) => (
+                          <tr key={payment.id || idx} className={darkMode ? 'hover:bg-purple-900/10' : 'hover:bg-purple-50'}>
+                            <td className="px-3 py-2 text-sm text-center">{idx + 1}</td>
+                            <td className="px-3 py-2 text-sm font-semibold text-green-600 dark:text-green-400">
+                              Rs. {parseFloat(payment.amount).toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-100 text-purple-700'}`}>
+                                {payment.payment_method || 'Cash'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-sm">
+                              {formatPaymentHistoryDate(payment.paid_at)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className={`${darkMode ? 'bg-purple-900/30' : 'bg-purple-100'} font-semibold`}>
+                        <tr>
+                          <td className="px-3 py-2 text-right">Total:</td>
+                          <td className="px-3 py-2 text-green-600 dark:text-green-400">
+                            Rs. {paymentHistory.reduce((sum, p) => sum + parseFloat(p.amount), 0).toLocaleString()}
+                          </td>
+                          <td colSpan="2"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               {/* Created By */}
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-blue-50'} border ${darkMode ? 'border-gray-700' : 'border-blue-200'}`}>
                 <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -1597,29 +1835,6 @@ const Records = ({ darkMode }) => {
                 </div>
               </div>
 
-              {/* Additional Payment Section */}
-              <div className={`p-4 rounded-xl border ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-blue-200 bg-blue-50'}`}>
-                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
-                  <FiDollarSign className="text-lg text-blue-500" /> Additional Payment
-                </h3>
-                <div>
-                  <label className={`block text-sm mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    Additional Payment Amount (Rs.)
-                  </label>
-                  <input
-                    type="text"
-                    name="additionalPayment"
-                    value={editFormData.additionalPayment}
-                    onChange={handleEditChange}
-                    placeholder="e.g. 1000"
-                    className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-blue-400 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Current remaining: Rs. {(editingInvoice.remainingAmount || 0).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-
               {/* Preview Changes */}
               {(() => {
                 const subtotal = editingInvoice.subtotal || editingInvoice.total;
@@ -1634,8 +1849,7 @@ const Records = ({ darkMode }) => {
                 }
                 const newTotal = subtotal - discountAmount;
                 const existingPaid = editingInvoice.paidAmount || 0;
-                const additionalPaid = parseFloat(editFormData.additionalPayment) || 0;
-                const newPaidAmount = existingPaid + additionalPaid;
+                const newPaidAmount = existingPaid;
                 const newRemaining = newTotal - newPaidAmount;
                 const newStatus = newRemaining <= 0.01 ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Pending');
 
@@ -1684,7 +1898,7 @@ const Records = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ NEW: Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       {deleteConfirmInvoice && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className={`max-w-md w-full rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

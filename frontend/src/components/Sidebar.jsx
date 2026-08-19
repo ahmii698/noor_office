@@ -27,7 +27,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
-    { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount }, // ✅ ADDED
+    { id: 'discarded', label: 'Draft', icon: FiClock, path: '/discarded', badge: discardedCount }, // ✅ ADDED
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
     { id: 'users', label: 'Users', icon: FiUsers, path: '/users' },
   ];

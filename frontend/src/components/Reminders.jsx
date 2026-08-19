@@ -7,7 +7,7 @@ import {
   FiDroplet, FiEdit2, FiSend, FiMessageSquare, 
   FiClock, FiAlertTriangle, FiMessageCircle, FiTrash2,
   FiStar, FiHeart, FiDollarSign, FiEdit,
-  FiEye // ✅ ADDED
+  FiEye
 } from 'react-icons/fi';
 import api from '../services/api';
 
@@ -110,9 +110,10 @@ const Reminders = ({ darkMode }) => {
     }
   };
 
+  // ✅ Auto-refresh every 3 hours (10800000 milliseconds)
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(fetchAllData, 60000);
+    const interval = setInterval(fetchAllData, 10800000); // 3 hours in milliseconds
     return () => clearInterval(interval);
   }, [isAdmin]);
 
@@ -276,7 +277,8 @@ const Reminders = ({ darkMode }) => {
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        hour12: true
+        hour12: true,
+        timeZone: 'Asia/Karachi'
       });
       
       toast.success(`✅ Rs. ${amount.toLocaleString()} payment recorded via ${paymentMethodDisplay} at ${formattedTime}!`);
@@ -463,7 +465,6 @@ const Reminders = ({ darkMode }) => {
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Total</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Paid</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Pending</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Date & Time</th>
                       </>
                     ) : (
                       <>
@@ -532,24 +533,6 @@ const Reminders = ({ darkMode }) => {
                                 Rs. {item.remaining_amount?.toLocaleString() || 0}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm">
-                              {item.paid_at ? (
-                                <span className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                  {new Date(item.paid_at).toLocaleString('en-US', {
-                                    month: '2-digit',
-                                    day: '2-digit',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    hour12: true
-                                  })}
-                                </span>
-                              ) : (
-                                <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                  Not paid yet
-                                </span>
-                              )}
-                            </td>
                           </>
                         ) : (
                           <>
@@ -580,7 +563,6 @@ const Reminders = ({ darkMode }) => {
                                 <FiEdit className="text-sm" />
                                 Record Payment
                               </button>
-                              {/* ✅ View History Button */}
                               <button
                                 onClick={() => fetchPaymentHistory(item.invoice_no)}
                                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
@@ -655,7 +637,7 @@ const Reminders = ({ darkMode }) => {
 
       {/* Footer */}
       <div className={`text-center text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-        Auto-checks every hour • {new Date().toLocaleTimeString()}
+        Auto-checks every 3 hours • {new Date().toLocaleTimeString()}
       </div>
 
       {/* Edit Message Modal */}
@@ -876,7 +858,7 @@ const Reminders = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Payment History Modal */}
+      {/* ✅ Payment History Modal - WITH CORRECT TIME ZONE */}
       {showHistoryModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-2xl w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -938,9 +920,12 @@ const Reminders = ({ darkMode }) => {
                                   year: 'numeric',
                                   hour: '2-digit',
                                   minute: '2-digit',
-                                  hour12: true
+                                  hour12: true,
+                                  timeZone: 'Asia/Karachi'
                                 })
-                              ) : 'N/A'}
+                              ) : (
+                                <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>N/A</span>
+                              )}
                             </td>
                             <td className="px-4 py-2 text-sm">
                               <span className={`px-2 py-1 rounded-full text-xs ${

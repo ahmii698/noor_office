@@ -201,8 +201,8 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
   const [oilChangeMileage, setOilChangeMileage] = useState('');
   const [oilChangeService, setOilChangeService] = useState(null);
   
-  // Discard Bill states
-  const [isDiscarding, setIsDiscarding] = useState(false);
+  // Draft Bill states
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   
   const isProcessingRef = useRef(false);
   const paymentExecutedRef = useRef(false);
@@ -442,14 +442,14 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     loadData();
   }, []);
 
-  // ==================== DISCARD BILL FUNCTION ====================
-  const handleDiscard = async () => {
+  // ==================== SAVE AS DRAFT FUNCTION ====================
+  const handleSaveDraft = async () => {
     if (cart.length === 0) {
-      toast.error('No items to discard');
+      toast.error('No items to save as draft');
       return;
     }
 
-    setIsDiscarding(true);
+    setIsSavingDraft(true);
     try {
       const cartData = {
         cart_items: cart.map(item => ({
@@ -477,7 +477,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
 
       const response = await saveCart(cartData);
       if (response.success) {
-        toast.success('Bill discarded successfully!');
+        toast.success('💾 Bill saved as draft successfully!');
         setCart([]);
         setPaymentAmount('');
         setDiscountValue('');
@@ -489,10 +489,10 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
         if (onPaymentSuccess) onPaymentSuccess();
       }
     } catch (error) {
-      console.error('Error discarding bill:', error);
-      toast.error('Failed to discard bill');
+      console.error('Error saving draft:', error);
+      toast.error('Failed to save draft');
     } finally {
-      setIsDiscarding(false);
+      setIsSavingDraft(false);
     }
   };
 
@@ -800,7 +800,6 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
       return;
     }
     
-    // Get the formatted date
     const invoiceDate = customerDetails.date ? new Date(customerDetails.date) : new Date();
     const formattedDate = invoiceDate.toLocaleDateString('en-US', { 
       month: '2-digit', 
@@ -962,226 +961,11 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     toast.success('Print preview opened');
   };
 
-  const exportToExcel = () => {
-    const displayPaidAmount = roundToTwo(paidAmount);
-    const displayRemainingAmount = roundToTwo(remainingAmount);
-    const displayDiscount = roundToTwo(discountAmount);
-    
-    const exportData = [
-      {
-        'Invoice #': `INV-${Date.now()}`,
-        'Date': customerDetails.date || new Date().toLocaleDateString(),
-        'Customer Name': customerDetails.name || 'N/A',
-        'Phone': customerDetails.phone || 'N/A',
-        'Email': customerDetails.email || 'N/A',
-        'Car Number': customerDetails.carNumber || 'N/A',
-        'Car Model': customerDetails.carModel || 'N/A',
-        'Birthday': customerBirthday || 'N/A',
-        'Subtotal': `Rs. ${roundToTwo(subtotal).toLocaleString()}`,
-        'Discount': discountAmount > 0 ? `- Rs. ${displayDiscount.toLocaleString()}` : 'Rs. 0',
-        'Total Amount': `Rs. ${roundToTwo(billTotal).toLocaleString()}`,
-        'Paid Amount': `Rs. ${displayPaidAmount.toLocaleString()}`,
-        'Remaining': `Rs. ${displayRemainingAmount.toLocaleString()}`,
-        'Payment Method': getPaymentMethodDisplay(),
-        'Status': isFullyPaid ? 'FULLY PAID' : 'PENDING'
-      },
-      ...cart.map((item, idx) => ({
-        'S.No': idx + 1,
-        'Item': item.name,
-        'Type': item.type === 'service' ? 'Service' : 'Part',
-        'Quantity': item.quantity,
-        'Price': `Rs. ${roundToTwo(item.price).toLocaleString()}`,
-        'Total': `Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}`
-      }))
-    ];
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Bill');
-    XLSX.writeFile(wb, `Bill_${customerDetails.name || 'Customer'}_${Date.now()}.xlsx`);
-    toast.success('Exported to Excel');
-  };
+  // ==================== PDF EXPORT - REMOVED ====================
+  // exportToPDF function completely removed
 
-  // ==================== PDF EXPORT - WITHOUT EMOJIS ====================
-  const exportToPDF = async () => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    let yPos = 12;
-    const margin = 14;
-
-    const maxLogoW = 32;
-    const maxLogoH = 32;
-    const textX = margin + maxLogoW + 8;
-
-    try {
-      const { dataUrl, width, height } = await loadImageAsBase64(logo);
-      const ratio = Math.min(maxLogoW / width, maxLogoH / height);
-      const drawW = width * ratio;
-      const drawH = height * ratio;
-      const logoX = margin + (maxLogoW - drawW) / 2;
-      const logoY = yPos + (maxLogoH - drawH) / 2;
-      doc.addImage(dataUrl, 'JPEG', logoX, logoY, drawW, drawH);
-    } catch (e) {
-      console.warn('Logo could not be loaded for PDF', e);
-    }
-
-    doc.setFontSize(20);
-    doc.setTextColor(26, 26, 46);
-    doc.text('NOORANI CAR A/C & AUTOS', textX, yPos + 12);
-
-    doc.setFontSize(11);
-    doc.setTextColor(100, 100, 100);
-    doc.text('Professional Auto Care Service', textX, yPos + 20);
-
-    yPos = yPos + maxLogoH + 8;
-
-    doc.setFontSize(9);
-    doc.setTextColor(80, 80, 80);
-    doc.text('Shop # 02, Hospital, Gulshan Luxury Apartments', margin, yPos);
-    yPos += 5;
-    doc.text('Near Al Mustafa St, Gulshan 13-B Block 13 B', margin, yPos);
-    yPos += 5;
-    doc.text('Gulshan-e-Iqbal, Karachi  •  0337 3267363', margin, yPos);
-    yPos += 12;
-    
-    doc.setFontSize(11);
-    doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'bold');
-    doc.text('CUSTOMER INFORMATION', margin, yPos);
-    yPos += 6;
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    
-    const invoiceDate = customerDetails.date ? new Date(customerDetails.date) : new Date();
-    const formattedDate = invoiceDate.toLocaleDateString('en-US', { 
-      month: '2-digit', 
-      day: '2-digit', 
-      year: 'numeric' 
-    });
-    
-    const customerFields = [
-      ['Name:', customerDetails.name || 'N/A'],
-      ['Phone:', customerDetails.phone || 'N/A'],
-      ['Email:', customerDetails.email || 'N/A'],
-      ['Car Number:', customerDetails.carNumber || 'N/A'],
-      ['Car Model:', customerDetails.carModel || 'N/A'],
-      ['Birthday:', customerBirthday ? getFormattedBirthday(customerBirthday) : 'Not Provided'],
-      ['Date:', formattedDate]
-    ];
-    
-    const col1Width = 45;
-    customerFields.forEach(([label, value]) => {
-      doc.setFont('helvetica', 'bold');
-      doc.text(label, margin, yPos);
-      doc.setFont('helvetica', 'normal');
-      doc.text(value, margin + col1Width, yPos);
-      yPos += 6;
-    });
-    yPos += 4;
-    
-    const tableData = cart.map((item) => [
-      item.name + (item.mileage ? ` (Mileage: ${item.mileage} km)` : ''),
-      item.type === 'service' ? 'Service' : 'Part',
-      item.quantity,
-      `Rs. ${roundToTwo(item.price).toLocaleString()}`,
-      `Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}`
-    ]);
-    
-    doc.autoTable({
-      startY: yPos,
-      head: [['Item', 'Type', 'Qty', 'Price', 'Total']],
-      body: tableData,
-      theme: 'striped',
-      headStyles: { 
-        fillColor: [26, 26, 46],
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        halign: 'center'
-      },
-      columnStyles: {
-        0: { cellWidth: 70 },
-        1: { cellWidth: 25, halign: 'center' },
-        2: { cellWidth: 20, halign: 'center' },
-        3: { cellWidth: 35, halign: 'right' },
-        4: { cellWidth: 35, halign: 'right' }
-      },
-      styles: {
-        fontSize: 10,
-        cellPadding: 4
-      },
-      margin: { left: margin, right: margin }
-    });
-    
-    let finalY = doc.lastAutoTable.finalY + 8;
-    const displayPaidAmount = roundToTwo(paidAmount);
-    const displayRemainingAmount = roundToTwo(remainingAmount);
-    const displayDiscount = roundToTwo(discountAmount);
-    
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PAYMENT DETAILS', margin, finalY);
-    finalY += 6;
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    
-    const isFullyPaidStatus = isFullyPaid;
-    
-    const paymentFields = [
-      ['Subtotal:', `Rs. ${roundToTwo(subtotal).toLocaleString()}`],
-      ...(discountAmount > 0 ? [['Discount:', `- Rs. ${displayDiscount.toLocaleString()}`]] : []),
-      ['Total Amount:', `Rs. ${roundToTwo(billTotal).toLocaleString()}`],
-      ['Paid Amount:', `Rs. ${displayPaidAmount.toLocaleString()}`],
-      ['Payment Method:', getPaymentMethodDisplay()],
-      ['Remaining Balance:', `Rs. ${displayRemainingAmount.toLocaleString()}`],
-      ['Payment Status:', isFullyPaidStatus ? 'FULLY PAID' : 'PENDING']
-    ];
-    
-    paymentFields.forEach(([label, value]) => {
-      const isTotal = label === 'Total Amount:';
-      const isDiscount = label === 'Discount:';
-      const isStatus = label === 'Payment Status:';
-      
-      if (isTotal) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.setTextColor(220, 38, 38);
-      } else if (isDiscount) {
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(10);
-        doc.setTextColor(220, 38, 38);
-      } else if (isStatus) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(isFullyPaidStatus ? 34 : 220, isFullyPaidStatus ? 197 : 38, isFullyPaidStatus ? 94 : 38);
-      } else {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-      }
-      
-      const labelWidth = 50;
-      doc.text(label, margin, finalY);
-      doc.text(value, margin + labelWidth, finalY);
-      finalY += 7;
-    });
-    
-    finalY += 8;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(0, 0, 0);
-    doc.text('Customer Signature: _________________', margin, finalY);
-    doc.text('Authorized Signature: _________________', 120, finalY);
-    finalY += 12;
-    
-    doc.setFontSize(8);
-    doc.setTextColor(80, 80, 80);
-    doc.text('Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B, Gulshan-e-Iqbal, Karachi', margin, finalY);
-    finalY += 4;
-    doc.text('Phone: 0337 3267363  •  Facebook: Noorani.Car.AC  •  Instagram: nooranicarac', margin, finalY);
-    
-    doc.save(`Bill_${customerDetails.name || 'Customer'}_${Date.now()}.pdf`);
-    toast.success('PDF exported successfully!');
-  };
+  // ==================== EXCEL EXPORT - REMOVED ====================
+  // exportToExcel function completely removed
 
   // handlePayment — Payment amount is OPTIONAL, 0 allowed
   const handlePayment = async () => {
@@ -1441,10 +1225,12 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                         <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>{service.category}</p>
                         <p className="text-red-500 font-bold text-lg mt-2">Rs. {service.price.toLocaleString()}</p>
                       </div>
-                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                        <button onClick={(e) => { e.stopPropagation(); openEditServiceModal(service); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteService(service.id, service.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
-                      </div>
+                      {isAdmin && (
+                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                          <button onClick={(e) => { e.stopPropagation(); openEditServiceModal(service); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteService(service.id, service.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1462,10 +1248,12 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                       <div className="text-right">
                         <p className="text-red-500 font-bold">Rs. {service.price.toLocaleString()}</p>
                       </div>
-                      <div className="absolute right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                        <button onClick={(e) => { e.stopPropagation(); openEditServiceModal(service); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteService(service.id, service.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
-                      </div>
+                      {isAdmin && (
+                        <div className="absolute right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                          <button onClick={(e) => { e.stopPropagation(); openEditServiceModal(service); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteService(service.id, service.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1492,10 +1280,12 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                           {stock < 5 && stock > 0 && <p className="text-xs text-yellow-500 mt-1">Only {stock} left!</p>}
                           {isOutOfStock && <p className="text-xs text-red-500 mt-1">Out of stock!</p>}
                         </div>
-                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                          <button onClick={(e) => { e.stopPropagation(); openEditProductModal(product); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id, product.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
-                        </div>
+                        {isAdmin && (
+                          <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <button onClick={(e) => { e.stopPropagation(); openEditProductModal(product); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id, product.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1523,10 +1313,12 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                           <p className="text-red-500 font-bold">Rs. {product.selling_price.toLocaleString()}</p>
                           {stock < 5 && stock > 0 && <p className="text-xs text-yellow-500">Only {stock} left!</p>}
                         </div>
-                        <div className="absolute right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                          <button onClick={(e) => { e.stopPropagation(); openEditProductModal(product); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id, product.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
-                        </div>
+                        {isAdmin && (
+                          <div className="absolute right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <button onClick={(e) => { e.stopPropagation(); openEditProductModal(product); }} className="p-1 rounded bg-blue-500 text-white hover:bg-blue-600 text-xs"><FiEdit2 size={12} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteProduct(product.id, product.name); }} className="p-1 rounded bg-red-500 text-white hover:bg-red-600 text-xs"><FiTrash2 size={12} /></button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1742,65 +1534,45 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                     )}
                   </div>
 
-                  {/* ROW 1: CREATE INVOICE, PRINT, EXCEL, PDF */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2">
+                  {/* ✅ UPDATED: PAY NOW + SAVE AS DRAFT - UPPAR */}
+                  <div className="grid grid-cols-2 gap-2 pt-2">
                     <button 
                       onClick={handlePayment} 
                       disabled={isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank)} 
-                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
+                      className={`px-3 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 text-sm ${
                         isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank)
                           ? 'bg-gray-400 cursor-not-allowed' 
                           : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
                       }`}
                     >
-                      {isProcessing ? <FiLoader className="animate-spin" size={16} /> : <FiDollarSign size={16} />} 
-                      <span className="truncate">{isProcessing ? 'PROCESSING...' : 'CREATE'}</span>
+                      {isProcessing ? <FiLoader className="animate-spin" size={18} /> : <FiDollarSign size={18} />} 
+                      <span className="truncate">{isProcessing ? 'PROCESSING...' : '💳 PAY NOW'}</span>
                     </button>
                     
                     <button 
-                      onClick={printBill} 
-                      disabled={cart.length === 0}
-                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
-                        cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-white'
-                      }`}
-                    >
-                      <FiPrinter size={16} /> PRINT
-                    </button>
-                    
-                    <button 
-                      onClick={exportToExcel} 
-                      disabled={cart.length === 0}
-                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
-                        cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                      }`}
-                    >
-                      <FiFileText size={16} /> EXCEL
-                    </button>
-                    
-                    <button 
-                      onClick={exportToPDF} 
-                      disabled={cart.length === 0}
-                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
-                        cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white'
-                      }`}
-                    >
-                      <FiDownload size={16} /> PDF
-                    </button>
-                  </div>
-
-                  {/* ROW 2: DISCARD ONLY */}
-                  <div className="grid grid-cols-1 gap-2 pt-1">
-                    <button 
-                      onClick={handleDiscard} 
-                      disabled={isDiscarding || cart.length === 0} 
-                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-1.5 text-sm ${
-                        isDiscarding || cart.length === 0 
+                      onClick={handleSaveDraft} 
+                      disabled={isSavingDraft || cart.length === 0} 
+                      className={`px-3 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 text-sm ${
+                        isSavingDraft || cart.length === 0 
                           ? 'bg-gray-400 cursor-not-allowed' 
                           : 'bg-yellow-500 hover:bg-yellow-600 text-white'
                       }`}
                     >
-                      {isDiscarding ? <FiLoader className="animate-spin" size={16} /> : <FiArchive size={16} />} 
-                      {isDiscarding ? 'DISCARDING...' : 'DISCARD BILL'}
+                      {isSavingDraft ? <FiLoader className="animate-spin" size={18} /> : <FiArchive size={18} />} 
+                      {isSavingDraft ? 'SAVING...' : '💾 SAVE AS DRAFT'}
+                    </button>
+                  </div>
+
+                  {/* ✅ PRINT BUTTON - NEEECHE */}
+                  <div className="grid grid-cols-1 gap-2 pt-1">
+                    <button 
+                      onClick={printBill} 
+                      disabled={cart.length === 0}
+                      className={`px-3 py-2.5 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 text-sm ${
+                        cart.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-white'
+                      }`}
+                    >
+                      <FiPrinter size={18} /> 🖨️ PRINT BILL
                     </button>
                   </div>
                 </div>

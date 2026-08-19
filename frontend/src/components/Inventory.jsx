@@ -72,7 +72,7 @@ const debounce = (func, delay) => {
   };
 };
 
-// ✅ Product Row Component - WITH LOW STOCK THRESHOLD
+// ✅ Product Row Component - WITH LOW STOCK UI (NO EMAIL)
 const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, onSaveEdit, onKeyPress, onEditProduct, onDeleteProduct, onToggleHide, formatPrice, isAdmin }) => {
   const isEditingName = editingCell.productId === product.id && editingCell.field === 'name';
   const isEditingPurchase = editingCell.productId === product.id && editingCell.field === 'purchasePrice';
@@ -161,7 +161,7 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
         </td>
       )}
 
-      {/* ✅ STOCK - Uses product's threshold for color */}
+      {/* ✅ STOCK - UI Alert only (NO EMAIL) */}
       <td className="px-6 py-4">
         {isEditingQuantity ? (
           <input
@@ -182,16 +182,16 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
               product.quantity === 0 ? 'text-red-500' : 
               darkMode ? 'text-white' : 'text-gray-900'
             } hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1 rounded transition`} 
-            title="Double-click to edit stock"
+            title={`Double-click to edit stock (Low stock at: ${threshold})`}
           >
             {product.quantity}
-            {product.quantity < threshold && product.quantity > 0 && <FiAlertCircle className="text-xs" />}
-            {product.quantity === 0 && <FiX className="text-xs" />}
+            {product.quantity < threshold && product.quantity > 0 && <FiAlertCircle className="text-xs" title={`Low stock! Below ${threshold}`} />}
+            {product.quantity === 0 && <FiX className="text-xs" title="Out of stock!" />}
           </div>
         )}
       </td>
 
-      {/* ✅ NEW: Low Stock At - Editable column (Admin only) */}
+      {/* ✅ Low Stock At - Editable column (Admin only) */}
       {isAdmin && (
         <td className="px-6 py-4">
           {isEditingThreshold ? (
@@ -217,12 +217,12 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
         </td>
       )}
 
-      {/* ✅ NEW: Invoice No - Placeholder (will be implemented later) */}
+      {/* Invoice No - Placeholder */}
       <td className="px-6 py-4 text-sm text-gray-400">
         -
       </td>
 
-      {/* ✅ NEW: Vendor - Placeholder (will be implemented later) */}
+      {/* Vendor - Placeholder */}
       <td className="px-6 py-4 text-sm text-gray-400">
         -
       </td>
@@ -1195,11 +1195,9 @@ const Inventory = ({ darkMode }) => {
                     Low Stock At
                   </th>
                 )}
-                {/* ✅ NEW: Invoice No Column */}
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
                   Invoice No
                 </th>
-                {/* ✅ NEW: Vendor Column */}
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
                   Vendor
                 </th>
@@ -1323,7 +1321,7 @@ const Inventory = ({ darkMode }) => {
           </table>
         </div>
         
-        {/* SUMMARY CARD */}
+        {/* SUMMARY CARD - NO EMAIL, ONLY UI */}
         <div className={`px-6 py-3 border-t ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-4 flex-wrap">
@@ -1454,7 +1452,7 @@ const Inventory = ({ darkMode }) => {
                   min="0" 
                 />
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Stock below this number will show yellow alert
+                  ⚠️ UI alert only - No email will be sent
                 </p>
               </div>
               

@@ -54,6 +54,24 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     }
   }, []);
 
+  // ✅ FORCE UPDATE - Always set current date when component mounts
+  useEffect(() => {
+    const today = new Date();
+    const currentDate = today.toISOString().split('T')[0];
+    setInvoiceDate(currentDate);
+    console.log('📅 Current date set to:', currentDate);
+  }, []);
+
+  // ✅ Update invoiceDate when initialData changes (for restored data)
+  useEffect(() => {
+    if (initialData?.date) {
+      const datePart = initialData.date.split('T')[0];
+      if (datePart) {
+        setInvoiceDate(datePart);
+      }
+    }
+  }, [initialData]);
+
   // Format date for input field (YYYY-MM-DD)
   const formatDateForInput = (date) => {
     if (!date) return '';
@@ -235,28 +253,32 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     searchCustomerHistory();
   }, [customerDetails.phone]);
 
-  // ✅ Handle submit with Date & Time
+  // ✅ Handle submit with Date & Time - Name empty ho toh "Walk-in" set karo
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // ✅ Combine date and time into full datetime
-    const dateTime = new Date(`${invoiceDate}T${invoiceTime}:00`);
-    const fullDateTime = dateTime.toISOString();
+    // ✅ Pakistan Time mein date/time banao (NO UTC conversion)
+    // Directly string format mein bhejo "YYYY-MM-DD HH:MM:SS"
+    const dateTimeStr = `${invoiceDate} ${invoiceTime}:00`;
+    
+    // ✅ If name is empty, set it to "Walk-in"
+    const customerName = customerDetails.name?.trim() || 'Walk-in';
     
     console.log('📅 Invoice DateTime:', {
       date: invoiceDate,
       time: invoiceTime,
-      full: fullDateTime
+      full: dateTimeStr,
+      name: customerName
     });
     
     onCustomerSubmit({
-      name: customerDetails.name || '',
+      name: customerName,
       phone: customerDetails.phone || '',
       email: customerDetails.email || '',
       carNumber: customerDetails.carNumber || '',
       carModel: customerDetails.carModel || '',
       birthday: customerDetails.birthday || '',
-      date: fullDateTime // ✅ Full datetime with time
+      date: dateTimeStr // ✅ Plain string, not ISO
     });
   };
 
@@ -285,7 +307,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             <p className="text-xs opacity-80 flex items-center gap-1"><FiCalendar className="text-xs" /> Date</p>
             <input
               type="date"
-              value={customerDetails.date ? customerDetails.date.split('T')[0] : invoiceDate}
+              value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
               className="px-3 py-1 rounded-lg bg-white/20 text-white border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 w-36"
             />
@@ -308,9 +330,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 value={customerDetails.phone}
                 onChange={(e) => updateField('phone', e.target.value)}
                 placeholder="Enter phone number (auto-searches history)"
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-                }`}
+                ]}`}
               />
               {searching && (
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -335,9 +357,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               value={customerDetails.name}
               onChange={(e) => updateField('name', e.target.value)}
               placeholder="Enter customer name (optional)"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-              }`}
+              ]}`}
             />
           </div>
           
@@ -354,9 +376,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 value={customerDetails.email}
                 onChange={(e) => updateField('email', e.target.value)}
                 placeholder="customer@example.com"
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-                }`}
+                ]}`}
               />
               <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
                 <FiClock className="text-xs" /> We'll send a service reminder after 6 months
@@ -376,9 +398,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               value={customerDetails.carNumber}
               onChange={(e) => updateField('carNumber', e.target.value)}
               placeholder="e.g., ABC-1234 (optional)"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-              }`}
+              ]}`}
             />
           </div>
           
@@ -394,9 +416,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               value={customerDetails.carModel}
               onChange={(e) => updateField('carModel', e.target.value)}
               placeholder="e.g., Toyota Corolla 2020"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-              }`}
+              ]}`}
             />
           </div>
 
@@ -413,9 +435,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 value={customerDetails.birthday}
                 onChange={handleBirthdayChange}
                 placeholder="e.g. 01/15/1990"
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-                } ${customerDetails.birthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`}
+                ]} ${customerDetails.birthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`}
                 maxLength={10}
                 inputMode="numeric"
               />
@@ -455,9 +477,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                   type="date"
                   value={invoiceDate}
                   onChange={(e) => setInvoiceDate(e.target.value)}
-                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                     darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
-                  }`}
+                  ]}`}
                 />
               </div>
               <div>
@@ -465,9 +487,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                   type="time"
                   value={invoiceTime}
                   onChange={(e) => setInvoiceTime(e.target.value)}
-                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
+                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
                     darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
-                  }`}
+                  ]}`}
                 />
               </div>
             </div>

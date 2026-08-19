@@ -187,9 +187,10 @@ class InvoiceController extends Controller
                 $status = 'Pending';
             }
 
+            // ✅ Use Pakistan time zone for invoice date
             $invoiceDateTime = !empty($validated['invoice_date'])
-                ? Carbon::parse($validated['invoice_date'])
-                : Carbon::now();
+                ? Carbon::parse($validated['invoice_date'])->timezone('Asia/Karachi')
+                : Carbon::now('Asia/Karachi');
 
             $invoiceId = DB::table('invoices')->insertGetId([
                 'invoice_no' => $validated['invoice_no'],
@@ -209,17 +210,13 @@ class InvoiceController extends Controller
                 'status' => $status,
                 'invoice_date' => $invoiceDateTime,
                 'created_by' => auth()->id(),
-                'created_at' => Carbon::now(),
-                'updated_at' => Carbon::now()
+                'created_at' => Carbon::now('Asia/Karachi'),
+                'updated_at' => Carbon::now('Asia/Karachi')
             ]);
 
             Log::info('✅ Invoice created: ID ' . $invoiceId . ' by user: ' . auth()->id());
 
-            // ✅ FIX: agar invoice creation ke waqt hi koi advance/partial
-            // payment li gayi ho (paidAmount > 0), tw usay bhi payment_histories
-            // table mein log karo. $invoiceDateTime already Carbon object hai
-            // (upar Carbon::parse / Carbon::now se bana), isliye MySQL datetime
-            // format ka masla yahan nahi ata.
+            // ✅ Save initial payment history if paid_amount > 0
             if ($paidAmount > 0) {
                 try {
                     DB::table('payment_histories')->insert([
@@ -229,8 +226,8 @@ class InvoiceController extends Controller
                         'payment_method' => $validated['payment_method'] ?? 'cash',
                         'paid_at' => $invoiceDateTime->format('Y-m-d H:i:s'),
                         'created_by' => auth()->id(),
-                        'created_at' => Carbon::now(),
-                        'updated_at' => Carbon::now()
+                        'created_at' => Carbon::now('Asia/Karachi'),
+                        'updated_at' => Carbon::now('Asia/Karachi')
                     ]);
                     Log::info('✅ Initial payment history saved for invoice: ' . $validated['invoice_no'] . ' | Amount: ' . $paidAmount);
                 } catch (\Exception $e) {
@@ -247,8 +244,8 @@ class InvoiceController extends Controller
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     'total' => $item['price'] * $item['quantity'],
-                    'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
+                    'created_at' => Carbon::now('Asia/Karachi'),
+                    'updated_at' => Carbon::now('Asia/Karachi')
                 ]);
             }
 
@@ -339,7 +336,7 @@ class InvoiceController extends Controller
                 'remaining_amount' => $validated['remaining_amount'] ?? $invoice->remaining_amount,
                 'payment_method' => $validated['payment_method'] ?? $invoice->payment_method,
                 'status' => $validated['status'] ?? $invoice->status,
-                'updated_at' => Carbon::now()
+                'updated_at' => Carbon::now('Asia/Karachi')
             ]);
 
             DB::commit();
@@ -575,7 +572,7 @@ class InvoiceController extends Controller
         }
     }
 
-    // ✅ ==================== UPDATE PENDING PAYMENT - WITH PAYMENT HISTORY ====================
+    // ✅ ==================== UPDATE PENDING PAYMENT - WITH PAYMENT HISTORY & TIMEZONE FIX ====================
     public function updatePendingPayment(Request $request, $id)
     {
         try {
@@ -606,14 +603,10 @@ class InvoiceController extends Controller
 
             $paymentMethod = $request->payment_method ?? $invoice->payment_method ?? 'Cash';
 
-            // ✅ FIX: Frontend JS ka new Date().toISOString() format bhejta hai
-            // jaise "2026-08-17T19:49:50.895Z" - MySQL datetime column ye
-            // format directly accept nahi karta (raw string DB::table insert
-            // mein bina cast ke jati hai), isliye Carbon::parse() se convert
-            // karna zaroori hai. Ye fix na hone ki wajah se payment_histories
-            // insert har baar silently fail ho raha tha (sirf invoice ka
-            // paid_amount update hota tha, history row nahi banti thi).
-            $paidAt = $request->paid_at ? Carbon::parse($request->paid_at) : Carbon::now();
+            // ✅ FIX: Use Pakistan time zone (UTC+5) for paid_at
+            $paidAt = $request->paid_at 
+                ? Carbon::parse($request->paid_at)->timezone('Asia/Karachi') 
+                : Carbon::now('Asia/Karachi');
 
             // ✅ UPDATE INVOICE
             $invoice->update([
@@ -622,7 +615,7 @@ class InvoiceController extends Controller
                 'status' => $status,
                 'payment_method' => $paymentMethod,
                 'paid_at' => $paidAt,
-                'updated_at' => Carbon::now()
+                'updated_at' => Carbon::now('Asia/Karachi')
             ]);
 
             // ✅ SAVE PAYMENT HISTORY
@@ -632,10 +625,10 @@ class InvoiceController extends Controller
                     'invoice_no' => $invoice->invoice_no,
                     'amount' => $request->amount,
                     'payment_method' => $paymentMethod,
-                    'paid_at' => $paidAt->format('Y-m-d H:i:s'),   // ✅ ab sahi MySQL format mein
+                    'paid_at' => $paidAt->format('Y-m-d H:i:s'),
                     'created_by' => auth()->id(),
-                    'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
+                    'created_at' => Carbon::now('Asia/Karachi'),
+                    'updated_at' => Carbon::now('Asia/Karachi')
                 ]);
                 Log::info('✅ Payment history saved for invoice: ' . $invoice->invoice_no . ' | Amount: ' . $request->amount);
             } catch (\Exception $e) {
@@ -645,7 +638,7 @@ class InvoiceController extends Controller
             Log::info('✅ Payment updated for invoice: ' . $invoice->invoice_no . 
                       ' | Amount: ' . $request->amount . 
                       ' | Payment Method: ' . $paymentMethod . 
-                      ' | Paid At: ' . $paidAt .
+                      ' | Paid At: ' . $paidAt->format('Y-m-d H:i:s') .
                       ' | Remaining: ' . $newRemainingAmount);
 
             return response()->json([

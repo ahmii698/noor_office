@@ -1,8 +1,37 @@
-// src/components/finance/ExpensesRecord.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheckCircle, FiSearch, FiTrendingDown, FiDollarSign, FiHome, FiGrid, FiChevronDown, FiChevronUp, FiFilter, FiFolder, FiFolderPlus } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheckCircle, FiSearch, FiTrendingDown, FiDollarSign, FiHome, FiGrid, FiChevronDown, FiChevronUp, FiFilter, FiFolder, FiFolderPlus, FiCalendar } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+
+const getToday = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+};
+
+const getStartOfWeek = () => {
+  const today = new Date();
+  const day = today.getDay();
+  const diff = (day === 0 ? 6 : day - 1);
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - diff);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+};
+
+const getStartOfMonth = () => {
+  const date = new Date();
+  date.setDate(1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const getStartOfYear = () => {
+  const date = new Date();
+  date.setMonth(0, 1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
 
 const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, refreshExpenses }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -10,6 +39,12 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('fixed');
   const [localExpenses, setLocalExpenses] = useState(expenses);
+  
+  // ✅ Date Filter States
+  const [dateFilter, setDateFilter] = useState('all');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+  const [showCustomDate, setShowCustomDate] = useState(false);
   
   // ✅ Category filter state - for Other sub-categories
   const [selectedSubCategory, setSelectedSubCategory] = useState('all');
@@ -60,7 +95,23 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     setLocalExpenses(expenses);
   }, [expenses]);
 
-  // ✅ Filtered expenses based on tab, search, and sub-category filter
+  // ✅ Get date filter label
+  const getDateFilterLabel = () => {
+    const labels = {
+      all: 'All Time',
+      today: 'Today',
+      week: 'This Week',
+      month: 'This Month',
+      year: 'This Year',
+      custom: 'Custom Range'
+    };
+    if (dateFilter === 'custom' && customDateFrom && customDateTo) {
+      return `${customDateFrom} to ${customDateTo}`;
+    }
+    return labels[dateFilter] || 'All Time';
+  };
+
+  // ✅ Filtered expenses based on tab, search, date, and sub-category filter
   const filteredExpenses = useMemo(() => {
     let filtered = localExpenses;
     
@@ -68,8 +119,46 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     if (activeTab === 'fixed') {
       filtered = filtered.filter(exp => fixedCategories.includes(exp.category));
     } else {
-      // ✅ Other tab: show all non-fixed expenses
       filtered = filtered.filter(exp => !fixedCategories.includes(exp.category));
+    }
+    
+    // ✅ Date filter
+    if (dateFilter === 'custom' && customDateFrom && customDateTo) {
+      const fromDate = new Date(customDateFrom);
+      const toDate = new Date(customDateTo);
+      toDate.setHours(23, 59, 59, 999);
+      
+      filtered = filtered.filter(exp => {
+        const expDate = new Date(exp.expense_date || exp.date);
+        return expDate >= fromDate && expDate <= toDate;
+      });
+    } else if (dateFilter !== 'all' && dateFilter !== 'custom') {
+      const now = new Date();
+      let startDate;
+      
+      switch (dateFilter) {
+        case 'today':
+          startDate = getToday();
+          break;
+        case 'week':
+          startDate = getStartOfWeek();
+          break;
+        case 'month':
+          startDate = getStartOfMonth();
+          break;
+        case 'year':
+          startDate = getStartOfYear();
+          break;
+        default:
+          startDate = null;
+      }
+      
+      if (startDate) {
+        filtered = filtered.filter(exp => {
+          const expDate = new Date(exp.expense_date || exp.date);
+          return expDate >= startDate && expDate <= now;
+        });
+      }
     }
     
     // ✅ Sub-category filter (only for Other tab)
@@ -88,9 +177,9 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     }
     
     return filtered;
-  }, [localExpenses, activeTab, searchTerm, selectedSubCategory, fixedCategories]);
+  }, [localExpenses, activeTab, searchTerm, dateFilter, customDateFrom, customDateTo, selectedSubCategory, fixedCategories]);
 
-  // ✅ Total expenses
+  // ✅ Total expenses (filtered)
   const totalExpenses = useMemo(() => 
     filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
     [filteredExpenses]
@@ -168,7 +257,6 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     
-    // ✅ Handle Other category with sub-category
     let finalCategory = formData.category;
     if (showOtherInput && otherSubCategory.trim()) {
       finalCategory = `Other/${otherSubCategory.trim()}`;
@@ -299,7 +387,6 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
       nextPaymentDate: expense.next_payment_date || ''
     });
     
-    // ✅ Check if category starts with "Other/"
     if (expense.category?.startsWith('Other/')) {
       setShowOtherInput(true);
       setOtherSubCategory(expense.category.replace('Other/', ''));
@@ -333,6 +420,18 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
   }, []);
 
   const clearSearch = useCallback(() => setSearchTerm(''), []);
+
+  // ✅ Handle date filter change
+  const handleDateFilterChange = useCallback((filter) => {
+    setDateFilter(filter);
+    if (filter === 'custom') {
+      setShowCustomDate(true);
+    } else {
+      setShowCustomDate(false);
+      setCustomDateFrom('');
+      setCustomDateTo('');
+    }
+  }, []);
 
   // ✅ Get category color
   const getCategoryColor = (category) => {
@@ -398,120 +497,217 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
           </div>
         </div>
         
-        {/* Tab Buttons */}
-        <div className="flex gap-4 mt-4 border-b border-gray-200 dark:border-gray-700">
-          <button
-            onClick={() => { 
-              setActiveTab('fixed'); 
-              setSelectedSubCategory('all'); 
-              setShowSubCategoryDropdown(false);
-            }}
-            className={`px-4 py-2 font-semibold transition flex items-center gap-2 ${
-              activeTab === 'fixed'
-                ? 'text-red-500 border-b-2 border-red-500'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            <FiHome className="text-lg" /> Fixed Monthly Expenses
-            <span className="ml-1 text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-              {fixedCount}
-            </span>
-          </button>
-          
-          {/* ✅ Other Expenses Tab with Sub-Category Dropdown - FIXED: no auto-open */}
-          <div className="relative">
+        {/* Tabs and Date Filters */}
+        <div className="flex flex-wrap justify-between items-center mt-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex gap-4">
             <button
               onClick={() => { 
-                setActiveTab('other');
-                // ✅ Don't toggle dropdown on tab click - only arrow click
-                if (activeTab !== 'other') {
-                  setSelectedSubCategory('all');
-                  setShowSubCategoryDropdown(false);
-                }
+                setActiveTab('fixed'); 
+                setSelectedSubCategory('all'); 
+                setShowSubCategoryDropdown(false);
               }}
               className={`px-4 py-2 font-semibold transition flex items-center gap-2 ${
-                activeTab === 'other'
+                activeTab === 'fixed'
                   ? 'text-red-500 border-b-2 border-red-500'
                   : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
             >
-              <FiGrid className="text-lg" /> Other Expenses
+              <FiHome className="text-lg" /> Fixed Monthly
               <span className="ml-1 text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
-                {otherCount}
+                {fixedCount}
               </span>
-              {/* ✅ Dropdown arrow - click to toggle dropdown */}
-              <button
-                onClick={toggleSubCategoryDropdown}
-                className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition ${activeTab === 'other' ? 'text-red-500' : 'text-gray-400'}`}
-                title="Filter by sub-category"
-              >
-                <FiChevronDown className={`text-sm transition-transform ${showSubCategoryDropdown ? 'rotate-180' : ''}`} />
-              </button>
             </button>
             
-            {/* ✅ Sub-Category Dropdown - Only shows when Other tab is active AND dropdown is toggled */}
-            {activeTab === 'other' && showSubCategoryDropdown && (
-              <div className={`absolute left-0 z-10 mt-1 w-64 max-h-60 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                <div className="p-2">
-                  <button
-                    onClick={() => handleSubCategorySelect('all')}
-                    className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === 'all' ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                  >
-                    <span>📊 All Other Expenses</span>
-                    <span className={`text-xs ${selectedSubCategory === 'all' ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      ({otherCount})
-                    </span>
-                  </button>
-                  
-                  {/* Base categories (General, Maintenance, etc.) */}
-                  {baseOtherCategories.map(cat => {
-                    const count = getCategoryCount(cat);
-                    if (count > 0) {
-                      return (
-                        <button
-                          key={cat}
-                          onClick={() => handleSubCategorySelect(cat)}
-                          className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === cat ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                        >
-                          <span>{cat}</span>
-                          <span className={`text-xs ${selectedSubCategory === cat ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            ({count})
-                          </span>
-                        </button>
-                      );
-                    }
-                    return null;
-                  })}
-                  
-                  {/* ✅ Other/ Sub-categories */}
-                  {otherSubCategories.length > 0 && (
-                    <>
-                      <div className="text-xs font-semibold text-purple-400 px-3 py-1 mt-2 border-t dark:border-gray-700">📂 Sub-Categories</div>
-                      {otherSubCategories.map(subCat => {
-                        const count = getSubCategoryCount(subCat);
+            <div className="relative">
+              <button
+                onClick={() => { 
+                  setActiveTab('other');
+                  if (activeTab !== 'other') {
+                    setSelectedSubCategory('all');
+                    setShowSubCategoryDropdown(false);
+                  }
+                }}
+                className={`px-4 py-2 font-semibold transition flex items-center gap-2 ${
+                  activeTab === 'other'
+                    ? 'text-red-500 border-b-2 border-red-500'
+                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                <FiGrid className="text-lg" /> Other
+                <span className="ml-1 text-xs bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                  {otherCount}
+                </span>
+                <button
+                  onClick={toggleSubCategoryDropdown}
+                  className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition ${activeTab === 'other' ? 'text-red-500' : 'text-gray-400'}`}
+                  title="Filter by sub-category"
+                >
+                  <FiChevronDown className={`text-sm transition-transform ${showSubCategoryDropdown ? 'rotate-180' : ''}`} />
+                </button>
+              </button>
+              
+              {activeTab === 'other' && showSubCategoryDropdown && (
+                <div className={`absolute left-0 z-10 mt-1 w-64 max-h-60 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                  <div className="p-2">
+                    <button
+                      onClick={() => handleSubCategorySelect('all')}
+                      className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === 'all' ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                    >
+                      <span>📊 All Other Expenses</span>
+                      <span className={`text-xs ${selectedSubCategory === 'all' ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        ({otherCount})
+                      </span>
+                    </button>
+                    
+                    {baseOtherCategories.map(cat => {
+                      const count = getCategoryCount(cat);
+                      if (count > 0) {
                         return (
                           <button
-                            key={subCat}
-                            onClick={() => handleSubCategorySelect(subCat)}
-                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === subCat ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                            key={cat}
+                            onClick={() => handleSubCategorySelect(cat)}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === cat ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
                           >
-                            <span className="flex items-center gap-2">
-                              <FiFolder className="text-purple-500 text-xs" />
-                              Other/{subCat}
-                            </span>
-                            <span className={`text-xs ${selectedSubCategory === subCat ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <span>{cat}</span>
+                            <span className={`text-xs ${selectedSubCategory === cat ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                               ({count})
                             </span>
                           </button>
                         );
-                      })}
-                    </>
-                  )}
+                      }
+                      return null;
+                    })}
+                    
+                    {otherSubCategories.length > 0 && (
+                      <>
+                        <div className="text-xs font-semibold text-purple-400 px-3 py-1 mt-2 border-t dark:border-gray-700">📂 Sub-Categories</div>
+                        {otherSubCategories.map(subCat => {
+                          const count = getSubCategoryCount(subCat);
+                          return (
+                            <button
+                              key={subCat}
+                              onClick={() => handleSubCategorySelect(subCat)}
+                              className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex justify-between items-center ${selectedSubCategory === subCat ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                            >
+                              <span className="flex items-center gap-2">
+                                <FiFolder className="text-purple-500 text-xs" />
+                                Other/{subCat}
+                              </span>
+                              <span className={`text-xs ${selectedSubCategory === subCat ? 'text-white' : darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                ({count})
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          </div>
+          
+          {/* ✅ Date Filter Buttons */}
+          <div className="flex gap-1 flex-wrap py-2">
+            <button
+              onClick={() => handleDateFilterChange('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'all' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => handleDateFilterChange('today')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'today' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => handleDateFilterChange('week')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'week' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              This Week
+            </button>
+            <button
+              onClick={() => handleDateFilterChange('month')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'month' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              This Month
+            </button>
+            <button
+              onClick={() => handleDateFilterChange('year')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'year' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              This Year
+            </button>
+            <button
+              onClick={() => handleDateFilterChange('custom')}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${
+                dateFilter === 'custom' ? 'bg-purple-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <FiCalendar className="inline mr-1" /> Custom
+            </button>
           </div>
         </div>
+        
+        {/* ✅ Custom Date Range Inputs */}
+        {showCustomDate && (
+          <div className={`p-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 bg-purple-50 dark:bg-purple-900/10 mt-2`}>
+            <div className="flex items-center gap-2">
+              <FiCalendar className={`${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+              <span className={`text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-700'}`}>Custom Date Range:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>From</label>
+              <input
+                type="date"
+                value={customDateFrom}
+                onChange={(e) => setCustomDateFrom(e.target.value)}
+                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                }`}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>To</label>
+              <input
+                type="date"
+                value={customDateTo}
+                onChange={(e) => setCustomDateTo(e.target.value)}
+                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
+                }`}
+              />
+            </div>
+            <button
+              onClick={() => {
+                if (customDateFrom && customDateTo) {
+                  toast.success(`Showing records from ${customDateFrom} to ${customDateTo}`);
+                } else {
+                  toast.warning('Please select both From and To dates');
+                }
+              }}
+              className="px-4 py-1.5 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition flex items-center gap-1 shadow-md"
+            >
+              <FiCalendar className="text-sm" /> Apply Range
+            </button>
+            {customDateFrom && customDateTo && (
+              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                Showing: {customDateFrom} → {customDateTo} ({filteredExpenses.length} records)
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={`px-6 py-2 text-sm ${darkMode ? 'text-gray-400 bg-gray-800' : 'text-gray-500 bg-gray-50'}`}>
@@ -530,6 +726,9 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                   • Filtered: {selectedSubCategory.startsWith('Other/') ? selectedSubCategory : `Other/${selectedSubCategory}`}
                 </span>
               )}
+              <span className="ml-2 text-red-400 font-medium">
+                • {getDateFilterLabel()}
+              </span>
             </span>
           </div>
         )}

@@ -19,12 +19,13 @@ class Product extends Model
         'purchase_price', 
         'selling_price', 
         'quantity', 
-        'low_stock_threshold', // ✅ ADDED - was missing, so it was never saving!
+        'low_stock_threshold',
+        'category', // ✅ ADDED - for battery category
         'date_added',
         'last_low_stock_notification',
         'vendor_id',
         'is_credit_purchase',
-        'is_hidden' // ✅ Added is_hidden
+        'is_hidden'
     ];
 
     protected $casts = [
@@ -33,8 +34,9 @@ class Product extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'is_credit_purchase' => 'boolean',
-        'is_hidden' => 'boolean', // ✅ Added is_hidden cast
-        'low_stock_threshold' => 'integer', // ✅ ADDED
+        'is_hidden' => 'boolean',
+        'low_stock_threshold' => 'integer',
+        'category' => 'string', // ✅ ADDED
     ];
 
     public $timestamps = true;
@@ -117,7 +119,7 @@ class Product extends Model
     }
 
     /**
-     * Check if product is low stock (✅ now uses this product's own threshold)
+     * Check if product is low stock
      */
     public function isLowStock(): bool
     {
@@ -126,7 +128,7 @@ class Product extends Model
     }
 
     /**
-     * Get stock status label (✅ now uses this product's own threshold)
+     * Get stock status label
      */
     public function getStockStatusAttribute(): string
     {
@@ -144,7 +146,7 @@ class Product extends Model
     }
 
     /**
-     * Get stock status color (✅ now uses this product's own threshold)
+     * Get stock status color
      */
     public function getStockStatusColorAttribute(): string
     {
@@ -231,9 +233,7 @@ class Product extends Model
     }
 
     /**
-     * Scope to get low stock products.
-     * ✅ If no $threshold param passed, compares each row against its OWN
-     * low_stock_threshold column instead of one fixed number for everyone.
+     * Scope to get low stock products
      */
     public function scopeLowStock($query, $threshold = null)
     {
@@ -268,7 +268,7 @@ class Product extends Model
     }
 
     /**
-     * ✅ Scope to get only non-hidden products (active)
+     * Scope to get only non-hidden products (active)
      */
     public function scopeActive($query)
     {
@@ -276,11 +276,20 @@ class Product extends Model
     }
 
     /**
-     * ✅ Scope to get only hidden products
+     * Scope to get only hidden products
      */
     public function scopeHidden($query)
     {
         return $query->where('is_hidden', 1);
+    }
+
+    /**
+     * Scope to get only battery products
+     */
+    public function scopeBattery($query)
+    {
+        return $query->where('category', 'Battery')
+                     ->orWhere('name', 'LIKE', '%Battery%');
     }
 
     // ============================================================
@@ -318,12 +327,13 @@ class Product extends Model
     {
         $totalProducts = self::count();
         $totalQuantity = self::sum('quantity');
-        $lowStockCount = self::lowStock()->count(); // ✅ now per-product threshold
+        $lowStockCount = self::lowStock()->count();
         $outOfStockCount = self::outOfStock()->count();
         $creditProducts = self::creditPurchases()->count();
         $normalProducts = self::normalPurchases()->count();
-        $hiddenProducts = self::hidden()->count(); // ✅ Added hidden count
-        $activeProducts = self::active()->count(); // ✅ Added active count
+        $hiddenProducts = self::hidden()->count();
+        $activeProducts = self::active()->count();
+        $batteryProducts = self::battery()->count(); // ✅ Added battery count
 
         return [
             'total_products' => $totalProducts,
@@ -334,6 +344,7 @@ class Product extends Model
             'normal_products' => $normalProducts,
             'hidden_products' => $hiddenProducts,
             'active_products' => $activeProducts,
+            'battery_products' => $batteryProducts, // ✅ Added
             'total_stock_value' => (float) self::getTotalStockValue(),
             'total_selling_value' => (float) self::getTotalSellingValue(),
             'total_profit_potential' => (float) self::getTotalProfitPotential(),
@@ -341,7 +352,7 @@ class Product extends Model
     }
 
     // ============================================================
-    // ✅ EXISTING CODE - LOW STOCK EMAIL
+    // ✅ LOW STOCK EMAIL (unchanged)
     // ============================================================
 
     /**
@@ -349,15 +360,12 @@ class Product extends Model
      */
     protected static function booted()
     {
-        // When product is updated
         static::updated(function ($product) {
-            // ✅ Check against THIS product's own threshold (was hardcoded 10)
             $threshold = $product->low_stock_threshold ?? 5;
             if ($product->quantity < $threshold) {
                 self::sendLowStockEmail($product);
             }
             
-            // Log changes
             if ($product->wasChanged()) {
                 \Log::info('Product updated', [
                     'product_id' => $product->id,
@@ -367,9 +375,7 @@ class Product extends Model
             }
         });
         
-        // When product is created
         static::created(function ($product) {
-            // ✅ Check against THIS product's own threshold (was hardcoded 10)
             $threshold = $product->low_stock_threshold ?? 5;
             if ($product->quantity < $threshold) {
                 self::sendLowStockEmail($product);
@@ -380,12 +386,12 @@ class Product extends Model
                 'name' => $product->name,
                 'quantity' => $product->quantity,
                 'low_stock_threshold' => $product->low_stock_threshold,
+                'category' => $product->category, // ✅ Added
                 'is_credit_purchase' => $product->is_credit_purchase,
                 'is_hidden' => $product->is_hidden,
             ]);
         });
 
-        // When product is deleted
         static::deleted(function ($product) {
             \Log::info('Product deleted', [
                 'product_id' => $product->id,
@@ -419,6 +425,7 @@ class Product extends Model
                         .stock { font-size: 24px; font-weight: bold; color: #dc2626; }
                         .credit-badge { background: #8b5cf6; color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; display: inline-block; }
                         .hidden-badge { background: #f59e0b; color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; display: inline-block; }
+                        .category-badge { background: #3b82f6; color: white; padding: 2px 10px; border-radius: 4px; font-size: 12px; display: inline-block; }
                         .footer { text-align: center; padding: 15px; font-size: 12px; color: #6b7280; }
                     </style>
                 </head>
@@ -433,6 +440,11 @@ class Product extends Model
                             <p>The following product is running low on stock:</p>
                             <div class="product-box">
                                 <div class="product-name">📦 ' . $product->name . '</div>
+                                ' . ($product->category ? '
+                                <div style="margin-top: 5px;">
+                                    <strong>Category:</strong> <span class="category-badge">' . $product->category . '</span>
+                                </div>
+                                ' : '') . '
                                 <div style="margin-top: 10px;">
                                     <strong>Current Stock:</strong> <span class="stock">' . $product->quantity . ' units</span>
                                 </div>

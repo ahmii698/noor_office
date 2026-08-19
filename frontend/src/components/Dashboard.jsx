@@ -7,7 +7,8 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiBell, FiTrendingUp, FiShoppingCart, FiCheckCircle, 
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
-  FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp
+  FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp, FiFile,
+  FiBattery
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -30,6 +31,8 @@ const Reminders = lazy(() => import('./Reminders'));
 const Users = lazy(() => import('./Users'));
 const Credit = lazy(() => import('./finance/Credit'));
 const DiscardedBillsPage = lazy(() => import('./billing/DiscardedBillsPage'));
+const EstimatedBill = lazy(() => import('./EstimatedBill'));
+const BatteryPage = lazy(() => import('./BatteryPage')); // ✅ ADDED
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -60,7 +63,6 @@ const getDateRange = (filter, customDate = null) => {
   const now = new Date();
   const start = new Date();
   
-  // Custom date filter
   if (filter === 'custom' && customDate) {
     const date = new Date(customDate);
     start.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
@@ -122,7 +124,6 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const [userRole, setUserRole] = useState(null);
   
-  // ✅ FIX 1: Safe getDefaultMenu with try-catch
   const getDefaultMenu = () => {
     const userData = localStorage.getItem('user');
     let role = null;
@@ -146,17 +147,10 @@ const Dashboard = () => {
     return saved === 'true';
   });
 
-  // ✅ Time filter state
   const [timeFilter, setTimeFilter] = useState('all');
-  
-  // ✅ Custom date state
   const [customDate, setCustomDate] = useState('');
   const [showCustomDate, setShowCustomDate] = useState(false);
-  
-  // ✅ Chart type state - default 'line'
   const [chartType, setChartType] = useState('line');
-
-  // ✅ Low stock collapsible state - default closed
   const [isLowStockOpen, setIsLowStockOpen] = useState(false);
 
   const [products, setProducts] = useState([]);
@@ -164,7 +158,6 @@ const Dashboard = () => {
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
 
-  // ✅ FIX 2: Safe useEffect with try-catch
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
@@ -182,13 +175,11 @@ const Dashboard = () => {
     }
   }, []);
 
-  // ✅ Ensure products is always an array
   const productsArray = useMemo(() => Array.isArray(products) ? products : [], [products]);
   const expensesArray = useMemo(() => Array.isArray(expenses) ? expenses : [], [expenses]);
   const invoicesArray = useMemo(() => Array.isArray(invoices) ? invoices : [], [invoices]);
   const servicesArray = useMemo(() => Array.isArray(services) ? services : [], [services]);
 
-  // ✅ FILTERED DATA based on time filter + custom date
   const filteredInvoices = useMemo(() => 
     filterInvoicesByDate(invoicesArray, timeFilter, customDate || null),
     [invoicesArray, timeFilter, customDate]
@@ -199,7 +190,6 @@ const Dashboard = () => {
     [expensesArray, timeFilter, customDate]
   );
 
-  // ✅ Active products only (not hidden)
   const activeProducts = useMemo(() => {
     const filtered = productsArray.filter(p => {
       const isHidden = p.is_hidden === true || p.is_hidden === 1;
@@ -208,25 +198,21 @@ const Dashboard = () => {
     return filtered;
   }, [productsArray]);
 
-  // ✅ Total Sales - FILTERED
   const totalSales = useMemo(() => 
     filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0),
     [filteredInvoices]
   );
 
-  // ✅ Total Expenses - FILTERED
   const totalExpensesSum = useMemo(() => 
     filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
     [filteredExpenses]
   );
 
-  // ✅ Total Discount - FILTERED
   const totalDiscount = useMemo(() => 
     filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.discount) || 0), 0),
     [filteredInvoices]
   );
 
-  // ✅ Total Profit - FILTERED
   const totalProfitCalc = useMemo(() => {
     let profit = 0;
     for (const inv of filteredInvoices) {
@@ -256,7 +242,6 @@ const Dashboard = () => {
     [activeProducts]
   );
 
-  // ✅ Low stock products - uses each product's own threshold
   const lowStockProducts = useMemo(() => {
     return activeProducts.filter(p => {
       const threshold = p.low_stock_threshold ?? 5;
@@ -271,17 +256,14 @@ const Dashboard = () => {
     [filteredInvoices]
   );
 
-  // ✅ Monthly data - FILTERED and DYNAMIC (with expenses)
   const monthlyData = useMemo(() => {
     const monthly = {};
     const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    // Initialize all months with 0
     monthOrder.forEach(m => {
       monthly[m] = { sales: 0, profit: 0, expenses: 0, discount: 0 };
     });
     
-    // Add invoice data
     filteredInvoices.forEach(inv => {
       if (inv.invoice_date) {
         const date = new Date(inv.invoice_date);
@@ -304,7 +286,6 @@ const Dashboard = () => {
       }
     });
     
-    // Add expense data
     filteredExpenses.forEach(exp => {
       if (exp.date || exp.created_at) {
         const date = new Date(exp.date || exp.created_at);
@@ -324,7 +305,6 @@ const Dashboard = () => {
     }));
   }, [filteredInvoices, filteredExpenses, activeProducts]);
 
-  // ✅ FIX: Product sales data - TOP 8 products + "Others" bucket so legend never overflows
   const productSalesData = useMemo(() => {
     const allProducts = activeProducts
       .map(p => ({
@@ -349,7 +329,6 @@ const Dashboard = () => {
 
   const COLORS = useMemo(() => ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'], []);
 
-  // ✅ FIX: Ensure data is always array
   const fetchAllData = useCallback(async () => {
     const abortController = new AbortController();
     setLoading(true);
@@ -490,10 +469,12 @@ const Dashboard = () => {
       'finance-reminders': 'Upcoming Payments & Reminders',
       'finance-credit': 'Credit Management',
       billing: 'Billing System',
+      estimate: 'Estimate / Quotation',
+      battery: ' Battery Sale',
       record: 'Records Archive',
       reminders: 'Reminders',
       users: 'User Management',
-      discarded: 'Discarded Bills'
+      discarded: 'Drafted Bills'
     };
     return titles[activeMenu] || 'Dashboard';
   }, [activeMenu]);
@@ -509,10 +490,12 @@ const Dashboard = () => {
       'finance-reminders': 'Track upcoming bills, salaries and payments',
       'finance-credit': 'Manage vendor credits, payments and history',
       billing: 'Create bills, print invoices, export data',
+      estimate: 'Create and print customer estimates / quotations',
+      battery: 'Sell batteries with trade-in option',
       record: 'View all transaction history',
       reminders: 'Birthday, Tuning & Oil Change reminders',
       users: 'Manage system users and employees',
-      discarded: 'View and restore discarded bills'
+      discarded: 'View and restore drafted bills'
     };
     return descriptions[activeMenu] || '';
   }, [activeMenu]);
@@ -528,6 +511,8 @@ const Dashboard = () => {
       'finance-reminders': <FiBell className="text-2xl" />,
       'finance-credit': <FiCreditCard className="text-2xl" />,
       billing: <FiFileText className="text-2xl" />,
+      estimate: <FiFile className="text-2xl" />,
+      battery: <FiBattery className="text-2xl" />,
       record: <FiBarChart2 className="text-2xl" />,
       reminders: <FiBell className="text-2xl" />,
       users: <FiUsers className="text-2xl" />,
@@ -536,7 +521,6 @@ const Dashboard = () => {
     return icons[activeMenu] || <FiPackage className="text-2xl" />;
   }, [activeMenu]);
 
-  // ✅ Get filter label
   const getFilterLabel = useCallback(() => {
     const labels = {
       all: 'All Time',
@@ -549,7 +533,6 @@ const Dashboard = () => {
     return labels[timeFilter] || 'All Time';
   }, [timeFilter, customDate]);
 
-  // ✅ Handle custom date change
   const handleCustomDateChange = (e) => {
     const date = e.target.value;
     setCustomDate(date);
@@ -558,7 +541,6 @@ const Dashboard = () => {
     }
   };
 
-  // ✅ Render chart based on selected type
   const renderChart = (data, darkMode) => {
     const commonProps = {
       data: data,
@@ -706,8 +688,9 @@ const Dashboard = () => {
             
             {/* ALL DATA VIEW - Admin only */}
             {activeMenu === 'all-data' && userRole !== 'employee' && (
+              // ... existing all-data code (same as before)
               <div className="space-y-6">
-                {/* FILTER BUTTONS with Custom Date */}
+                {/* FILTER BUTTONS */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2 mr-4">
                     <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -773,8 +756,6 @@ const Dashboard = () => {
                   >
                     This Year
                   </button>
-                  
-                  {/* Custom Date Button */}
                   <button
                     onClick={() => setShowCustomDate(!showCustomDate)}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -787,8 +768,6 @@ const Dashboard = () => {
                   >
                     📅 Custom Date
                   </button>
-                  
-                  {/* Custom Date Input - shows when Custom Date is active */}
                   {showCustomDate && (
                     <div className="flex items-center gap-2">
                       <input
@@ -807,13 +786,12 @@ const Dashboard = () => {
                       )}
                     </div>
                   )}
-                  
                   <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
                   </span>
                 </div>
 
-                {/* CHART TYPE BUTTONS - Line, Bar, Area, Composed */}
+                {/* CHART TYPE BUTTONS */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2 mr-4">
                     <FiBarChart2 className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -829,7 +807,8 @@ const Dashboard = () => {
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    Line                  </button>
+                    Line
+                  </button>
                   <button
                     onClick={() => setChartType('bar')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -868,7 +847,7 @@ const Dashboard = () => {
                   </button>
                 </div>
 
-                {/* 5 STATS CARDS - Sales, Profit, Expenses, Products, Discount */}
+                {/* STATS CARDS */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                   <StatsCard 
                     title="Total Sales" 
@@ -909,9 +888,8 @@ const Dashboard = () => {
                   />
                 </div>
 
-                {/* CHARTS SECTION - SIDE BY SIDE (65% / 35%) */}
+                {/* CHARTS */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Main Chart - 65% space */}
                   <div className={`lg:col-span-2 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                     <div className="flex justify-between items-center mb-4">
                       <h3 className={`text-lg font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -931,7 +909,6 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  {/* Product Sales Distribution (Pie Chart) - top 8 + Others */}
                   {productSalesData.length > 0 && (
                     <div className={`lg:col-span-1 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                       <h3 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -957,8 +934,6 @@ const Dashboard = () => {
                           </PieChart>
                         </ResponsiveContainer>
                       </div>
-
-                      {/* Custom scrollable legend */}
                       <div className={`mt-3 max-h-36 overflow-y-auto pr-1 space-y-1.5 border-t pt-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                         {productSalesData.map((entry, index) => (
                           <div key={`legend-${index}`} className="flex items-center gap-2 text-xs">
@@ -979,7 +954,7 @@ const Dashboard = () => {
                   )}
                 </div>
 
-                {/* Recent Invoices - DYNAMIC based on filter */}
+                {/* Recent Invoices */}
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="px-6 py-4 border-b flex justify-between items-center">
                     <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -1030,9 +1005,8 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Low Stock Alerts - COLLAPSIBLE (closed by default) */}
+                {/* Low Stock Alerts */}
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  {/* Header - Click to toggle */}
                   <div 
                     className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center cursor-pointer hover:opacity-80 transition`}
                     onClick={() => setIsLowStockOpen(!isLowStockOpen)}
@@ -1056,8 +1030,6 @@ const Dashboard = () => {
                       )}
                     </div>
                   </div>
-                  
-                  {/* Content - Only visible when open */}
                   {isLowStockOpen && (
                     <div className="p-4">
                       {lowStockProducts.length === 0 ? (
@@ -1075,11 +1047,7 @@ const Dashboard = () => {
                           {lowStockProducts.map(p => {
                             const threshold = p.low_stock_threshold ?? 5;
                             return (
-                              <div key={p.id} className={`flex justify-between items-center p-4 rounded-lg border-2 ${
-                                p.quantity <= 3 
-                                  ? 'bg-red-50 dark:bg-red-900/30 border-red-500 dark:border-red-700' 
-                                  : 'bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-700'
-                              }`}>
+                              <div key={p.id} className={`flex justify-between items-center p-4 rounded-lg border-2 ${p.quantity <= 3 ? 'bg-red-50 dark:bg-red-900/30 border-red-500 dark:border-red-700' : 'bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-700'}`}>
                                 <div className="flex items-center gap-4">
                                   <div className={`w-2 h-12 rounded-full ${p.quantity <= 3 ? 'bg-red-500' : 'bg-orange-500'}`}></div>
                                   <div>
@@ -1168,6 +1136,15 @@ const Dashboard = () => {
                   setProducts={setProducts}
                 />
               )}
+
+              {activeMenu === 'estimate' && (
+                <EstimatedBill darkMode={darkMode} />
+              )}
+
+              {/* ✅ Battery Page */}
+              {activeMenu === 'battery' && (
+                <BatteryPage darkMode={darkMode} />
+              )}
               
               {activeMenu === 'record' && userRole !== 'employee' && (
                 <Records darkMode={darkMode} />
@@ -1181,7 +1158,6 @@ const Dashboard = () => {
                 <Users darkMode={darkMode} />
               )}
 
-              {/* ✅ NEW: Discarded Bills Page */}
               {activeMenu === 'discarded' && (
                 <DiscardedBillsPage darkMode={darkMode} />
               )}

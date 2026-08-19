@@ -404,6 +404,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     }
   };
 
+  // ✅ UPDATED: fetchProducts with Battery filter
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products');
@@ -421,7 +422,10 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
           const isHidden = product.is_hidden === 1 || 
                           product.is_hidden === true || 
                           product.is_hidden === '1';
-          return !isHidden;
+          // ✅ Battery wale products ko hide karo (Billing page se)
+          const isBattery = product.category === 'Battery' || 
+                            product.name?.toLowerCase().includes('battery');
+          return !isHidden && !isBattery;
         });
         setProducts(visibleProducts);
       } else {

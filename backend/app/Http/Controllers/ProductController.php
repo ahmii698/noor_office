@@ -28,7 +28,6 @@ class ProductController extends Controller
                 // Default: hide hidden products (is_hidden = 0)
                 $query->where('is_hidden', 0);
             }
-            // If show_hidden=true, show all products including hidden
 
             // Filter by credit purchase
             if ($request->has('is_credit') && $request->is_credit !== '') {
@@ -46,7 +45,12 @@ class ProductController extends Controller
                 $query->where('name', 'LIKE', "%{$search}%");
             }
 
-            // Low stock filter (✅ now uses each product's own threshold)
+            // Filter by category
+            if ($request->has('category') && !empty($request->category)) {
+                $query->where('category', $request->category);
+            }
+
+            // Low stock filter
             if ($request->has('low_stock') && $request->low_stock) {
                 $query->whereColumn('quantity', '<', 'low_stock_threshold');
             }
@@ -62,10 +66,11 @@ class ProductController extends Controller
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
+                    'category' => $product->category, // ✅ ADDED
                     'purchase_price' => (float) $product->purchase_price,
                     'selling_price' => (float) $product->selling_price,
                     'quantity' => (int) $product->quantity,
-                    'low_stock_threshold' => (int) $product->low_stock_threshold, // ✅ added
+                    'low_stock_threshold' => (int) $product->low_stock_threshold,
                     'date_added' => $product->date_added,
                     'created_at' => $product->created_at,
                     'updated_at' => $product->updated_at,
@@ -90,7 +95,6 @@ class ProductController extends Controller
                 'total' => $products->count(),
                 'active_count' => $activeCount,
                 'hidden_count' => $hiddenCount,
-                // ✅ each product compared against its own threshold
                 'low_stock_count' => $products->filter(function ($p) {
                     return $p->quantity < $p->low_stock_threshold;
                 })->count(),
@@ -120,10 +124,11 @@ class ProductController extends Controller
                 'data' => [
                     'id' => $product->id,
                     'name' => $product->name,
+                    'category' => $product->category, // ✅ ADDED
                     'purchase_price' => (float) $product->purchase_price,
                     'selling_price' => (float) $product->selling_price,
                     'quantity' => (int) $product->quantity,
-                    'low_stock_threshold' => (int) $product->low_stock_threshold, // ✅ added
+                    'low_stock_threshold' => (int) $product->low_stock_threshold,
                     'date_added' => $product->date_added,
                     'created_at' => $product->created_at,
                     'updated_at' => $product->updated_at,
@@ -171,10 +176,11 @@ class ProductController extends Controller
     {
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'name' => 'required|string|max:255',
+            'category' => 'nullable|string|max:100', // ✅ ADDED
             'purchase_price' => 'required|numeric|min:0',
             'selling_price' => 'required|numeric|min:0',
             'quantity' => 'required|integer|min:0',
-            'low_stock_threshold' => 'nullable|integer|min:0', // ✅ added
+            'low_stock_threshold' => 'nullable|integer|min:0',
             'vendor_id' => 'nullable|exists:credit_vendors,id',
             'is_credit_purchase' => 'nullable|boolean',
         ]);
@@ -189,10 +195,10 @@ class ProductController extends Controller
         try {
             $product = Product::create([
                 'name' => $request->name,
+                'category' => $request->category ?? null, // ✅ ADDED
                 'purchase_price' => $request->purchase_price,
                 'selling_price' => $request->selling_price,
                 'quantity' => $request->quantity,
-                // ✅ falls back to 5 if not provided
                 'low_stock_threshold' => $request->low_stock_threshold ?? 5,
                 'date_added' => now(),
                 'vendor_id' => $request->vendor_id ?? null,
@@ -242,10 +248,11 @@ class ProductController extends Controller
         
         $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255',
+            'category' => 'nullable|string|max:100', // ✅ ADDED
             'purchase_price' => 'sometimes|required|numeric|min:0',
             'selling_price' => 'sometimes|required|numeric|min:0',
             'quantity' => 'sometimes|required|integer|min:0',
-            'low_stock_threshold' => 'sometimes|nullable|integer|min:0', // ✅ added
+            'low_stock_threshold' => 'sometimes|nullable|integer|min:0',
             'vendor_id' => 'nullable|exists:credit_vendors,id',
             'is_credit_purchase' => 'nullable|boolean',
             'is_hidden' => 'nullable|boolean',
@@ -264,11 +271,12 @@ class ProductController extends Controller
             
             // Update product
             $product->update($request->only([
-                'name', 
-                'purchase_price', 
-                'selling_price', 
+                'name',
+                'category', // ✅ ADDED
+                'purchase_price',
+                'selling_price',
                 'quantity',
-                'low_stock_threshold', // ✅ added
+                'low_stock_threshold',
                 'vendor_id',
                 'is_credit_purchase',
                 'is_hidden'
@@ -358,7 +366,8 @@ class ProductController extends Controller
             'quantity' => 'sometimes|required|integer|min:0',
             'purchase_price' => 'sometimes|required|numeric|min:0',
             'selling_price' => 'sometimes|required|numeric|min:0',
-            'low_stock_threshold' => 'sometimes|required|integer|min:0', // ✅ added
+            'low_stock_threshold' => 'sometimes|required|integer|min:0',
+            'category' => 'sometimes|required|string|max:100', // ✅ ADDED
             'is_hidden' => 'sometimes|required|boolean',
         ]);
 
@@ -374,7 +383,8 @@ class ProductController extends Controller
                 'quantity',
                 'purchase_price',
                 'selling_price',
-                'low_stock_threshold', // ✅ added
+                'low_stock_threshold',
+                'category', // ✅ ADDED
                 'is_hidden'
             ]));
 
@@ -407,7 +417,6 @@ class ProductController extends Controller
     public function lowStock()
     {
         try {
-            // ✅ compares each product's quantity against its own threshold column
             $products = Product::with('creditVendor')
                 ->whereColumn('quantity', '<', 'low_stock_threshold')
                 ->where('is_hidden', 0)
@@ -420,8 +429,9 @@ class ProductController extends Controller
                     return [
                         'id' => $product->id,
                         'name' => $product->name,
+                        'category' => $product->category, // ✅ ADDED
                         'quantity' => (int) $product->quantity,
-                        'low_stock_threshold' => (int) $product->low_stock_threshold, // ✅ added
+                        'low_stock_threshold' => (int) $product->low_stock_threshold,
                         'purchase_price' => (float) $product->purchase_price,
                         'selling_price' => (float) $product->selling_price,
                         'vendor_name' => $product->vendor_name,
@@ -464,6 +474,7 @@ class ProductController extends Controller
                         return [
                             'id' => $product->id,
                             'name' => $product->name,
+                            'category' => $product->category, // ✅ ADDED
                             'quantity' => (int) $product->pivot->quantity,
                             'purchase_price' => (float) $product->pivot->purchase_price,
                             'selling_price' => (float) $product->selling_price,
@@ -483,6 +494,71 @@ class ProductController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch vendor products',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get products by category
+     * GET /api/products/category/{category}
+     */
+    public function getByCategory($category)
+    {
+        try {
+            $products = Product::with('creditVendor')
+                ->where('category', $category)
+                ->where('is_hidden', 0)
+                ->orderBy('name', 'asc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'data' => $products->map(function ($product) {
+                    return [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'category' => $product->category,
+                        'quantity' => (int) $product->quantity,
+                        'purchase_price' => (float) $product->purchase_price,
+                        'selling_price' => (float) $product->selling_price,
+                        'vendor_name' => $product->vendor_name,
+                    ];
+                }),
+                'count' => $products->count(),
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch products by category',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all unique categories
+     * GET /api/products/categories
+     */
+    public function getCategories()
+    {
+        try {
+            $categories = Product::where('is_hidden', 0)
+                ->whereNotNull('category')
+                ->distinct()
+                ->pluck('category');
+
+            return response()->json([
+                'success' => true,
+                'data' => $categories,
+                'count' => $categories->count(),
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch categories',
                 'error' => $e->getMessage(),
             ], 500);
         }
@@ -512,6 +588,7 @@ class ProductController extends Controller
                         .footer { text-align: center; padding: 15px; font-size: 12px; color: #6b7280; }
                         .credit-badge { background: #8b5cf6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
                         .hidden-badge { background: #f59e0b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+                        .category-badge { background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
                     </style>
                 </head>
                 <body>
@@ -525,6 +602,11 @@ class ProductController extends Controller
                             <p>The following product is running low on stock:</p>
                             <div class="product-box">
                                 <div class="product-name">📦 ' . $product->name . '</div>
+                                ' . ($product->category ? '
+                                <div style="margin-top: 10px;">
+                                    <strong>Category:</strong> <span class="category-badge">' . $product->category . '</span>
+                                </div>
+                                ' : '') . '
                                 <div style="margin-top: 10px;">
                                     <strong>Current Stock:</strong> <span class="stock">' . $product->quantity . ' units</span>
                                 </div>

@@ -15,37 +15,21 @@ import {
 import api from '../services/api';
 import logo from '/logo.jpg';
 
-// ✅ Convert date to Pakistan Time - handles both ISO and plain dates
+// ✅ FIXED: Convert date to a JS Date object.
+// Backend now sends correctly-timezoned data (Asia/Karachi via APP_TIMEZONE
+// + Carbon::createFromFormat in the controller), so we NO LONGER manually
+// add +5 hours here. That manual offset was causing a DOUBLE shift bug
+// (backend +5, then frontend +5 again = +10 hours total).
+// We simply let the JS Date object parse whatever the backend sends
+// (ISO string with offset/Z, or a plain "Y-m-d H:i:s" string) and then
+// rely on toLocaleString(..., { timeZone: 'Asia/Karachi' }) at display time
+// to render it correctly.
 const toPakistanTime = (dateString) => {
   if (!dateString) return null;
-  
-  if (dateString.includes('T') || dateString.includes('Z')) {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return null;
-    return date;
-  }
-  
-  try {
-    const parts = dateString.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-    if (parts) {
-      const date = new Date(Date.UTC(
-        parseInt(parts[1]),
-        parseInt(parts[2]) - 1,
-        parseInt(parts[3]),
-        parseInt(parts[4]),
-        parseInt(parts[5]),
-        parseInt(parts[6])
-      ));
-      date.setHours(date.getHours() + 5);
-      if (!isNaN(date.getTime())) return date;
-    }
-  } catch (e) {
-    console.error('Date parse error:', e);
-  }
-  
+
   const date = new Date(dateString);
   if (!isNaN(date.getTime())) return date;
-  
+
   return null;
 };
 

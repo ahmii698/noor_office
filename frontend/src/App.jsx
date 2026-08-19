@@ -9,6 +9,8 @@ import { Toaster } from 'react-hot-toast';
 
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import EstimatedBill from './components/EstimatedBill';
+import BatteryPage from './components/BatteryPage';
 
 function App() {
   const getDarkMode = () => {
@@ -25,7 +27,6 @@ function App() {
     return false;
   };
 
-  // ✅ CHANGE 1: admin_data → user
   const getUserFromStorage = () => {
     const user = localStorage.getItem('user');
 
@@ -42,7 +43,6 @@ function App() {
 
   const [darkMode, setDarkMode] = useState(getDarkMode);
 
-  // ✅ CHANGE 2: admin_token → token
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem('token');
   });
@@ -61,7 +61,6 @@ function App() {
   };
 
   useEffect(() => {
-    // ✅ CHANGE 3: admin_token → token
     const token = localStorage.getItem('token');
     const user = getUserFromStorage();
 
@@ -79,7 +78,6 @@ function App() {
   }, []);
 
   const ProtectedRoute = ({ children }) => {
-    // ✅ CHANGE 4: admin_token → token
     const token = localStorage.getItem('token');
 
     console.log(
@@ -117,7 +115,6 @@ function App() {
         <Route
           path="/"
           element={
-            // ✅ CHANGE 5: admin_token → token
             localStorage.getItem('token')
               ? (
                   <Navigate
@@ -264,9 +261,35 @@ function App() {
           }
         />
 
-        {/* ✅ NEW: Discarded Bills Route */}
+        {/* Discarded Bills Route */}
         <Route
           path="/discarded"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Estimated Bill Route */}
+        <Route
+          path="/estimate"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NEW: Battery Sale Route */}
+        <Route
+          path="/battery"
           element={
             <ProtectedRoute>
               <Dashboard
@@ -281,7 +304,6 @@ function App() {
         <Route
           path="*"
           element={
-            // ✅ CHANGE 6: admin_token → token
             localStorage.getItem('token')
               ? (
                   <Navigate

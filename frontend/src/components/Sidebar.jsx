@@ -4,7 +4,7 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
-  FiLogOut, FiCreditCard, FiClock  // ✅ ADDED FiClock
+  FiLogOut, FiCreditCard, FiClock, FiFile, FiBattery
 } from 'react-icons/fi';
 import { HiMenu, HiX } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
@@ -15,7 +15,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [reminderCount, setReminderCount] = useState(0);
-  const [discardedCount, setDiscardedCount] = useState(0); // ✅ NEW
+  const [discardedCount, setDiscardedCount] = useState(0);
+  const [estimateCount, setEstimateCount] = useState(0);
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
@@ -26,8 +27,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
+    { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery' },
+    { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
-    { id: 'discarded', label: 'Draft', icon: FiClock, path: '/discarded', badge: discardedCount }, // ✅ ADDED
+    { id: 'discarded', label: 'Draft', icon: FiClock, path: '/discarded', badge: discardedCount },
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
     { id: 'users', label: 'Users', icon: FiUsers, path: '/users' },
   ];
@@ -36,8 +39,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const employeeMenuItems = [
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
+    { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery' },
+    { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
-    { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount }, // ✅ ADDED
+    { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount },
   ];
 
   // Finance Submenu
@@ -88,7 +93,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // ✅ NEW: Fetch discarded count
+  // Fetch discarded count
   const fetchDiscardedCount = async () => {
     try {
       const response = await api.get('/saved-carts/count');
@@ -98,6 +103,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     } catch (error) {
       console.error('Error fetching discarded count:', error);
     }
+  };
+
+  // ✅ ESTIMATE COUNT - NO BACKEND NEEDED (always 0)
+  const fetchEstimateCount = async () => {
+    // ✅ Sirf 0 set karo, backend call mat karo
+    setEstimateCount(0);
   };
 
   // Logout
@@ -139,17 +150,17 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   useEffect(() => {
     fetchUserData();
     fetchReminderCount();
-    fetchDiscardedCount(); // ✅ NEW
+    fetchDiscardedCount();
+    fetchEstimateCount(); // ✅ No backend call
     
     const reminderInterval = setInterval(fetchReminderCount, 60000);
-    const discardedInterval = setInterval(fetchDiscardedCount, 30000); // ✅ NEW
+    const discardedInterval = setInterval(fetchDiscardedCount, 30000);
     
     const handleReminderUpdate = () => {
       fetchReminderCount();
     };
     window.addEventListener('reminder-update', handleReminderUpdate);
     
-    // ✅ NEW: Listen for discarded update event
     const handleDiscardedUpdate = () => {
       fetchDiscardedCount();
     };
@@ -243,7 +254,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center ${
                           item.id === 'discarded' 
                             ? 'bg-yellow-500 text-white' 
-                            : 'bg-red-500 text-white'
+                            : item.id === 'estimate'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-red-500 text-white'
                         } animate-pulse`}>
                           {item.badge}
                         </span>
@@ -256,7 +269,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   {/* Badge show when sidebar is closed */}
                   {!isOpen && showBadge && (
                     <span className={`absolute -right-1 -top-1 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center ${
-                      item.id === 'discarded' ? 'bg-yellow-500' : 'bg-red-500'
+                      item.id === 'discarded' ? 'bg-yellow-500' : 
+                      item.id === 'estimate' ? 'bg-blue-500' : 'bg-red-500'
                     }`}>
                       {item.badge}
                     </span>

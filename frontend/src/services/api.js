@@ -1,6 +1,6 @@
 // src/services/api.js
 import axios from 'axios';
-import { API_URL } from '../../config'; // ✅ Import from root config
+import { API_URL } from '../../config';
 
 const api = axios.create({
     baseURL: API_URL,
@@ -36,11 +36,9 @@ api.interceptors.response.use(
     (response) => {
         console.log(`[API Response] ${response.status} ${response.config.url}`);
         
-        // ✅ FIX: Agar response.data string hai toh clean karo
         if (typeof response.data === 'string') {
             try {
                 let cleanData = response.data.trim();
-                // Remove // from beginning if present
                 if (cleanData.startsWith('//')) {
                     cleanData = cleanData.substring(2);
                 }
@@ -150,6 +148,141 @@ export const clearAllDiscarded = async () => {
     return response.data;
 };
 
+// ==================== ESTIMATES / QUOTATIONS ====================
+export const saveEstimate = async (estimateData) => {
+    const response = await api.post('/estimates', estimateData);
+    return response.data;
+};
+
+export const getEstimates = async () => {
+    const response = await api.get('/estimates');
+    return response.data;
+};
+
+export const getEstimate = async (id) => {
+    const response = await api.get(`/estimates/${id}`);
+    return response.data;
+};
+
+export const updateEstimate = async (id, data) => {
+    const response = await api.put(`/estimates/${id}`, data);
+    return response.data;
+};
+
+export const deleteEstimate = async (id) => {
+    const response = await api.delete(`/estimates/${id}`);
+    return response.data;
+};
+
+export const getEstimateCount = async () => {
+    const response = await api.get('/estimates/count');
+    return response.data;
+};
+
+export const convertEstimateToInvoice = async (estimateId) => {
+    const response = await api.post(`/estimates/${estimateId}/convert`);
+    return response.data;
+};
+
+// ==================== BATTERY ENDPOINTS ====================
+// ✅ NEW: Battery endpoints - reusing existing product endpoints
+// Batteries are products with category 'Battery'
+// All product endpoints already work for batteries
+
+// Helper to get only battery products
+export const getBatteries = async () => {
+    const response = await api.get('/products');
+    let products = [];
+    if (response.data?.data) {
+        products = response.data.data;
+    } else if (Array.isArray(response.data)) {
+        products = response.data;
+    }
+    // Filter only battery products
+    const batteries = products.filter(p => 
+        p.name?.toLowerCase().includes('battery') ||
+        p.category?.toLowerCase().includes('battery')
+    );
+    return { ...response, data: batteries };
+};
+
+// Add battery product
+export const addBattery = async (data) => {
+    const payload = {
+        name: data.name,
+        purchase_price: data.purchase_price || data.price || 0,
+        selling_price: data.selling_price || data.price || 0,
+        quantity: data.quantity || 0,
+        category: 'Battery',
+        is_hidden: 0
+    };
+    const response = await api.post('/products', payload);
+    return response.data;
+};
+
+// Update battery
+export const updateBattery = async (id, data) => {
+    const response = await api.put(`/products/${id}`, data);
+    return response.data;
+};
+
+// Delete battery
+export const deleteBattery = async (id) => {
+    const response = await api.delete(`/products/${id}`);
+    return response.data;
+};
+
+// ==================== BATTERY SALE ====================
+// ✅ NEW: Battery sale endpoint - uses existing invoice system
+export const sellBattery = async (saleData) => {
+    const payload = {
+        invoice_no: saleData.invoice_no || `INV-${Date.now()}`,
+        customer_name: saleData.customer_name || 'Guest',
+        customer_phone: saleData.customer_phone || 'N/A',
+        customer_email: saleData.customer_email || null,
+        customer_car_number: saleData.customer_car_number || null,
+        customer_car_model: saleData.customer_car_model || null,
+        subtotal: saleData.subtotal || saleData.battery_price || 0,
+        discount: saleData.discount || saleData.trade_in || 0,
+        discount_note: saleData.discount_note || (saleData.trade_in ? 'Battery Trade-in' : null),
+        total_amount: saleData.total_amount || (saleData.battery_price - (saleData.trade_in || 0)),
+        paid_amount: saleData.paid_amount || 0,
+        remaining_amount: saleData.remaining_amount || (saleData.total_amount || (saleData.battery_price - (saleData.trade_in || 0))),
+        payment_method: saleData.payment_method || 'Cash',
+        status: saleData.status || 'Pending',
+        invoice_date: saleData.invoice_date || new Date().toISOString(),
+        items: [{
+            service_name: saleData.battery_name,
+            service_category: 'Battery',
+            price: saleData.battery_price,
+            quantity: 1,
+            mileage: null
+        }]
+    };
+    const response = await api.post('/invoices', payload);
+    return response.data;
+};
+
+// ==================== BATTERY STATS ====================
+// ✅ Get battery sales stats
+export const getBatteryStats = async () => {
+    const response = await api.get('/invoices');
+    let invoices = [];
+    if (response.data?.data) {
+        invoices = response.data.data;
+    } else if (Array.isArray(response.data)) {
+        invoices = response.data;
+    }
+    // Filter battery sales
+    const batterySales = invoices.filter(inv => 
+        inv.items?.some(item => 
+            item.service_category?.toLowerCase().includes('battery') ||
+            item.service_name?.toLowerCase().includes('battery')
+        )
+    );
+    return { ...response, data: batterySales };
+};
+
 // API methods for common operations
 export const apiService = {
     // Auth
@@ -167,6 +300,14 @@ export const apiService = {
     updateProduct: (id, data) => api.put(`/products/${id}`, data),
     deleteProduct: (id) => api.delete(`/products/${id}`),
     
+    // ✅ Battery specific
+    getBatteries: getBatteries,
+    addBattery: addBattery,
+    updateBattery: updateBattery,
+    deleteBattery: deleteBattery,
+    sellBattery: sellBattery,
+    getBatteryStats: getBatteryStats,
+    
     // Services
     getServices: () => api.get('/services'),
     
@@ -174,6 +315,8 @@ export const apiService = {
     getInvoices: () => api.get('/invoices'),
     getInvoice: (id) => api.get(`/invoices/${id}`),
     createInvoice: (data) => api.post('/invoices', data),
+    updateInvoice: (id, data) => api.put(`/invoices/${id}`, data),
+    deleteInvoice: (id) => api.delete(`/invoices/${id}`),
     
     // Expenses
     getExpenses: () => api.get('/expenses'),
@@ -199,6 +342,15 @@ export const apiService = {
     restoreCart: (id) => api.post(`/saved-carts/${id}/restore`),
     deleteDiscardedCart: (id) => api.delete(`/saved-carts/${id}`),
     clearAllDiscarded: () => api.delete('/saved-carts/clear-all'),
+    
+    // Estimates
+    getEstimates: () => api.get('/estimates'),
+    getEstimate: (id) => api.get(`/estimates/${id}`),
+    createEstimate: (data) => api.post('/estimates', data),
+    updateEstimate: (id, data) => api.put(`/estimates/${id}`, data),
+    deleteEstimate: (id) => api.delete(`/estimates/${id}`),
+    getEstimateCount: () => api.get('/estimates/count'),
+    convertEstimateToInvoice: (id) => api.post(`/estimates/${id}/convert`),
 };
 
 export default api;

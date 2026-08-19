@@ -147,7 +147,7 @@ const DiscardedBills = ({ darkMode, onRestore, onClose }) => {
               </span>
             </h3>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Bills that were discarded and can be restored
+              Bills that were drafted and can be restored
             </p>
           </div>
           <button 

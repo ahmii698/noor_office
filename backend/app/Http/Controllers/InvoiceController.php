@@ -403,24 +403,49 @@ class InvoiceController extends Controller
         }
     }
 
+    // ✅ ==================== DELETE INVOICE (FIXED) ====================
+    // 🔧 FIX: Pehle ye function sirf 'invoices' table se row delete karta tha,
+    // lekin 'invoice_items' aur 'payment_histories' table ke related rows
+    // kabhi delete nahi hote thay — wo hamesha ke liye "orphan" (yateem) reh
+    // jaate thay. Agar kisi naye invoice ko wahi purana ID mil jaye
+    // (DB auto-increment reuse / server restart jaisi situation mein),
+    // to Laravel ka items() relationship un purane orphan items ko bhi
+    // naye invoice ke sath jor kar dikhata tha (jaise "AC Compressor"
+    // battery sale ke sath show ho raha tha).
+    // Ab items aur payment history dono, invoice delete hone se pehle,
+    // explicitly delete kiye jaate hain — DB transaction ke andar,
+    // taake koi partial delete na ho.
     public function destroy($id)
     {
         try {
+            DB::beginTransaction();
+
             $invoice = Invoice::findOrFail($id);
-            
+
+            // Stock wapis add karna (jaisa pehle hota tha)
             foreach ($invoice->items as $item) {
                 $product = Product::find($item->service_id);
                 if ($product) {
                     $product->increment('quantity', $item->quantity);
                 }
             }
-            
+
+            // ✅ FIX: invoice delete karne se pehle uske items aur
+            // payment history explicitly delete karo — orphan rows na banein
+            DB::table('invoice_items')->where('invoice_id', $invoice->id)->delete();
+            DB::table('payment_histories')->where('invoice_id', $invoice->id)->delete();
+
             $invoice->delete();
-            
+
+            DB::commit();
+
+            Log::info('✅ Invoice deleted (with items + payment history): ID ' . $id);
+
             return response()->json([
                 'message' => 'Invoice deleted successfully'
             ]);
         } catch (\Exception $e) {
+            DB::rollBack();
             Log::error('Error deleting invoice: ' . $e->getMessage());
             return response()->json([
                 'error' => 'Failed to delete invoice'

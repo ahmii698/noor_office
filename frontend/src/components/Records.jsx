@@ -16,14 +16,6 @@ import api from '../services/api';
 import logo from '/logo.jpg';
 
 // ✅ FIXED: Convert date to a JS Date object.
-// Backend now sends correctly-timezoned data (Asia/Karachi via APP_TIMEZONE
-// + Carbon::createFromFormat in the controller), so we NO LONGER manually
-// add +5 hours here. That manual offset was causing a DOUBLE shift bug
-// (backend +5, then frontend +5 again = +10 hours total).
-// We simply let the JS Date object parse whatever the backend sends
-// (ISO string with offset/Z, or a plain "Y-m-d H:i:s" string) and then
-// rely on toLocaleString(..., { timeZone: 'Asia/Karachi' }) at display time
-// to render it correctly.
 const toPakistanTime = (dateString) => {
   if (!dateString) return null;
 
@@ -717,6 +709,7 @@ const Records = ({ darkMode }) => {
     setPaymentHistory([]);
   }, []);
 
+  // ==================== PRINT SINGLE INVOICE - UPDATED COMPACT ====================
   const printSingleInvoice = useCallback(() => {
     if (!selectedInvoice) return;
     
@@ -728,19 +721,19 @@ const Records = ({ darkMode }) => {
     
     const cartItemsHtml = selectedInvoice.items.map((item, idx) => `
       <tr>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${item.name}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">${item.category || 'Service'}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity || 1}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${(item.price || 0).toLocaleString()}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${((item.price || 0) * (item.quantity || 1)).toLocaleString()}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${item.name}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${item.category || 'Service'}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity || 1}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${(item.price || 0).toLocaleString()}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${((item.price || 0) * (item.quantity || 1)).toLocaleString()}</td>
       </tr>
     `).join('');
 
     const discountRowHtml = selectedInvoice.discount > 0 ? `
       <tr>
-        <td colspan="5" style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount ${selectedInvoice.discountNote ? `(${selectedInvoice.discountNote})` : ''}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">- Rs. ${selectedInvoice.discount.toLocaleString()}</td>
+        <td colspan="5" style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount ${selectedInvoice.discountNote ? `(${selectedInvoice.discountNote})` : ''}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">- Rs. ${selectedInvoice.discount.toLocaleString()}</td>
       </tr>
     ` : '';
 
@@ -789,15 +782,15 @@ const Records = ({ darkMode }) => {
             }
             .header { 
               background: white; 
-              padding: 20px; 
-              border-bottom: 2px solid #e5e7eb; 
+              padding: 18px 20px; 
+              border-bottom: 2px solid #dc2626; 
               display: flex; 
               align-items: center; 
               gap: 20px; 
             }
             .header-logo { 
-              width: 80px; 
-              height: 80px; 
+              width: 70px; 
+              height: 70px; 
               border-radius: 50%; 
               object-fit: cover; 
               border: 3px solid #dc2626; 
@@ -808,109 +801,132 @@ const Records = ({ darkMode }) => {
               text-align: center; 
             }
             .header-text .shop-name { 
-              font-size: 28px; 
+              font-size: 24px; 
               font-weight: bold; 
               color: #1f2937; 
               letter-spacing: 1px; 
             }
             .header-text .subtitle { 
-              font-size: 14px; 
+              font-size: 13px; 
               color: #6b7280; 
-              margin-top: 2px; 
             }
             .customer-info { 
-              margin: 20px; 
-              padding: 18px; 
+              margin: 15px; 
+              padding: 15px; 
               border: 1px solid #e5e7eb; 
               border-radius: 8px; 
+              background: #fafafa;
             }
             .customer-info h4 { 
-              margin-bottom: 10px; 
+              margin-bottom: 8px; 
               color: #1f2937; 
-              font-size: 14px; 
-            }
-            .customer-info p { 
-              margin: 4px 0; 
               font-size: 13px; 
-              color: #333; 
+              font-weight: 600;
+              border-bottom: 1px solid #e5e7eb;
+              padding-bottom: 6px;
             }
-            .invoice-details { 
+            .customer-info .info-row { 
               display: flex; 
-              justify-content: space-between; 
-              margin: 20px; 
-              padding: 12px 15px; 
-              background: #f8f9fa; 
-              border-radius: 8px; 
-              font-size: 13px; 
+              padding: 2px 0; 
+              font-size: 12px; 
+            }
+            .customer-info .info-label { 
+              font-weight: 600; 
+              min-width: 100px; 
+              color: #4b5563; 
+            }
+            .customer-info .info-value { 
+              color: #1f2937; 
+            }
+            .customer-info .invoice-row {
+              display: flex;
+              justify-content: space-between;
+              padding-top: 4px;
+              font-size: 12px;
+            }
+            .customer-info .invoice-row strong {
+              color: #1f2937;
             }
             table { 
-              width: calc(100% - 40px); 
-              margin: 20px; 
+              width: calc(100% - 30px); 
+              margin: 15px; 
               border-collapse: collapse; 
             }
             th, td { 
               border: 1px solid #e5e7eb; 
-              padding: 10px 12px; 
+              padding: 6px 8px; 
               text-align: left; 
-              font-size: 13px; 
+              font-size: 12px; 
             }
             th { 
               background: #1f2937; 
               color: white; 
               font-weight: 600; 
             }
+            th:nth-child(1) { text-align: center; width: 30px; }
+            th:nth-child(3) { text-align: center; width: 70px; }
+            th:nth-child(4) { text-align: center; width: 40px; }
+            th:nth-child(5) { text-align: right; width: 80px; }
+            th:nth-child(6) { text-align: right; width: 90px; }
+            td:nth-child(5) { text-align: right; }
+            td:nth-child(6) { text-align: right; }
             .payment-details { 
-              margin: 20px; 
-              padding: 18px; 
+              margin: 15px; 
+              padding: 12px 15px; 
               border: 1px solid #e5e7eb; 
               border-radius: 8px; 
+              background: #fafafa;
             }
             .payment-details h4 { 
-              margin-bottom: 10px; 
+              margin-bottom: 8px; 
               color: #1f2937; 
-              font-size: 14px; 
-            }
-            .payment-details p { 
-              margin: 4px 0; 
               font-size: 13px; 
+              font-weight: 600;
+              border-bottom: 1px solid #e5e7eb;
+              padding-bottom: 6px;
             }
-            .total-row { 
-              font-size: 20px; 
+            .payment-details .payment-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 2px 0;
+              font-size: 12px;
+            }
+            .payment-details .payment-row.total-row {
+              border-top: 2px solid #dc2626;
+              padding-top: 8px;
+              margin-top: 4px;
+              font-size: 16px;
+              font-weight: bold;
+            }
+            .payment-details .payment-row.total-row .total-label {
+              color: #1f2937;
+            }
+            .payment-details .payment-row.total-row .total-amount {
+              color: #dc2626;
+            }
+            .payment-status-paid { 
+              color: #16a34a; 
               font-weight: bold; 
-              text-align: right; 
-              margin: 20px; 
-              padding-top: 12px; 
-              border-top: 2px solid #e5e7eb; 
-              color: #dc2626; 
+            }
+            .payment-status-pending { 
+              color: #ea580c; 
+              font-weight: bold; 
+            }
+            .payment-status-partial { 
+              color: #2563eb; 
+              font-weight: bold; 
             }
             .footer { 
-              padding: 18px 20px; 
+              padding: 12px 15px; 
               background: #f8f9fa; 
               border-top: 1px solid #e5e7eb; 
-              font-size: 14px; 
-              color: #1f2937; 
-              margin-top: 20px;
+              font-size: 11px; 
+              color: #4b5563; 
               text-align: center;
             }
-            .footer .address { 
-              margin-bottom: 6px; 
-              font-weight: 700;
-              font-size: 14px;
-            }
-            .footer .phone { 
-              margin-bottom: 6px;
-              font-weight: 700;
-              font-size: 14px;
-            }
-            .footer .social { 
-              margin-top: 6px; 
-            }
-            .footer .social span { 
-              display: block; 
-              margin: 3px 0;
-              font-weight: 700;
-              font-size: 13px;
-            }
+            .footer .address { margin-bottom: 3px; }
+            .footer .social { margin-top: 4px; }
+            .footer .social span { display: inline-block; margin: 0 6px; }
             .print-actions { 
               text-align: center; 
               margin-top: 20px; 
@@ -930,30 +946,12 @@ const Records = ({ darkMode }) => {
               font-weight: 500; 
               margin: 0 8px; 
             }
-            .print-btn { 
-              background: #dc2626; 
-              color: white; 
-            }
-            .close-btn { 
-              background: #6b7280; 
-              color: white; 
-            }
-            .discount-row { 
-              color: #dc2626; 
-              font-weight: bold; 
-            }
+            .print-btn { background: #dc2626; color: white; }
+            .close-btn { background: #6b7280; color: white; }
             @media print { 
-              body { 
-                background: white; 
-                padding: 0; 
-              } 
-              .print-actions { 
-                display: none; 
-              } 
-              .invoice-container { 
-                box-shadow: none; 
-                border-radius: 0; 
-              } 
+              body { background: white; padding: 0; } 
+              .print-actions { display: none; } 
+              .invoice-container { box-shadow: none; border-radius: 0; } 
             }
           </style>
         </head>
@@ -966,26 +964,28 @@ const Records = ({ darkMode }) => {
                 <div class="subtitle">Professional Auto Care Service</div>
               </div>
             </div>
+            
             <div class="customer-info">
               <h4>CUSTOMER INFORMATION</h4>
-              <p><strong>Name:</strong> ${selectedInvoice.customer?.name || 'Walk-in Customer'}</p>
-              <p><strong>Phone:</strong> ${selectedInvoice.customer?.phone || 'N/A'}</p>
-              <p><strong>Car Number:</strong> ${selectedInvoice.customer?.carNumber || 'N/A'}</p>
-              <p><strong>Car Model:</strong> ${selectedInvoice.customer?.carModel || 'N/A'}</p>
+              <div class="info-row"><span class="info-label">Name:</span><span class="info-value">${selectedInvoice.customer?.name || 'Walk-in Customer'}</span></div>
+              <div class="info-row"><span class="info-label">Phone:</span><span class="info-value">${selectedInvoice.customer?.phone || 'N/A'}</span></div>
+              <div class="info-row"><span class="info-label">Car Number:</span><span class="info-value">${selectedInvoice.customer?.carNumber || 'N/A'}</span></div>
+              <div class="info-row"><span class="info-label">Car Model:</span><span class="info-value">${selectedInvoice.customer?.carModel || 'N/A'}</span></div>
+              <div class="invoice-row">
+                <span><strong>Invoice #:</strong> ${selectedInvoice.invoiceNo}</span>
+                <span><strong>Date & Time:</strong> ${fullDateTime}</span>
+              </div>
             </div>
-            <div class="invoice-details">
-              <p><strong>Invoice #:</strong> ${selectedInvoice.invoiceNo}</p>
-              <p><strong>Date & Time:</strong> ${fullDateTime}</p>
-            </div>
+            
             <table>
               <thead>
                 <tr>
-                  <th style="text-align: center;">#</th>
+                  <th style="text-align:center;">#</th>
                   <th>Item</th>
-                  <th>Type</th>
-                  <th style="text-align: center;">Qty</th>
-                  <th style="text-align: right;">Price</th>
-                  <th style="text-align: right;">Total</th>
+                  <th style="text-align:center;">Type</th>
+                  <th style="text-align:center;">Qty</th>
+                  <th style="text-align:right;">Price</th>
+                  <th style="text-align:right;">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -993,23 +993,53 @@ const Records = ({ darkMode }) => {
                 ${discountRowHtml}
               </tbody>
             </table>
+            
             <div class="payment-details">
               <h4>PAYMENT DETAILS</h4>
-              <p><strong>Subtotal:</strong> Rs. ${subtotal.toLocaleString()}</p>
-              ${selectedInvoice.discount > 0 ? `<p><strong>Discount:</strong> - Rs. ${selectedInvoice.discount.toLocaleString()} ${selectedInvoice.discountNote ? `(${selectedInvoice.discountNote})` : ''}</p>` : ''}
-              <p><strong>Total Amount:</strong> Rs. ${selectedInvoice.total.toLocaleString()}</p>
-              <p><strong>Paid Amount:</strong> Rs. ${paidAmount.toLocaleString()}</p>
-              <p><strong>Payment Method:</strong> ${(selectedInvoice.paymentMethod || 'Cash').toUpperCase()}</p>
-              <p><strong>Remaining Balance:</strong> Rs. ${remainingAmount.toLocaleString()}</p>
-              <p><strong>Payment Status:</strong> ${isFullyPaid ? 'FULLY PAID' : 'PENDING'}</p>
+              <div class="payment-row">
+                <span><strong>Subtotal:</strong></span>
+                <span>Rs. ${subtotal.toLocaleString()}</span>
+              </div>
+              ${selectedInvoice.discount > 0 ? `
+              <div class="payment-row">
+                <span><strong>Discount:</strong></span>
+                <span style="color:#dc2626;">- Rs. ${selectedInvoice.discount.toLocaleString()} ${selectedInvoice.discountNote ? `(${selectedInvoice.discountNote})` : ''}</span>
+              </div>
+              ` : ''}
+              <div class="payment-row">
+                <span><strong>Total Amount:</strong></span>
+                <span style="font-weight:bold;color:#dc2626;">Rs. ${selectedInvoice.total.toLocaleString()}</span>
+              </div>
+              <div class="payment-row">
+                <span><strong>Paid Amount:</strong></span>
+                <span style="color:#16a34a;font-weight:bold;">Rs. ${paidAmount.toLocaleString()}</span>
+              </div>
+              <div class="payment-row">
+                <span><strong>Payment Method:</strong></span>
+                <span>${(selectedInvoice.paymentMethod || 'Cash').toUpperCase()}</span>
+              </div>
+              <div class="payment-row">
+                <span><strong>Remaining Balance:</strong></span>
+                <span style="color:${remainingAmount > 0 ? '#ea580c' : '#16a34a'};font-weight:bold;">Rs. ${remainingAmount.toLocaleString()}</span>
+              </div>
+              <div class="payment-row" style="border-top:1px solid #e5e7eb;padding-top:6px;margin-top:4px;">
+                <span><strong>Payment Status:</strong></span>
+                <span class="${isFullyPaid ? 'payment-status-paid' : (paidAmount > 0 ? 'payment-status-partial' : 'payment-status-pending')}">
+                  ${isFullyPaid ? 'FULLY PAID' : (paidAmount > 0 ? 'PARTIAL' : 'PENDING')}
+                </span>
+              </div>
+              <!-- ✅ TOTAL inside Payment Details -->
+              <div class="payment-row total-row">
+                <span class="total-label">TOTAL</span>
+                <span class="total-amount">Rs. ${selectedInvoice.total.toLocaleString()}</span>
+              </div>
             </div>
-            <div class="total-row">Total: Rs. ${selectedInvoice.total.toLocaleString()}</div>
             
             <div class="footer">
               <div class="address">
-                🏪 Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
+                Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
               </div>
-              <div class="phone">
+              <div style="margin:3px 0;">
                 📞 0337 3267363
               </div>
               <div class="social">

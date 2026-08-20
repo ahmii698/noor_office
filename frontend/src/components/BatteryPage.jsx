@@ -48,8 +48,7 @@ const BatteryPage = ({ darkMode }) => {
   });
 
   // ✅ Prevents double-submit (double click / slow network) from ever
-  // firing handleSubmit twice. This is what was missing compared to
-  // BillingInvoice.jsx (which has isProcessingRef / paymentExecutedRef).
+  // firing handleSubmit twice.
   const isSubmittingRef = useRef(false);
 
   // ✅ Check user role on mount
@@ -248,7 +247,7 @@ const BatteryPage = ({ darkMode }) => {
 
   // ✅ Submit battery sale - ONLY battery, no other items, no double-submit
   const handleSubmit = async () => {
-    // ✅ Hard guard against double-click / double-fire — this is the fix.
+    // ✅ Hard guard against double-click / double-fire
     if (isSubmittingRef.current) {
       return;
     }
@@ -285,11 +284,6 @@ const BatteryPage = ({ darkMode }) => {
     isSubmittingRef.current = true;
     setIsProcessing(true);
     try {
-      // ✅ Battery sale is fully independent of Billing's saved/discarded
-      // carts — we never read, touch, or clear them here. Whatever is
-      // sitting in "Discarded Bills" stays exactly as it is; this sale
-      // only ever creates its own single-item (battery) invoice.
-
       const invoiceNo = `INV-${Date.now()}`;
       const remaining = totalAmount - paid;
       const status = remaining <= 0 ? 'Paid' : (paid > 0 ? 'Partial' : 'Pending');
@@ -297,7 +291,7 @@ const BatteryPage = ({ darkMode }) => {
       const newStock = currentStock - 1;
       await api.put(`/products/${selectedBattery.id}`, { quantity: newStock });
 
-      // ✅ STEP 2: Send ONLY battery - NO other items
+      // ✅ Send ONLY battery - NO other items
       const payload = {
         invoice_no: invoiceNo,
         customer_name: finalCustomerName,
@@ -341,7 +335,7 @@ const BatteryPage = ({ darkMode }) => {
       setPaymentMethod('cash');
       setSelectedBank('');
 
-      // ✅ STEP 3: Dispatch event to refresh Billing page cart
+      // ✅ Dispatch event to refresh Billing page cart
       window.dispatchEvent(new Event('cart-updated'));
 
     } catch (error) {
@@ -353,7 +347,7 @@ const BatteryPage = ({ darkMode }) => {
     }
   };
 
-  // Print receipt
+  // ✅ Print receipt - UPDATED FOOTER (same as BillingInvoice)
   const printReceipt = () => {
     if (!selectedBattery) {
       toast.error('No battery selected');
@@ -387,7 +381,30 @@ const BatteryPage = ({ darkMode }) => {
             .details { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; }
             .row { display: flex; justify-content: space-between; padding: 5px 0; }
             .total { font-size: 20px; font-weight: bold; color: #dc2626; text-align: right; margin-top: 15px; border-top: 2px solid #e5e7eb; padding-top: 15px; }
-            .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; padding-top: 15px; }
+            .footer { 
+              margin-top: 30px; 
+              text-align: center; 
+              font-size: 12px; 
+              color: #6b7280; 
+              border-top: 1px solid #e5e7eb; 
+              padding-top: 15px; 
+            }
+            .footer .address { 
+              margin-bottom: 4px; 
+              font-weight: 600;
+            }
+            .footer .phone { 
+              margin-bottom: 4px;
+              font-weight: 600;
+            }
+            .footer .social { 
+              margin-top: 4px; 
+            }
+            .footer .social span { 
+              display: block; 
+              margin: 2px 0;
+              font-weight: 500;
+            }
             .battery-name { font-size: 18px; font-weight: bold; color: #1f2937; }
           </style>
         </head>
@@ -395,7 +412,7 @@ const BatteryPage = ({ darkMode }) => {
           <div class="header">
             <img src="${logo}" class="logo" />
             <div class="shop-name">NOORANI CAR A/C & AUTOS</div>
-            <div class="subtitle">Battery Sale Receipt</div>
+            <div class="subtitle">Professional Auto Care Service</div>
           </div>
           
           <div class="details">
@@ -420,9 +437,18 @@ const BatteryPage = ({ darkMode }) => {
             ${(totalAmount - paid) > 0 ? `<div style="font-size:14px;font-weight:normal;color:#ea580c;">Remaining: Rs. ${(totalAmount - paid).toLocaleString()}</div>` : ''}
           </div>
           
+          <!-- ✅ UPDATED FOOTER - Same as BillingInvoice -->
           <div class="footer">
-            Shop # 02, Gulshan-e-Iqbal, Karachi<br/>
-            📞 0337 3267363
+            <div class="address">
+              Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
+            </div>
+            <div class="phone">
+              📞 0337 3267363
+            </div>
+            <div class="social">
+              <span>📘 Facebook: https://www.facebook.com/Noorani.Car.AC/</span>
+              <span>📷 Instagram: https://www.instagram.com/nooranicarac/</span>
+            </div>
           </div>
         </body>
       </html>

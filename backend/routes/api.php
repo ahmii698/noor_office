@@ -15,6 +15,7 @@ use App\Http\Controllers\CreditVendorController;
 use App\Http\Controllers\CreditPaymentController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\SavedCartController;
+use App\Http\Controllers\EstimateController;
 
 /*
 |--------------------------------------------------------------------------
@@ -130,18 +131,38 @@ Route::prefix('employees')->group(function () {
     Route::get('/', [EmployeeController::class, 'index']);
     Route::get('/{id}', [EmployeeController::class, 'show']);
     Route::get('/{id}/monthly-history', [EmployeeController::class, 'monthlyHistory']);
-    Route::get('/{id}/unpaid-months', [EmployeeController::class, 'unpaidMonths']); // ✅ NEW: for the "pay which month?" dropdown
+    Route::get('/{id}/unpaid-months', [EmployeeController::class, 'unpaidMonths']);
     Route::post('/', [EmployeeController::class, 'store']);
     Route::put('/{id}', [EmployeeController::class, 'update']);
     Route::delete('/{id}', [EmployeeController::class, 'destroy']);
-    // ❌ reset-salary route removed — not used in the new month-based system,
-    // every month tracks its own paid/pending status automatically
 });
 
 // ==================== EMPLOYEE PAYMENT ROUTES ====================
 Route::prefix('employee-payments')->group(function () {
     Route::post('/', [EmployeeController::class, 'makePayment']);
     Route::delete('/{id}', [EmployeeController::class, 'deletePayment']);
+});
+
+// ==================== ✅ ESTIMATES ROUTES ====================
+Route::prefix('estimates')->group(function () {
+    // Main CRUD
+    Route::get('/', [EstimateController::class, 'index']);
+    Route::get('/stats', [EstimateController::class, 'stats']);
+    Route::get('/today', [EstimateController::class, 'getToday']);
+    Route::get('/search', [EstimateController::class, 'search']);
+    Route::get('/date-range', [EstimateController::class, 'getByDateRange']);
+    Route::get('/company/{company}', [EstimateController::class, 'getByCompany']);
+    Route::get('/vehicle/{vehicle}', [EstimateController::class, 'getByVehicle']);
+    Route::get('/no/{estimateNo}', [EstimateController::class, 'showByNumber']);
+    Route::get('/{id}', [EstimateController::class, 'show']);
+    
+    Route::post('/', [EstimateController::class, 'store']);
+    Route::post('/{id}/duplicate', [EstimateController::class, 'duplicate']);
+    
+    Route::put('/{id}', [EstimateController::class, 'update']);
+    Route::patch('/{id}/status', [EstimateController::class, 'updateStatus']);
+    
+    Route::delete('/{id}', [EstimateController::class, 'destroy']);
 });
 
 // ==================== PROTECTED ROUTES (Authentication Required) ====================

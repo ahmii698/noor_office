@@ -8,7 +8,7 @@ import {
   FiBell, FiTrendingUp, FiShoppingCart, FiCheckCircle, 
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
   FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp, FiFile,
-  FiBattery
+  FiBattery, FiArchive
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -32,7 +32,8 @@ const Users = lazy(() => import('./Users'));
 const Credit = lazy(() => import('./finance/Credit'));
 const DiscardedBillsPage = lazy(() => import('./billing/DiscardedBillsPage'));
 const EstimatedBill = lazy(() => import('./EstimatedBill'));
-const BatteryPage = lazy(() => import('./BatteryPage')); // ✅ ADDED
+const BatteryPage = lazy(() => import('./BatteryPage'));
+const EstimateRecords = lazy(() => import('./EstimateRecords')); // ✅ NEW
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -470,7 +471,8 @@ const Dashboard = () => {
       'finance-credit': 'Credit Management',
       billing: 'Billing System',
       estimate: 'Estimate / Quotation',
-      battery: ' Battery Sale',
+      'estimate-records': 'Estimate Records', // ✅ NEW
+      battery: 'Battery Sale',
       record: 'Records Archive',
       reminders: 'Reminders',
       users: 'User Management',
@@ -491,6 +493,7 @@ const Dashboard = () => {
       'finance-credit': 'Manage vendor credits, payments and history',
       billing: 'Create bills, print invoices, export data',
       estimate: 'Create and print customer estimates / quotations',
+      'estimate-records': 'View all estimate records with search and filters', // ✅ NEW
       battery: 'Sell batteries with trade-in option',
       record: 'View all transaction history',
       reminders: 'Birthday, Tuning & Oil Change reminders',
@@ -512,6 +515,7 @@ const Dashboard = () => {
       'finance-credit': <FiCreditCard className="text-2xl" />,
       billing: <FiFileText className="text-2xl" />,
       estimate: <FiFile className="text-2xl" />,
+      'estimate-records': <FiArchive className="text-2xl" />, // ✅ NEW
       battery: <FiBattery className="text-2xl" />,
       record: <FiBarChart2 className="text-2xl" />,
       reminders: <FiBell className="text-2xl" />,
@@ -688,7 +692,6 @@ const Dashboard = () => {
             
             {/* ALL DATA VIEW - Admin only */}
             {activeMenu === 'all-data' && userRole !== 'employee' && (
-              // ... existing all-data code (same as before)
               <div className="space-y-6">
                 {/* FILTER BUTTONS */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -1141,7 +1144,12 @@ const Dashboard = () => {
                 <EstimatedBill darkMode={darkMode} />
               )}
 
-              {/* ✅ Battery Page */}
+              {/* ✅ Estimate Records */}
+              {activeMenu === 'estimate-records' && (
+                <EstimateRecords darkMode={darkMode} />
+              )}
+
+              {/* Battery Page */}
               {activeMenu === 'battery' && (
                 <BatteryPage darkMode={darkMode} />
               )}

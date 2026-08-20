@@ -184,6 +184,52 @@ export const convertEstimateToInvoice = async (estimateId) => {
     return response.data;
 };
 
+// ✅ NEW: Estimate Records functions
+export const getEstimateStats = async () => {
+    const response = await api.get('/estimates/stats');
+    return response.data;
+};
+
+export const getEstimateByNumber = async (estimateNo) => {
+    const response = await api.get(`/estimates/no/${estimateNo}`);
+    return response.data;
+};
+
+export const getEstimatesByDateRange = async (from, to) => {
+    const response = await api.get(`/estimates/date-range?from=${from}&to=${to}`);
+    return response.data;
+};
+
+export const getEstimatesByCompany = async (company) => {
+    const response = await api.get(`/estimates/company/${company}`);
+    return response.data;
+};
+
+export const getEstimatesByVehicle = async (vehicle) => {
+    const response = await api.get(`/estimates/vehicle/${vehicle}`);
+    return response.data;
+};
+
+export const getTodayEstimates = async () => {
+    const response = await api.get('/estimates/today');
+    return response.data;
+};
+
+export const searchEstimates = async (query) => {
+    const response = await api.get(`/estimates/search?query=${query}`);
+    return response.data;
+};
+
+export const duplicateEstimate = async (id) => {
+    const response = await api.post(`/estimates/${id}/duplicate`);
+    return response.data;
+};
+
+export const updateEstimateStatus = async (id, validUntil) => {
+    const response = await api.patch(`/estimates/${id}/status`, { valid_until: validUntil });
+    return response.data;
+};
+
 // ==================== BATTERY ENDPOINTS ====================
 // ✅ NEW: Battery endpoints - reusing existing product endpoints
 // Batteries are products with category 'Battery'
@@ -343,7 +389,7 @@ export const apiService = {
     deleteDiscardedCart: (id) => api.delete(`/saved-carts/${id}`),
     clearAllDiscarded: () => api.delete('/saved-carts/clear-all'),
     
-    // Estimates
+    // ✅ Estimates
     getEstimates: () => api.get('/estimates'),
     getEstimate: (id) => api.get(`/estimates/${id}`),
     createEstimate: (data) => api.post('/estimates', data),
@@ -351,6 +397,17 @@ export const apiService = {
     deleteEstimate: (id) => api.delete(`/estimates/${id}`),
     getEstimateCount: () => api.get('/estimates/count'),
     convertEstimateToInvoice: (id) => api.post(`/estimates/${id}/convert`),
+    
+    // ✅ Estimate Records
+    getEstimateStats: getEstimateStats,
+    getEstimateByNumber: getEstimateByNumber,
+    getEstimatesByDateRange: getEstimatesByDateRange,
+    getEstimatesByCompany: getEstimatesByCompany,
+    getEstimatesByVehicle: getEstimatesByVehicle,
+    getTodayEstimates: getTodayEstimates,
+    searchEstimates: searchEstimates,
+    duplicateEstimate: duplicateEstimate,
+    updateEstimateStatus: updateEstimateStatus,
 };
 
 export default api;

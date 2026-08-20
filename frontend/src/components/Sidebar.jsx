@@ -4,7 +4,8 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
-  FiLogOut, FiCreditCard, FiClock, FiFile, FiBattery
+  FiLogOut, FiCreditCard, FiClock, FiFile, FiBattery,
+  FiArchive // ✅ NEW ICON for Estimate Records
 } from 'react-icons/fi';
 import { HiMenu, HiX } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
@@ -29,6 +30,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery' },
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
+    { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' }, // ✅ NEW
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
     { id: 'discarded', label: 'Draft', icon: FiClock, path: '/discarded', badge: discardedCount },
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
@@ -41,6 +43,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery' },
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
+    { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' }, // ✅ NEW
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
     { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount },
   ];
@@ -105,9 +108,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // ✅ ESTIMATE COUNT - NO BACKEND NEEDED (always 0)
+  // ✅ ESTIMATE COUNT - No backend needed (always 0)
   const fetchEstimateCount = async () => {
-    // ✅ Sirf 0 set karo, backend call mat karo
     setEstimateCount(0);
   };
 
@@ -151,7 +153,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     fetchUserData();
     fetchReminderCount();
     fetchDiscardedCount();
-    fetchEstimateCount(); // ✅ No backend call
+    fetchEstimateCount();
     
     const reminderInterval = setInterval(fetchReminderCount, 60000);
     const discardedInterval = setInterval(fetchDiscardedCount, 30000);

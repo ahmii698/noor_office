@@ -11,6 +11,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import EstimatedBill from './components/EstimatedBill';
 import BatteryPage from './components/BatteryPage';
+import EstimateRecords from './components/EstimateRecords';
 
 function App() {
   const getDarkMode = () => {
@@ -128,7 +129,7 @@ function App() {
           }
         />
 
-        {/* Dashboard */}
+        {/* ✅ ALL ROUTES GO THROUGH DASHBOARD */}
         <Route
           path="/dashboard"
           element={
@@ -261,7 +262,6 @@ function App() {
           }
         />
 
-        {/* Discarded Bills Route */}
         <Route
           path="/discarded"
           element={
@@ -274,7 +274,6 @@ function App() {
           }
         />
 
-        {/* Estimated Bill Route */}
         <Route
           path="/estimate"
           element={
@@ -287,7 +286,19 @@ function App() {
           }
         />
 
-        {/* ✅ NEW: Battery Sale Route */}
+        {/* ✅ FIXED: Estimate Records - DASHBOARD KE ANDAR (baqi pages ki tarah) */}
+        <Route
+          path="/estimate-records"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="/battery"
           element={

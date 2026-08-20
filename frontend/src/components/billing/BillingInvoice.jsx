@@ -796,8 +796,13 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     }
   };
 
-  // ==================== PRINT BILL ====================
+  // ==================== PRINT BILL - UPDATED (NO SEPARATION LINE) ====================
   const printBill = () => {
+    if (cart.length === 0) {
+      toast.error('No items to print');
+      return;
+    }
+
     const printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
     if (!printWindow) {
       toast.error('Please allow popups to print bill');
@@ -810,26 +815,27 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
       day: '2-digit', 
       year: 'numeric' 
     });
+    const invoiceNo = `INV-${Date.now()}`;
     
     const cartItemsHtml = cart.map((item, idx) => `
       <tr>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb;">
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">
           ${item.name}
-          ${item.mileage ? `<br/><span style="font-size:10px;color:#666;">Mileage: ${item.mileage} km</span>` : ''}
+          ${item.mileage ? `<br/><span style="font-size:9px;color:#666;">Mileage: ${item.mileage} km</span>` : ''}
         </td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.type === 'service' ? 'Service' : 'Part'}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price).toLocaleString()}</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${item.type === 'service' ? 'Service' : 'Part'}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price).toLocaleString()}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${roundToTwo(item.price * item.quantity).toLocaleString()}</td>
       </tr>
     `).join('');
 
     const displayDiscount = roundToTwo(discountAmount);
     const discountRowHtml = discountAmount > 0 ? `
       <tr>
-        <td colspan="5" style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount</td>
-        <td style="padding: 10px 12px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">- Rs. ${displayDiscount.toLocaleString()}</td>
+        <td colspan="5" style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">Discount</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #dc2626;">- Rs. ${displayDiscount.toLocaleString()}</td>
       </tr>
     ` : '';
 
@@ -844,44 +850,205 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
           <meta charset="UTF-8">
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f0f0f0; }
-            .invoice-container { max-width: 800px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; }
-            .header { background: white; padding: 20px; border-bottom: 2px solid #e5e7eb; display: flex; align-items: center; gap: 20px; }
-            .header-logo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #dc2626; flex-shrink: 0; }
-            .header-text { flex: 1; text-align: center; }
-            .header-text .shop-name { font-size: 28px; font-weight: bold; color: #1f2937; letter-spacing: 1px; }
-            .header-text .subtitle { font-size: 14px; color: #6b7280; margin-top: 2px; }
-            .customer-info { margin: 20px; padding: 18px; border: 1px solid #e5e7eb; border-radius: 8px; }
-            .customer-info h4 { margin-bottom: 10px; color: #1f2937; font-size: 14px; }
-            .customer-info p { margin: 4px 0; font-size: 13px; color: #333; }
-            .customer-info .info-row { display: flex; padding: 3px 0; }
-            .customer-info .info-label { font-weight: 600; min-width: 120px; color: #4b5563; }
-            .customer-info .info-value { color: #1f2937; }
-            .invoice-details { display: flex; justify-content: space-between; margin: 20px; padding: 12px 15px; background: #f8f9fa; border-radius: 8px; font-size: 13px; }
-            table { width: calc(100% - 40px); margin: 20px; border-collapse: collapse; }
-            th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; font-size: 13px; }
-            th { background: #1f2937; color: white; font-weight: 600; }
-            th:nth-child(1) { text-align: center; }
-            th:nth-child(3) { text-align: center; }
-            th:nth-child(4) { text-align: center; }
-            th:nth-child(5) { text-align: right; }
-            th:nth-child(6) { text-align: right; }
-            .payment-details { margin: 20px; padding: 18px; border: 1px solid #e5e7eb; border-radius: 8px; }
-            .payment-details h4 { margin-bottom: 10px; color: #1f2937; font-size: 14px; }
-            .payment-details p { margin: 4px 0; font-size: 13px; }
-            .payment-status-paid { color: #16a34a; font-weight: bold; }
-            .payment-status-pending { color: #ea580c; font-weight: bold; }
-            .total-row { font-size: 20px; font-weight: bold; text-align: right; margin: 20px; padding-top: 12px; border-top: 2px solid #e5e7eb; color: #dc2626; }
-            .signature { margin: 20px; display: flex; justify-content: space-between; padding-top: 30px; font-size: 12px; }
-            .footer { padding: 15px 20px; background: #f8f9fa; border-top: 1px solid #e5e7eb; font-size: 12px; color: #4b5563; }
-            .footer .address { margin-bottom: 4px; }
-            .footer .social { margin-top: 6px; }
-            .footer .social span { display: block; margin: 2px 0; }
-            .print-actions { text-align: center; margin-top: 20px; padding: 15px; background: white; border-radius: 12px; max-width: 800px; margin-left: auto; margin-right: auto; }
-            .print-btn, .close-btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; margin: 0 8px; }
+            body { 
+              font-family: 'Segoe UI', Arial, sans-serif; 
+              margin: 0; 
+              padding: 20px; 
+              background: #f0f0f0; 
+            }
+            .invoice-container { 
+              max-width: 800px; 
+              margin: 0 auto; 
+              background: white; 
+              border-radius: 12px; 
+              box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
+              overflow: hidden; 
+            }
+            .header { 
+              background: white; 
+              padding: 18px 20px; 
+              border-bottom: 2px solid #dc2626; 
+              display: flex; 
+              align-items: center; 
+              gap: 20px; 
+            }
+            .header-logo { 
+              width: 70px; 
+              height: 70px; 
+              border-radius: 50%; 
+              object-fit: cover; 
+              border: 3px solid #dc2626; 
+              flex-shrink: 0; 
+            }
+            .header-text { 
+              flex: 1; 
+              text-align: center; 
+            }
+            .header-text .shop-name { 
+              font-size: 24px; 
+              font-weight: bold; 
+              color: #1f2937; 
+              letter-spacing: 1px; 
+            }
+            .header-text .subtitle { 
+              font-size: 13px; 
+              color: #6b7280; 
+            }
+            .customer-info { 
+              margin: 15px; 
+              padding: 15px; 
+              border: 1px solid #e5e7eb; 
+              border-radius: 8px; 
+              background: #fafafa;
+            }
+            .customer-info h4 { 
+              margin-bottom: 8px; 
+              color: #1f2937; 
+              font-size: 13px; 
+              font-weight: 600;
+              border-bottom: 1px solid #e5e7eb;
+              padding-bottom: 6px;
+            }
+            .customer-info .info-row { 
+              display: flex; 
+              padding: 2px 0; 
+              font-size: 12px; 
+            }
+            .customer-info .info-label { 
+              font-weight: 600; 
+              min-width: 100px; 
+              color: #4b5563; 
+            }
+            .customer-info .info-value { 
+              color: #1f2937; 
+            }
+            .customer-info .invoice-row {
+              display: flex;
+              justify-content: space-between;
+              padding-top: 4px;
+              font-size: 12px;
+            }
+            .customer-info .invoice-row strong {
+              color: #1f2937;
+            }
+            table { 
+              width: calc(100% - 30px); 
+              margin: 15px; 
+              border-collapse: collapse; 
+            }
+            th, td { 
+              border: 1px solid #e5e7eb; 
+              padding: 6px 8px; 
+              text-align: left; 
+              font-size: 12px; 
+            }
+            th { 
+              background: #1f2937; 
+              color: white; 
+              font-weight: 600; 
+            }
+            th:nth-child(1) { text-align: center; width: 30px; }
+            th:nth-child(3) { text-align: center; width: 70px; }
+            th:nth-child(4) { text-align: center; width: 40px; }
+            th:nth-child(5) { text-align: right; width: 80px; }
+            th:nth-child(6) { text-align: right; width: 90px; }
+            td:nth-child(5) { text-align: right; }
+            td:nth-child(6) { text-align: right; }
+            .payment-details { 
+              margin: 15px; 
+              padding: 12px 15px; 
+              border: 1px solid #e5e7eb; 
+              border-radius: 8px; 
+              background: #fafafa;
+            }
+            .payment-details h4 { 
+              margin-bottom: 8px; 
+              color: #1f2937; 
+              font-size: 13px; 
+              font-weight: 600;
+              border-bottom: 1px solid #e5e7eb;
+              padding-bottom: 6px;
+            }
+            .payment-details .payment-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 2px 0;
+              font-size: 12px;
+            }
+            .payment-details .payment-row.total-row {
+              border-top: 2px solid #dc2626;
+              padding-top: 8px;
+              margin-top: 4px;
+              font-size: 16px;
+              font-weight: bold;
+            }
+            .payment-details .payment-row.total-row .total-label {
+              color: #1f2937;
+            }
+            .payment-details .payment-row.total-row .total-amount {
+              color: #dc2626;
+            }
+            .payment-status-paid { 
+              color: #16a34a; 
+              font-weight: bold; 
+            }
+            .payment-status-pending { 
+              color: #ea580c; 
+              font-weight: bold; 
+            }
+            .payment-status-partial { 
+              color: #2563eb; 
+              font-weight: bold; 
+            }
+            .signature { 
+              margin: 15px; 
+              display: flex; 
+              justify-content: space-between; 
+              padding-top: 20px; 
+              font-size: 11px; 
+            }
+            .signature p {
+              border-top: 1px solid #000;
+              padding-top: 6px;
+              min-width: 120px;
+            }
+            .footer { 
+              padding: 12px 15px; 
+              background: #f8f9fa; 
+              border-top: 1px solid #e5e7eb; 
+              font-size: 11px; 
+              color: #4b5563; 
+              text-align: center;
+            }
+            .footer .address { margin-bottom: 3px; }
+            .footer .social { margin-top: 4px; }
+            .footer .social span { display: inline-block; margin: 0 6px; }
+            .print-actions { 
+              text-align: center; 
+              margin-top: 20px; 
+              padding: 15px; 
+              background: white; 
+              border-radius: 12px; 
+              max-width: 800px; 
+              margin-left: auto; 
+              margin-right: auto; 
+            }
+            .print-btn, .close-btn { 
+              padding: 10px 24px; 
+              border: none; 
+              border-radius: 8px; 
+              cursor: pointer; 
+              font-size: 14px; 
+              font-weight: 500; 
+              margin: 0 8px; 
+            }
             .print-btn { background: #dc2626; color: white; }
             .close-btn { background: #6b7280; color: white; }
-            @media print { body { background: white; padding: 0; } .print-actions { display: none; } .invoice-container { box-shadow: none; border-radius: 0; } }
+            @media print { 
+              body { background: white; padding: 0; } 
+              .print-actions { display: none; } 
+              .invoice-container { box-shadow: none; border-radius: 0; } 
+            }
           </style>
         </head>
         <body>
@@ -893,6 +1060,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                 <div class="subtitle">Professional Auto Care Service</div>
               </div>
             </div>
+            
             <div class="customer-info">
               <h4>CUSTOMER INFORMATION</h4>
               <div class="info-row"><span class="info-label">Name:</span><span class="info-value">${customerDetails.name || 'N/A'}</span></div>
@@ -901,11 +1069,12 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
               <div class="info-row"><span class="info-label">Car Number:</span><span class="info-value">${customerDetails.carNumber || 'N/A'}</span></div>
               <div class="info-row"><span class="info-label">Car Model:</span><span class="info-value">${customerDetails.carModel || 'N/A'}</span></div>
               <div class="info-row"><span class="info-label">Birthday:</span><span class="info-value">${customerBirthday ? getFormattedBirthday(customerBirthday) : 'Not Provided'}</span></div>
+              <div class="invoice-row">
+                <span><strong>Invoice #:</strong> ${invoiceNo}</span>
+                <span><strong>Date:</strong> ${formattedDate}</span>
+              </div>
             </div>
-            <div class="invoice-details">
-              <p><strong>Invoice #:</strong> INV-${Date.now()}</p>
-              <p><strong>Date:</strong> ${formattedDate}</p>
-            </div>
+            
             <table>
               <thead>
                 <tr>
@@ -922,26 +1091,58 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                 ${discountRowHtml}
               </tbody>
             </table>
+            
             <div class="payment-details">
               <h4>PAYMENT DETAILS</h4>
-              <p><strong>Subtotal:</strong> Rs. ${roundToTwo(subtotal).toLocaleString()}</p>
-              ${discountAmount > 0 ? `<p><strong>Discount:</strong> - Rs. ${displayDiscount.toLocaleString()}</p>` : ''}
-              <p><strong>Total Amount:</strong> Rs. ${roundToTwo(billTotal).toLocaleString()}</p>
-              <p><strong>Paid Amount:</strong> Rs. ${displayPaidAmount.toLocaleString()}</p>
-              <p><strong>Payment Method:</strong> ${getPaymentMethodDisplay()}</p>
-              <p><strong>Remaining Balance:</strong> Rs. ${displayRemainingAmount.toLocaleString()}</p>
-              <p><strong>Payment Status:</strong> ${isFullyPaid ? '<span class="payment-status-paid">FULLY PAID</span>' : '<span class="payment-status-pending">PENDING</span>'}</p>
+              <div class="payment-row">
+                <span><strong>Subtotal:</strong></span>
+                <span>Rs. ${roundToTwo(subtotal).toLocaleString()}</span>
+              </div>
+              ${discountAmount > 0 ? `
+              <div class="payment-row">
+                <span><strong>Discount:</strong></span>
+                <span style="color:#dc2626;">- Rs. ${displayDiscount.toLocaleString()}</span>
+              </div>
+              ` : ''}
+              <div class="payment-row">
+                <span><strong>Total Amount:</strong></span>
+                <span style="font-weight:bold;color:#dc2626;">Rs. ${roundToTwo(billTotal).toLocaleString()}</span>
+              </div>
+              <div class="payment-row">
+                <span><strong>Paid Amount:</strong></span>
+                <span style="color:#16a34a;font-weight:bold;">Rs. ${displayPaidAmount.toLocaleString()}</span>
+              </div>
+              <div class="payment-row">
+                <span><strong>Payment Method:</strong></span>
+                <span>${getPaymentMethodDisplay()}</span>
+              </div>
+              <div class="payment-row">
+                <span><strong>Remaining Balance:</strong></span>
+                <span style="color:${displayRemainingAmount > 0 ? '#ea580c' : '#16a34a'};font-weight:bold;">Rs. ${displayRemainingAmount.toLocaleString()}</span>
+              </div>
+              <div class="payment-row" style="border-top:1px solid #e5e7eb;padding-top:6px;margin-top:4px;">
+                <span><strong>Payment Status:</strong></span>
+                <span class="${isFullyPaid ? 'payment-status-paid' : (displayPaidAmount > 0 ? 'payment-status-partial' : 'payment-status-pending')}">
+                  ${isFullyPaid ? 'FULLY PAID' : (displayPaidAmount > 0 ? 'PARTIAL' : 'PENDING')}
+                </span>
+              </div>
+              <!-- ✅ TOTAL inside Payment Details -->
+              <div class="payment-row total-row">
+                <span class="total-label">TOTAL</span>
+                <span class="total-amount">Rs. ${roundToTwo(billTotal).toLocaleString()}</span>
+              </div>
             </div>
-            <div class="total-row">Total: Rs. ${roundToTwo(billTotal).toLocaleString()}</div>
+            
             <div class="signature">
               <p>Customer Signature: _________________</p>
               <p>Authorized Signature: _________________</p>
             </div>
+            
             <div class="footer">
               <div class="address">
                 Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
               </div>
-              <div>
+              <div style="margin:3px 0;">
                 📞 0337 3267363
               </div>
               <div class="social">
@@ -954,7 +1155,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
             <button class="print-btn" onclick="window.print()">🖨️ Print Bill</button>
             <button class="close-btn" onclick="window.close()">✖ Close</button>
           </div>
-          <script>setTimeout(function() { window.print(); }, 300);</script>
+          <script>setTimeout(function() { window.print(); }, 500);</script>
         </body>
       </html>
     `;

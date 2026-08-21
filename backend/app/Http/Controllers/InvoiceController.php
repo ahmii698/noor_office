@@ -13,6 +13,45 @@ use Carbon\Carbon;
 
 class InvoiceController extends Controller
 {
+    /**
+     * ✅ FIX (timezone): Parse an incoming date string as Asia/Karachi local
+     * time, WITHOUT re-interpreting/shifting it.
+     *
+     * Previously the code did:
+     *   Carbon::parse($dateString)->timezone('Asia/Karachi')
+     * Carbon::parse() with no explicit timezone assumes the app's default
+     * timezone (which was UTC before this fix). So a string like
+     * "2026-08-19 18:39:00" (already Pakistan local time, sent as a plain
+     * string from the frontend) was being treated as 18:39 UTC, then
+     * ->timezone('Asia/Karachi') shifted it forward by +5 hours to 23:39.
+     * That extra +5, combined with a similar bug on the frontend, caused a
+     * total +10 hour shift showing up in the Records page.
+     *
+     * Fix: explicitly tell Carbon the string IS already Asia/Karachi time
+     * using createFromFormat(), so no implicit UTC assumption/shift happens.
+     * Falls back to a plain parse (still forced into Asia/Karachi) for any
+     * other date formats that might come through (e.g. ISO strings).
+     */
+    private function parseAsKarachiTime($dateString)
+    {
+        if (empty($dateString)) {
+            return Carbon::now('Asia/Karachi');
+        }
+
+        // Expected format from the frontend: "Y-m-d H:i:s"
+        try {
+            return Carbon::createFromFormat('Y-m-d H:i:s', $dateString, 'Asia/Karachi');
+        } catch (\Exception $e) {
+            // Fallback for any other format (e.g. ISO 8601 with offset/Z)
+            try {
+                return Carbon::parse($dateString, 'Asia/Karachi');
+            } catch (\Exception $e2) {
+                Log::warning('Could not parse date string, falling back to now(): ' . $dateString);
+                return Carbon::now('Asia/Karachi');
+            }
+        }
+    }
+
     public function index()
     {
         try {
@@ -187,10 +226,9 @@ class InvoiceController extends Controller
                 $status = 'Pending';
             }
 
-            // ✅ Use Pakistan time zone for invoice date
-            $invoiceDateTime = !empty($validated['invoice_date'])
-                ? Carbon::parse($validated['invoice_date'])->timezone('Asia/Karachi')
-                : Carbon::now('Asia/Karachi');
+            // ✅ FIX (timezone): Parse invoice date as Asia/Karachi local time
+            // directly — no implicit UTC assumption, no extra shift.
+            $invoiceDateTime = $this->parseAsKarachiTime($validated['invoice_date'] ?? null);
 
             $invoiceId = DB::table('invoices')->insertGetId([
                 'invoice_no' => $validated['invoice_no'],
@@ -628,10 +666,9 @@ class InvoiceController extends Controller
 
             $paymentMethod = $request->payment_method ?? $invoice->payment_method ?? 'Cash';
 
-            // ✅ FIX: Use Pakistan time zone (UTC+5) for paid_at
-            $paidAt = $request->paid_at 
-                ? Carbon::parse($request->paid_at)->timezone('Asia/Karachi') 
-                : Carbon::now('Asia/Karachi');
+            // ✅ FIX (timezone): Parse paid_at as Asia/Karachi local time
+            // directly — no implicit UTC assumption, no extra shift.
+            $paidAt = $this->parseAsKarachiTime($request->paid_at);
 
             // ✅ UPDATE INVOICE
             $invoice->update([

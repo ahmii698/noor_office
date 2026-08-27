@@ -17,20 +17,24 @@ class InvoiceController extends Controller
      * ✅ FIX (timezone): Parse an incoming date string as Asia/Karachi local
      * time, WITHOUT re-interpreting/shifting it.
      *
-     * Previously the code did:
-     *   Carbon::parse($dateString)->timezone('Asia/Karachi')
-     * Carbon::parse() with no explicit timezone assumes the app's default
-     * timezone (which was UTC before this fix). So a string like
-     * "2026-08-19 18:39:00" (already Pakistan local time, sent as a plain
-     * string from the frontend) was being treated as 18:39 UTC, then
-     * ->timezone('Asia/Karachi') shifted it forward by +5 hours to 23:39.
-     * That extra +5, combined with a similar bug on the frontend, caused a
-     * total +10 hour shift showing up in the Records page.
+     * Handles TWO input shapes correctly:
+     *  1) Plain "Y-m-d H:i:s" strings (no timezone info) — these are treated
+     *     as ALREADY being Asia/Karachi wall-clock time, via createFromFormat().
+     *  2) ISO 8601 strings WITH an explicit timezone/UTC marker, e.g.
+     *     "2026-08-22T13:36:00.000Z" (what JS `.toISOString()` sends).
+     *     Carbon::parse() correctly resolves these to the right ABSOLUTE
+     *     instant using the string's own timezone (UTC), but the resulting
+     *     Carbon object's *display* timezone stays UTC unless we explicitly
+     *     call ->setTimezone(). Previously we passed 'Asia/Karachi' as the
+     *     second arg to Carbon::parse(), but PHP's DateTime constructor
+     *     IGNORES that second timezone argument whenever the string itself
+     *     already carries explicit tz info — so the object silently stayed
+     *     in UTC, and ->format('Y-m-d H:i:s') printed raw UTC wall-clock
+     *     values (5 hours behind Karachi) into the database.
      *
-     * Fix: explicitly tell Carbon the string IS already Asia/Karachi time
-     * using createFromFormat(), so no implicit UTC assumption/shift happens.
-     * Falls back to a plain parse (still forced into Asia/Karachi) for any
-     * other date formats that might come through (e.g. ISO strings).
+     * Fix: always finish with ->setTimezone('Asia/Karachi') so the object's
+     * displayed/formatted time is guaranteed to be Karachi local time,
+     * regardless of what timezone info the input string carried.
      */
     private function parseAsKarachiTime($dateString)
     {
@@ -38,13 +42,19 @@ class InvoiceController extends Controller
             return Carbon::now('Asia/Karachi');
         }
 
-        // Expected format from the frontend: "Y-m-d H:i:s"
+        // Expected format from the frontend: "Y-m-d H:i:s" (no tz info —
+        // treat it as already being Karachi local time)
         try {
             return Carbon::createFromFormat('Y-m-d H:i:s', $dateString, 'Asia/Karachi');
         } catch (\Exception $e) {
-            // Fallback for any other format (e.g. ISO 8601 with offset/Z)
+            // Fallback for any other format (e.g. ISO 8601 with offset/Z,
+            // like JS's toISOString()). Parse it as its own timezone first
+            // (resolves the correct absolute instant), THEN convert the
+            // display timezone to Asia/Karachi — do NOT rely on the second
+            // Carbon::parse() argument, it's ignored when the string has
+            // explicit tz info.
             try {
-                return Carbon::parse($dateString, 'Asia/Karachi');
+                return Carbon::parse($dateString)->setTimezone('Asia/Karachi');
             } catch (\Exception $e2) {
                 Log::warning('Could not parse date string, falling back to now(): ' . $dateString);
                 return Carbon::now('Asia/Karachi');
@@ -442,17 +452,6 @@ class InvoiceController extends Controller
     }
 
     // ✅ ==================== DELETE INVOICE (FIXED) ====================
-    // 🔧 FIX: Pehle ye function sirf 'invoices' table se row delete karta tha,
-    // lekin 'invoice_items' aur 'payment_histories' table ke related rows
-    // kabhi delete nahi hote thay — wo hamesha ke liye "orphan" (yateem) reh
-    // jaate thay. Agar kisi naye invoice ko wahi purana ID mil jaye
-    // (DB auto-increment reuse / server restart jaisi situation mein),
-    // to Laravel ka items() relationship un purane orphan items ko bhi
-    // naye invoice ke sath jor kar dikhata tha (jaise "AC Compressor"
-    // battery sale ke sath show ho raha tha).
-    // Ab items aur payment history dono, invoice delete hone se pehle,
-    // explicitly delete kiye jaate hain — DB transaction ke andar,
-    // taake koi partial delete na ho.
     public function destroy($id)
     {
         try {

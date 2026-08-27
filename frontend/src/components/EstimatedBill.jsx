@@ -3,16 +3,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FiPrinter, FiPlus, FiTrash2, FiSave, FiRefreshCw, 
-  FiList, FiEdit2, FiX, FiFileText, FiClock, FiMapPin
+  FiList, FiEdit2, FiX, FiFileText, FiClock, FiMapPin,
+  FiShield, FiUser, FiChevronDown, FiChevronUp
 } from 'react-icons/fi';
 import api from '../services/api';
 import logo from '/logo.jpg';
 
 const EstimatedBill = ({ darkMode }) => {
+  const [estimateType, setEstimateType] = useState('customer');
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+
   const [estimateData, setEstimateData] = useState({
     estimateNo: `EST-${Date.now().toString().slice(-8)}`,
-    companyName: '',
-    vehicle: '',
+    name: '', // ✅ Name field - Customer aur Insurance dono ke liye
     policyNumber: '',
     color: '',
     make: '',
@@ -42,25 +45,20 @@ const EstimatedBill = ({ darkMode }) => {
   
   const printRef = useRef(null);
 
-  // Fetch saved estimates on mount
   useEffect(() => {
     fetchEstimates();
   }, []);
 
-  // Calculate total
   const total = estimateData.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
 
-  // Format currency
   const formatCurrency = (amount) => {
     return `Rs. ${amount?.toLocaleString() || 0}`;
   };
 
-  // Generate estimate number
   const generateEstimateNo = () => {
     return `EST-${Date.now().toString().slice(-8)}`;
   };
 
-  // Get current time in Pakistan format
   const getCurrentTime = () => {
     return new Date().toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -70,7 +68,6 @@ const EstimatedBill = ({ darkMode }) => {
     });
   };
 
-  // Fetch all estimates
   const fetchEstimates = async () => {
     setIsLoading(true);
     try {
@@ -90,7 +87,6 @@ const EstimatedBill = ({ darkMode }) => {
     }
   };
 
-  // ✅ Save estimate to backend - CLEAR FORM after save
   const saveEstimate = async () => {
     if (estimateData.items.length === 0) {
       toast.error('Please add at least one item');
@@ -101,8 +97,8 @@ const EstimatedBill = ({ darkMode }) => {
     try {
       const payload = {
         estimate_no: estimateData.estimateNo,
-        company_name: estimateData.companyName || 'N/A',
-        vehicle: estimateData.vehicle || 'N/A',
+        estimate_type: estimateType,
+        name: estimateData.name || 'N/A', // ✅ Name field
         policy_number: estimateData.policyNumber || null,
         color: estimateData.color || null,
         make: estimateData.make || null,
@@ -133,11 +129,9 @@ const EstimatedBill = ({ darkMode }) => {
         toast.success(editingEstimateId ? 'Estimate updated!' : 'Estimate saved!');
         await fetchEstimates();
         
-        // ✅ Reset form - ALL fields clear ho jayenge
         setEstimateData({
           estimateNo: generateEstimateNo(),
-          companyName: '',
-          vehicle: '',
+          name: '',
           policyNumber: '',
           color: '',
           make: '',
@@ -154,6 +148,7 @@ const EstimatedBill = ({ darkMode }) => {
         setNewItem({ name: '', quantity: 1, price: '' });
         setEditingEstimateId(null);
         setShowEstimatesList(false);
+        setEstimateType('customer');
       }
     } catch (error) {
       console.error('Error saving estimate:', error);
@@ -163,12 +158,11 @@ const EstimatedBill = ({ darkMode }) => {
     }
   };
 
-  // Load estimate for editing
   const loadEstimate = (estimate) => {
+    setEstimateType(estimate.estimate_type || 'customer');
     setEstimateData({
       estimateNo: estimate.estimate_no,
-      companyName: estimate.company_name || '',
-      vehicle: estimate.vehicle || '',
+      name: estimate.name || '',
       policyNumber: estimate.policy_number || '',
       color: estimate.color || '',
       make: estimate.make || '',
@@ -192,7 +186,6 @@ const EstimatedBill = ({ darkMode }) => {
     toast.success(`Loaded: ${estimate.estimate_no}`);
   };
 
-  // Delete estimate
   const deleteEstimate = async (id, estimateNo) => {
     if (!window.confirm(`Delete estimate ${estimateNo}?`)) return;
     
@@ -208,7 +201,6 @@ const EstimatedBill = ({ darkMode }) => {
     }
   };
 
-  // Add item
   const addItem = () => {
     if (!newItem.name || !newItem.price || parseFloat(newItem.price) <= 0) {
       toast.error('Please fill item name and price');
@@ -227,7 +219,6 @@ const EstimatedBill = ({ darkMode }) => {
     toast.success('Item added');
   };
 
-  // Remove item
   const removeItem = (id) => {
     setEstimateData(prev => ({
       ...prev,
@@ -235,7 +226,6 @@ const EstimatedBill = ({ darkMode }) => {
     }));
   };
 
-  // Update item quantity
   const updateItemQuantity = (id, newQuantity) => {
     if (parseInt(newQuantity) < 1) return;
     setEstimateData(prev => ({
@@ -246,7 +236,6 @@ const EstimatedBill = ({ darkMode }) => {
     }));
   };
 
-  // Update item price
   const updateItemPrice = (id, newPrice) => {
     if (parseFloat(newPrice) < 0) return;
     setEstimateData(prev => ({
@@ -257,12 +246,11 @@ const EstimatedBill = ({ darkMode }) => {
     }));
   };
 
-  // Get item total (price * quantity)
   const getItemTotal = (item) => {
     return (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
   };
 
-  // ✅ Print Estimate with Watermark - FIXED (Smaller watermark)
+  // ✅ PRINT ESTIMATE - WITH NAME FIELD
   const printEstimate = () => {
     if (estimateData.items.length === 0) {
       toast.error('No items to print');
@@ -279,12 +267,13 @@ const EstimatedBill = ({ darkMode }) => {
       }
 
       const currentTime = getCurrentTime();
+      const formattedDate = new Date(estimateData.date).toLocaleDateString('en-GB');
       
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Estimate ${estimateData.estimateNo}</title>
+            <title>Estimate</title>
             <meta charset="UTF-8">
             <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -303,24 +292,6 @@ const EstimatedBill = ({ darkMode }) => {
                 box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
                 overflow: hidden;
                 position: relative;
-              }
-              /* ✅ WATERMARK - CHOTA AUR SCREEN KE ANDAR */
-              .watermark {
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%) rotate(-35deg);
-                font-size: 145px;
-                font-weight: 900;
-                color: rgba(220, 38, 38, 0.15);
-                letter-spacing: 20px;
-                pointer-events: none;
-                white-space: nowrap;
-                z-index: 0;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                text-transform: uppercase;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
               }
               .header { 
                 background: white; 
@@ -361,20 +332,32 @@ const EstimatedBill = ({ darkMode }) => {
                 background: transparent;
               }
               
-              .section-title {
-                font-size: 16px;
-                font-weight: 700;
-                color: #1f2937;
-                margin-bottom: 15px;
-                padding-bottom: 8px;
-                border-bottom: 2px solid #dc2626;
-                text-transform: uppercase;
-                letter-spacing: 1px;
+              /* ✅ DATE & TIME - SAB SE UPPAR */
+              .date-time-bar {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 20px;
+                margin-bottom: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e5e7eb;
+                font-size: 15px;
+                font-weight: 600;
               }
+              .date-time-bar .label {
+                color: #6b7280;
+                font-weight: 400;
+              }
+              .date-time-bar .value {
+                color: #1f2937;
+              }
+              
+              /* ✅ INFO GRID - NAME + 6 FIELDS */
               .info-grid { 
                 display: grid; 
                 grid-template-columns: 1fr 1fr; 
-                gap: 10px 40px; 
+                gap: 6px 20px; 
                 margin-bottom: 25px;
                 padding: 15px 20px;
                 background: #fafafa;
@@ -383,48 +366,17 @@ const EstimatedBill = ({ darkMode }) => {
               }
               .info-item {
                 display: flex;
-                padding: 4px 0;
+                padding: 3px 0;
                 font-size: 13px;
               }
               .info-item .label {
                 font-weight: 600;
                 color: #4b5563;
-                min-width: 100px;
+                min-width: 80px;
               }
               .info-item .value {
                 color: #1f2937;
                 font-weight: 500;
-              }
-              
-              .invoice-details {
-                display: grid;
-                grid-template-columns: 1fr 1fr 1fr 1fr;
-                gap: 10px;
-                margin-bottom: 25px;
-                padding: 12px 20px;
-                background: #f8f9fa;
-                border-radius: 8px;
-                border: 1px solid #e5e7eb;
-              }
-              .invoice-details .detail-item {
-                text-align: center;
-              }
-              .invoice-details .detail-item .label {
-                font-size: 10px;
-                font-weight: 600;
-                color: #6b7280;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                display: block;
-              }
-              .invoice-details .detail-item .value {
-                font-size: 14px;
-                font-weight: 600;
-                color: #1f2937;
-                margin-top: 2px;
-              }
-              .invoice-details .detail-item .value.red {
-                color: #dc2626;
               }
 
               table { 
@@ -506,20 +458,13 @@ const EstimatedBill = ({ darkMode }) => {
                 body { background: white; padding: 0; } 
                 .estimate-container { box-shadow: none; border-radius: 0; }
                 .no-print { display: none !important; }
-                .watermark {
-                  color: rgba(220, 38, 38, 0.12) !important;
-                  -webkit-print-color-adjust: exact !important;
-                  print-color-adjust: exact !important;
-                }
                 .info-grid { background: #fafafa; }
-                .invoice-details { background: #f8f9fa; }
+                .date-time-bar { background: #f8f9fa; }
               }
             </style>
           </head>
           <body>
             <div class="estimate-container">
-              <div class="watermark">ESTIMATE</div>
-              
               <div class="header">
                 <img src="${logo}" alt="Noorani Logo" class="header-logo" />
                 <div class="header-text">
@@ -528,19 +473,17 @@ const EstimatedBill = ({ darkMode }) => {
                 </div>
               </div>
               <div class="content">
-                <div class="section-title">VEHICLE / POLICY INFORMATION</div>
+                <!-- ✅ DATE & TIME - SAB SE UPPAR -->
+                <div class="date-time-bar">
+                  <span><span class="label"> DATE</span> <span class="value">${formattedDate}</span></span>
+                  <span><span class="label"> TIME</span> <span class="value">${currentTime}</span></span>
+                </div>
+
+                <!-- ✅ NAME + 6 FIELDS -->
                 <div class="info-grid">
                   <div class="info-item">
-                    <span class="label">Company</span>
-                    <span class="value">${estimateData.companyName || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Policy Number</span>
-                    <span class="value">${estimateData.policyNumber || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Vehicle</span>
-                    <span class="value">${estimateData.vehicle || 'N/A'}</span>
+                    <span class="label">Name</span>
+                    <span class="value">${estimateData.name || 'N/A'}</span>
                   </div>
                   <div class="info-item">
                     <span class="label">Color</span>
@@ -565,29 +508,6 @@ const EstimatedBill = ({ darkMode }) => {
                   <div class="info-item">
                     <span class="label">Engine No</span>
                     <span class="value">${estimateData.engineNo || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Address</span>
-                    <span class="value">${estimateData.address || 'N/A'}</span>
-                  </div>
-                </div>
-
-                <div class="invoice-details">
-                  <div class="detail-item">
-                    <span class="label">EST. NO.</span>
-                    <span class="value red">${estimateData.estimateNo}</span>
-                  </div>
-                  <div class="detail-item">
-                    <span class="label">Date</span>
-                    <span class="value">${new Date(estimateData.date).toLocaleDateString('en-GB')}</span>
-                  </div>
-                  <div class="detail-item">
-                    <span class="label">Valid Until</span>
-                    <span class="value">${new Date(estimateData.validUntil).toLocaleDateString('en-GB')}</span>
-                  </div>
-                  <div class="detail-item">
-                    <span class="label">Time</span>
-                    <span class="value">${currentTime}</span>
                   </div>
                 </div>
 
@@ -653,13 +573,11 @@ const EstimatedBill = ({ darkMode }) => {
     }, 300);
   };
 
-  // Reset form
   const resetForm = () => {
     if (estimateData.items.length > 0 && !window.confirm('Reset form?')) return;
     setEstimateData({
       estimateNo: generateEstimateNo(),
-      companyName: '',
-      vehicle: '',
+      name: '',
       policyNumber: '',
       color: '',
       make: '',
@@ -675,6 +593,7 @@ const EstimatedBill = ({ darkMode }) => {
     });
     setNewItem({ name: '', quantity: 1, price: '' });
     setEditingEstimateId(null);
+    setEstimateType('customer');
     toast.success('Form reset');
   };
 
@@ -732,12 +651,11 @@ const EstimatedBill = ({ darkMode }) => {
                   <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase">Estimate #</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium uppercase">Company</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium uppercase">Vehicle</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium uppercase">Type</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium uppercase">Name</th>
                       <th className="px-3 py-2 text-right text-xs font-medium uppercase">Amount</th>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase">Date</th>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase">Valid Until</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium uppercase">Address</th>
                       <th className="px-3 py-2 text-center text-xs font-medium uppercase">Actions</th>
                     </tr>
                   </thead>
@@ -745,14 +663,21 @@ const EstimatedBill = ({ darkMode }) => {
                     {savedEstimates.map((est) => (
                       <tr key={est.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
                         <td className="px-3 py-2 text-sm font-medium">{est.estimate_no}</td>
-                        <td className="px-3 py-2 text-sm">{est.company_name}</td>
-                        <td className="px-3 py-2 text-sm">{est.vehicle}</td>
+                        <td className="px-3 py-2 text-sm">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            est.estimate_type === 'insurance' 
+                              ? 'bg-blue-100 text-blue-700' 
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {est.estimate_type === 'insurance' ? 'Insurance' : 'Customer'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-sm">{est.name}</td>
                         <td className="px-3 py-2 text-sm text-right font-semibold text-red-500">
                           Rs. {est.total_amount?.toLocaleString() || 0}
                         </td>
                         <td className="px-3 py-2 text-sm">{new Date(est.date).toLocaleDateString()}</td>
                         <td className="px-3 py-2 text-sm">{new Date(est.valid_until).toLocaleDateString()}</td>
-                        <td className="px-3 py-2 text-sm">{est.address || 'N/A'}</td>
                         <td className="px-3 py-2 text-sm text-center">
                           <div className="flex items-center justify-center gap-2">
                             <button
@@ -783,31 +708,91 @@ const EstimatedBill = ({ darkMode }) => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Panel - Form */}
           <div className="lg:col-span-2 space-y-4">
+            {/* Estimate Type Selector */}
+            <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Select Estimate Type</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => {
+                    setEstimateType('customer');
+                    setEstimateData(prev => ({
+                      ...prev,
+                      policyNumber: '',
+                      address: ''
+                    }));
+                  }}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    estimateType === 'customer'
+                      ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-green-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <FiUser className={`text-2xl ${estimateType === 'customer' ? 'text-green-500' : 'text-gray-400'}`} />
+                    <div>
+                      <div className={`font-semibold ${estimateType === 'customer' ? 'text-green-600' : 'text-gray-500'}`}>
+                        For Customer
+                      </div>
+                      <div className="text-xs text-gray-400">Basic vehicle info</div>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setEstimateType('insurance');
+                  }}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    estimateType === 'insurance'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <FiShield className={`text-2xl ${estimateType === 'insurance' ? 'text-blue-500' : 'text-gray-400'}`} />
+                    <div>
+                      <div className={`font-semibold ${estimateType === 'insurance' ? 'text-blue-600' : 'text-gray-500'}`}>
+                        For Insurance
+                      </div>
+                      <div className="text-xs text-gray-400">Full insurance details</div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Estimate Info */}
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Estimate Details</h3>
+              <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Estimate Details
+                <span className={`ml-3 text-xs font-normal px-3 py-1 rounded-full ${
+                  estimateType === 'insurance' 
+                    ? 'bg-blue-100 text-blue-700' 
+                    : 'bg-green-100 text-green-700'
+                }`}>
+                  {estimateType === 'insurance' ? '📋 FOR INSURANCE' : '👤 FOR CUSTOMER'}
+                </span>
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ✅ Name field - Common for both */}
                 <input
                   type="text"
-                  placeholder="Company Name"
-                  value={estimateData.companyName}
-                  onChange={(e) => setEstimateData(prev => ({ ...prev, companyName: e.target.value }))}
+                  placeholder="Name"
+                  value={estimateData.name}
+                  onChange={(e) => setEstimateData(prev => ({ ...prev, name: e.target.value }))}
                   className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
                 />
-                <input
-                  type="text"
-                  placeholder="Vehicle"
-                  value={estimateData.vehicle}
-                  onChange={(e) => setEstimateData(prev => ({ ...prev, vehicle: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
-                />
-                <input
-                  type="text"
-                  placeholder="Policy Number"
-                  value={estimateData.policyNumber}
-                  onChange={(e) => setEstimateData(prev => ({ ...prev, policyNumber: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
-                />
+
+                {/* ✅ Policy Number - Only for Insurance */}
+                {estimateType === 'insurance' && (
+                  <input
+                    type="text"
+                    placeholder="Policy Number"
+                    value={estimateData.policyNumber}
+                    onChange={(e) => setEstimateData(prev => ({ ...prev, policyNumber: e.target.value }))}
+                    className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  />
+                )}
+
                 <input
                   type="text"
                   placeholder="Color"
@@ -850,28 +835,24 @@ const EstimatedBill = ({ darkMode }) => {
                   onChange={(e) => setEstimateData(prev => ({ ...prev, regNo: e.target.value }))}
                   className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
                 />
-                <input
-                  type="text"
-                  placeholder="Address"
-                  value={estimateData.address}
-                  onChange={(e) => setEstimateData(prev => ({ ...prev, address: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
-                />
+
+                {/* ✅ Address - Only for Insurance */}
+                {estimateType === 'insurance' && (
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={estimateData.address}
+                    onChange={(e) => setEstimateData(prev => ({ ...prev, address: e.target.value }))}
+                    className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  />
+                )}
+
                 <div>
                   <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Date</label>
                   <input
                     type="date"
                     value={estimateData.date}
                     onChange={(e) => setEstimateData(prev => ({ ...prev, date: e.target.value }))}
-                    className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
-                  />
-                </div>
-                <div>
-                  <label className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Valid Until</label>
-                  <input
-                    type="date"
-                    value={estimateData.validUntil}
-                    onChange={(e) => setEstimateData(prev => ({ ...prev, validUntil: e.target.value }))}
                     className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
                   />
                 </div>
@@ -885,7 +866,6 @@ const EstimatedBill = ({ darkMode }) => {
                 <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{estimateData.items.length} items</span>
               </div>
 
-              {/* Add Item Form - WITH QUANTITY */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 p-4 bg-red-50 dark:bg-red-900/10 rounded-xl">
                 <input
                   type="text"
@@ -920,7 +900,6 @@ const EstimatedBill = ({ darkMode }) => {
                 </button>
               </div>
 
-              {/* Items Table - WITH QUANTITY COLUMN */}
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
@@ -986,7 +965,6 @@ const EstimatedBill = ({ darkMode }) => {
                 </table>
               </div>
 
-              {/* Notes */}
               <div className="mt-4">
                 <label className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Notes (Optional)</label>
                 <textarea
@@ -1006,6 +984,16 @@ const EstimatedBill = ({ darkMode }) => {
               <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Summary</h3>
               
               <div className="space-y-3">
+                <div className="flex justify-between py-2">
+                  <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Type</span>
+                  <span className={`font-semibold px-2 py-0.5 rounded text-xs ${
+                    estimateType === 'insurance' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-green-100 text-green-700'
+                  }`}>
+                    {estimateType === 'insurance' ? 'Insurance' : 'Customer'}
+                  </span>
+                </div>
                 <div className="flex justify-between py-2">
                   <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Items</span>
                   <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{estimateData.items.length}</span>

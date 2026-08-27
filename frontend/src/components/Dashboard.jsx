@@ -33,7 +33,14 @@ const Credit = lazy(() => import('./finance/Credit'));
 const DiscardedBillsPage = lazy(() => import('./billing/DiscardedBillsPage'));
 const EstimatedBill = lazy(() => import('./EstimatedBill'));
 const BatteryPage = lazy(() => import('./BatteryPage'));
-const EstimateRecords = lazy(() => import('./EstimateRecords')); // ✅ NEW
+const EstimateRecords = lazy(() => import('./EstimateRecords'));
+
+// ✅ Battery Overview & Charts
+const BatteryOverview = lazy(() => import('./BatteryOverview'));
+const BatteryCharts = lazy(() => import('./BatteryCharts'));
+
+// ✅ NEW: Old Batteries
+const OldBatteries = lazy(() => import('./OldBatteries'));
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -59,7 +66,7 @@ const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkM
   </div>
 ));
 
-// ✅ Helper: Get date range for filter
+// Helper: Get date range for filter
 const getDateRange = (filter, customDate = null) => {
   const now = new Date();
   const start = new Date();
@@ -97,7 +104,7 @@ const getDateRange = (filter, customDate = null) => {
   return { start, end: now };
 };
 
-// ✅ Helper: Filter invoices by date range
+// Helper: Filter invoices by date range
 const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   if (filter === 'all') return invoices;
   const range = getDateRange(filter, customDate);
@@ -109,7 +116,7 @@ const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   });
 };
 
-// ✅ Helper: Filter expenses by date range
+// Helper: Filter expenses by date range
 const filterExpensesByDate = (expenses, filter, customDate = null) => {
   if (filter === 'all') return expenses;
   const range = getDateRange(filter, customDate);
@@ -471,8 +478,11 @@ const Dashboard = () => {
       'finance-credit': 'Credit Management',
       billing: 'Billing System',
       estimate: 'Estimate / Quotation',
-      'estimate-records': 'Estimate Records', // ✅ NEW
+      'estimate-records': 'Estimate Records',
       battery: 'Battery Sale',
+      'battery-overview': 'Battery Sales Overview',
+      'battery-charts': 'Battery Sales Charts',
+      'old-batteries': 'Old Batteries History', // ✅ NEW
       record: 'Records Archive',
       reminders: 'Reminders',
       users: 'User Management',
@@ -493,8 +503,11 @@ const Dashboard = () => {
       'finance-credit': 'Manage vendor credits, payments and history',
       billing: 'Create bills, print invoices, export data',
       estimate: 'Create and print customer estimates / quotations',
-      'estimate-records': 'View all estimate records with search and filters', // ✅ NEW
+      'estimate-records': 'View all estimate records with search and filters',
       battery: 'Sell batteries with trade-in option',
+      'battery-overview': 'View battery sales statistics and reports',
+      'battery-charts': 'Visualize battery sales with interactive charts',
+      'old-batteries': 'View all purchased old batteries history with stats', // ✅ NEW
       record: 'View all transaction history',
       reminders: 'Birthday, Tuning & Oil Change reminders',
       users: 'Manage system users and employees',
@@ -515,8 +528,11 @@ const Dashboard = () => {
       'finance-credit': <FiCreditCard className="text-2xl" />,
       billing: <FiFileText className="text-2xl" />,
       estimate: <FiFile className="text-2xl" />,
-      'estimate-records': <FiArchive className="text-2xl" />, // ✅ NEW
+      'estimate-records': <FiArchive className="text-2xl" />,
       battery: <FiBattery className="text-2xl" />,
+      'battery-overview': <FiTrendingUp className="text-2xl" />,
+      'battery-charts': <FiBarChart2 className="text-2xl" />,
+      'old-batteries': <FiBattery className="text-2xl" />, // ✅ NEW
       record: <FiBarChart2 className="text-2xl" />,
       reminders: <FiBell className="text-2xl" />,
       users: <FiUsers className="text-2xl" />,
@@ -1144,7 +1160,7 @@ const Dashboard = () => {
                 <EstimatedBill darkMode={darkMode} />
               )}
 
-              {/* ✅ Estimate Records */}
+              {/* Estimate Records */}
               {activeMenu === 'estimate-records' && (
                 <EstimateRecords darkMode={darkMode} />
               )}
@@ -1152,6 +1168,21 @@ const Dashboard = () => {
               {/* Battery Page */}
               {activeMenu === 'battery' && (
                 <BatteryPage darkMode={darkMode} />
+              )}
+
+              {/* Battery Overview */}
+              {activeMenu === 'battery-overview' && (
+                <BatteryOverview darkMode={darkMode} />
+              )}
+
+              {/* Battery Charts */}
+              {activeMenu === 'battery-charts' && (
+                <BatteryCharts darkMode={darkMode} />
+              )}
+
+              {/* ✅ NEW: Old Batteries */}
+              {activeMenu === 'old-batteries' && (
+                <OldBatteries darkMode={darkMode} />
               )}
               
               {activeMenu === 'record' && userRole !== 'employee' && (

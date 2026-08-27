@@ -118,7 +118,7 @@ const EstimateRecords = ({ darkMode }) => {
 
   // Format date
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '';
     try {
       const date = new Date(dateString);
       return date.toLocaleDateString('en-GB', {
@@ -127,12 +127,12 @@ const EstimateRecords = ({ darkMode }) => {
         year: 'numeric'
       });
     } catch {
-      return 'N/A';
+      return '';
     }
   };
 
   const formatDateTime = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '';
     try {
       const date = new Date(dateString);
       return date.toLocaleString('en-GB', {
@@ -144,7 +144,7 @@ const EstimateRecords = ({ darkMode }) => {
         hour12: true
       });
     } catch {
-      return 'N/A';
+      return '';
     }
   };
 
@@ -218,7 +218,7 @@ const EstimateRecords = ({ darkMode }) => {
     setSelectedEstimate(null);
   };
 
-  // ✅ Print single estimate - FIXED: EST. NO. and watermark visible
+  // ✅ PRINT SINGLE ESTIMATE - WITH REG NO
   const printSingleEstimate = () => {
     if (!selectedEstimate) return;
 
@@ -231,7 +231,6 @@ const EstimateRecords = ({ darkMode }) => {
         return;
       }
 
-      // ✅ FIX: Use estimate's creation time, not current time
       const estimateTime = selectedEstimate.created_at 
         ? new Date(selectedEstimate.created_at).toLocaleTimeString('en-US', {
             hour: '2-digit',
@@ -260,6 +259,17 @@ const EstimateRecords = ({ darkMode }) => {
         </tr>
       `;
 
+      // Values - only show if they exist
+      const nameVal = selectedEstimate.name || selectedEstimate.company_name || '';
+      const policyVal = selectedEstimate.policy_number || '';
+      const colorVal = selectedEstimate.color || '';
+      const vinVal = selectedEstimate.vin || '';
+      const makeVal = selectedEstimate.make || '';
+      const modelVal = selectedEstimate.model || '';
+      const engineVal = selectedEstimate.engine_no || '';
+      const regNoVal = selectedEstimate.reg_no || ''; // ✅ REG NO ADDED
+      const hasAnyValue = nameVal || policyVal || colorVal || vinVal || makeVal || modelVal || engineVal || regNoVal;
+
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
@@ -270,7 +280,6 @@ const EstimateRecords = ({ darkMode }) => {
               * { margin: 0; padding: 0; box-sizing: border-box; }
               body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f0f0f0; }
               .estimate-container { max-width: 800px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; position: relative; }
-              /* ✅ WATERMARK - MORE VISIBLE & FULL PAGE */
               .watermark {
                 position: absolute;
                 top: 50%;
@@ -294,16 +303,54 @@ const EstimateRecords = ({ darkMode }) => {
               .header-text .shop-name { font-size: 24px; font-weight: bold; color: #1f2937; letter-spacing: 1px; }
               .header-text .subtitle { font-size: 13px; color: #6b7280; }
               .content { padding: 30px; position: relative; z-index: 1; background: transparent; }
-              .section-title { font-size: 16px; font-weight: 700; color: #1f2937; margin-bottom: 15px; padding-bottom: 8px; border-bottom: 2px solid #dc2626; text-transform: uppercase; letter-spacing: 1px; }
-              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 40px; margin-bottom: 25px; padding: 15px 20px; background: #fafafa; border-radius: 8px; border: 1px solid #e5e7eb; }
-              .info-item { display: flex; padding: 4px 0; font-size: 13px; }
-              .info-item .label { font-weight: 600; color: #4b5563; min-width: 100px; }
-              .info-item .value { color: #1f2937; font-weight: 500; }
-              .invoice-details { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 25px; padding: 12px 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e5e7eb; }
-              .invoice-details .detail-item { text-align: center; }
-              .invoice-details .detail-item .label { font-size: 10px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; display: block; }
-              .invoice-details .detail-item .value { font-size: 14px; font-weight: 600; color: #1f2937; margin-top: 2px; }
-              .invoice-details .detail-item .value.red { color: #dc2626; }
+              
+              /* ✅ DATE & TIME BAR */
+              .date-time-bar {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 10px 20px;
+                margin-bottom: 20px;
+                background: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e5e7eb;
+                font-size: 15px;
+                font-weight: 600;
+              }
+              .date-time-bar .label {
+                color: #6b7280;
+                font-weight: 400;
+              }
+              .date-time-bar .value {
+                color: #1f2937;
+              }
+              
+              /* ✅ INFO GRID - WITH REG NO */
+              .info-grid { 
+                display: grid; 
+                grid-template-columns: 1fr 1fr; 
+                gap: 6px 20px; 
+                margin-bottom: 25px;
+                padding: 12px 20px;
+                background: #fafafa;
+                border-radius: 8px;
+                border: 1px solid #e5e7eb;
+              }
+              .info-item {
+                display: flex;
+                padding: 3px 0;
+                font-size: 13px;
+              }
+              .info-item .label {
+                font-weight: 600;
+                color: #4b5563;
+                min-width: 90px;
+              }
+              .info-item .value {
+                color: #1f2937;
+                font-weight: 500;
+              }
+
               table { width: 100%; border-collapse: collapse; margin: 20px 0; background: white; }
               th, td { border: 1px solid #e5e7eb; padding: 10px 14px; text-align: left; font-size: 13px; }
               th { background: #1f2937; color: white; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
@@ -338,25 +385,26 @@ const EstimateRecords = ({ darkMode }) => {
                 </div>
               </div>
               <div class="content">
-                <div class="section-title">VEHICLE / POLICY INFORMATION</div>
+                <!-- ✅ DATE & TIME - UPPAR -->
+                <div class="date-time-bar">
+                  <span><span class="label"> DATE</span> <span class="value">${formatDate(selectedEstimate.date)}</span></span>
+                  <span><span class="label"> TIME</span> <span class="value">${estimateTime}</span></span>
+                </div>
+
+                <!-- ✅ INFO GRID - WITH REG NO -->
                 <div class="info-grid">
-                  <div class="info-item"><span class="label">Company</span><span class="value">${selectedEstimate.company_name || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Policy Number</span><span class="value">${selectedEstimate.policy_number || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Vehicle</span><span class="value">${selectedEstimate.vehicle || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Color</span><span class="value">${selectedEstimate.color || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">VIN</span><span class="value">${selectedEstimate.vin || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Make</span><span class="value">${selectedEstimate.make || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Model</span><span class="value">${selectedEstimate.model || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Reg No</span><span class="value">${selectedEstimate.reg_no || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Engine No</span><span class="value">${selectedEstimate.engine_no || 'N/A'}</span></div>
-                  <div class="info-item"><span class="label">Address</span><span class="value">${selectedEstimate.address || 'N/A'}</span></div>
+                  ${nameVal ? `<div class="info-item"><span class="label">Name</span><span class="value">${nameVal}</span></div>` : ''}
+                  ${policyVal ? `<div class="info-item"><span class="label">Policy</span><span class="value">${policyVal}</span></div>` : ''}
+                  ${colorVal ? `<div class="info-item"><span class="label">Color</span><span class="value">${colorVal}</span></div>` : ''}
+                  ${vinVal ? `<div class="info-item"><span class="label">VIN</span><span class="value">${vinVal}</span></div>` : ''}
+                  ${makeVal ? `<div class="info-item"><span class="label">Make</span><span class="value">${makeVal}</span></div>` : ''}
+                  ${modelVal ? `<div class="info-item"><span class="label">Model</span><span class="value">${modelVal}</span></div>` : ''}
+                  ${engineVal ? `<div class="info-item"><span class="label">Engine</span><span class="value">${engineVal}</span></div>` : ''}
+                  ${regNoVal ? `<div class="info-item"><span class="label">Reg No</span><span class="value">${regNoVal}</span></div>` : ''}
+                  ${!hasAnyValue ? `<div class="info-item" style="grid-column: span 2; text-align:center; color:#9ca3af;">No details available</div>` : ''}
                 </div>
-                <div class="invoice-details">
-                  <div class="detail-item"><span class="label">EST. NO.</span><span class="value red">${selectedEstimate.estimate_no}</span></div>
-                  <div class="detail-item"><span class="label">Date</span><span class="value">${formatDate(selectedEstimate.date)}</span></div>
-                  <div class="detail-item"><span class="label">Valid Until</span><span class="value">${formatDate(selectedEstimate.valid_until)}</span></div>
-                  <div class="detail-item"><span class="label">Time</span><span class="value">${estimateTime}</span></div>
-                </div>
+
+                <!-- ✅ ITEMS TABLE -->
                 <table>
                   <thead>
                     <tr><th style="text-align:center;">#</th><th style="text-align:left;">Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Total</th></tr>
@@ -391,19 +439,15 @@ const EstimateRecords = ({ darkMode }) => {
   // Export to Excel
   const exportToExcel = () => {
     const ws = XLSX.utils.json_to_sheet(filteredEstimates.map(est => ({
-      'Estimate #': est.estimate_no,
-      'Company': est.company_name || 'N/A',
-      'Vehicle': est.vehicle || 'N/A',
-      'Policy Number': est.policy_number || 'N/A',
-      'Color': est.color || 'N/A',
-      'Make': est.make || 'N/A',
-      'VIN': est.vin || 'N/A',
-      'Model': est.model || 'N/A',
-      'Reg No': est.reg_no || 'N/A',
-      'Engine No': est.engine_no || 'N/A',
-      'Address': est.address || 'N/A',
+      'Name': est.name || est.company_name || '',
+      'Policy Number': est.policy_number || '',
+      'Color': est.color || '',
+      'Make': est.make || '',
+      'VIN': est.vin || '',
+      'Model': est.model || '',
+      'Engine No': est.engine_no || '',
+      'Reg No': est.reg_no || '',
       'Date': formatDate(est.date),
-      'Valid Until': formatDate(est.valid_until),
       'Total Amount': est.total_amount || 0,
       'Status': getStatusText(est.valid_until),
       'Items': est.items?.map(i => i.name).join(', ') || 'None',
@@ -420,13 +464,12 @@ const EstimateRecords = ({ darkMode }) => {
     const doc = new jsPDF('landscape');
     doc.text(`Estimates Records - All`, 14, 10);
     doc.autoTable({
-      head: [['Estimate #', 'Company', 'Vehicle', 'Date', 'Valid Until', 'Total', 'Status', 'Items']],
+      head: [['Name', 'Policy #', 'Reg No', 'Date', 'Total', 'Status', 'Items']],
       body: filteredEstimates.map(est => [
-        est.estimate_no,
-        est.company_name || 'N/A',
-        est.vehicle || 'N/A',
+        est.name || est.company_name || '',
+        est.policy_number || '',
+        est.reg_no || '',
         formatDate(est.date),
-        formatDate(est.valid_until),
         `Rs. ${(est.total_amount || 0).toLocaleString()}`,
         getStatusText(est.valid_until),
         est.items?.map(i => i.name).join(', ').substring(0, 30) || 'None'
@@ -441,14 +484,12 @@ const EstimateRecords = ({ darkMode }) => {
   const filteredEstimates = useMemo(() => {
     let filtered = estimates;
 
-    // Visibility filter
     if (visibilityFilter === 'active') {
       filtered = filtered.filter(est => !hiddenIds.includes(est.id));
     } else if (visibilityFilter === 'hidden') {
       filtered = filtered.filter(est => hiddenIds.includes(est.id));
     }
 
-    // Date filter
     if (dateFilter === 'single' && singleDate) {
       const selectedDate = new Date(singleDate);
       const startOfDay = new Date(selectedDate);
@@ -485,19 +526,17 @@ const EstimateRecords = ({ darkMode }) => {
       }
     }
 
-    // Search
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(est =>
         (est.estimate_no || '').toLowerCase().includes(term) ||
+        (est.name || '').toLowerCase().includes(term) ||
         (est.company_name || '').toLowerCase().includes(term) ||
-        (est.vehicle || '').toLowerCase().includes(term) ||
         (est.policy_number || '').toLowerCase().includes(term) ||
         (est.reg_no || '').toLowerCase().includes(term)
       );
     }
 
-    // Status filter
     if (filterStatus === 'active') {
       filtered = filtered.filter(est => getStatusText(est.valid_until) === 'Active');
     } else if (filterStatus === 'expired') {
@@ -564,7 +603,6 @@ const EstimateRecords = ({ darkMode }) => {
           {/* Filters */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
             <div className="flex flex-wrap gap-2 items-center">
-              {/* Search */}
               <div className="relative flex-1 min-w-[200px]">
                 <FiSearch className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
                 <input
@@ -576,7 +614,6 @@ const EstimateRecords = ({ darkMode }) => {
                 />
               </div>
 
-              {/* Visibility */}
               <button
                 onClick={() => { setVisibilityFilter('active'); setCurrentPage(1); }}
                 className={`px-3 py-2 rounded-lg text-sm transition ${visibilityFilter === 'active' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
@@ -590,7 +627,6 @@ const EstimateRecords = ({ darkMode }) => {
                 <FiEyeOff className="inline mr-1" /> Hidden ({hiddenCount})
               </button>
 
-              {/* Status */}
               <button
                 onClick={() => { setFilterStatus('all'); setCurrentPage(1); }}
                 className={`px-3 py-2 rounded-lg text-sm transition ${filterStatus === 'all' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
@@ -610,7 +646,6 @@ const EstimateRecords = ({ darkMode }) => {
                 <FiClock className="inline mr-1" /> Expired
               </button>
 
-              {/* Date Filter */}
               <select
                 value={dateFilter}
                 onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); setShowCustomDate(e.target.value === 'custom'); setShowSingleDate(e.target.value === 'single'); }}
@@ -626,7 +661,6 @@ const EstimateRecords = ({ darkMode }) => {
               </select>
             </div>
 
-            {/* Single Date */}
             {showSingleDate && (
               <div className="flex flex-wrap items-center gap-3 mt-3 p-3 bg-teal-50 dark:bg-teal-900/10 rounded-lg">
                 <FiCalendar className="text-teal-600 dark:text-teal-400" />
@@ -642,7 +676,6 @@ const EstimateRecords = ({ darkMode }) => {
               </div>
             )}
 
-            {/* Custom Date Range */}
             {showCustomDate && (
               <div className="flex flex-wrap items-center gap-3 mt-3 p-3 bg-purple-50 dark:bg-purple-900/10 rounded-lg">
                 <FiCalendar className="text-purple-600 dark:text-purple-400" />
@@ -671,15 +704,14 @@ const EstimateRecords = ({ darkMode }) => {
           {/* Table */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px]">
+              <table className="w-full min-w-[800px]">
                 <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">#</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Estimate #</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Company</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Vehicle</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Policy #</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Reg No</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Valid Until</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Total</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Items</th>
@@ -689,7 +721,7 @@ const EstimateRecords = ({ darkMode }) => {
                 <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {currentEstimates.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="px-6 py-12 text-center">
+                      <td colSpan="9" className="px-6 py-12 text-center">
                         <FiInbox className="text-6xl mx-auto text-gray-400" />
                         <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No estimates found</p>
                       </td>
@@ -703,11 +735,10 @@ const EstimateRecords = ({ darkMode }) => {
                       return (
                         <tr key={est.id} className={`${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} ${isHidden ? 'opacity-60' : ''}`}>
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{indexOfFirstItem + idx + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{est.estimate_no}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{est.company_name || 'N/A'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{est.vehicle || 'N/A'}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{est.name || est.company_name || ''}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{est.policy_number || ''}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{est.reg_no || ''}</td>
                           <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatDate(est.date)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatDate(est.valid_until)}</td>
                           <td className="px-4 py-3 text-sm font-semibold text-red-500 text-right">{formatCurrency(est.total_amount)}</td>
                           <td className="px-4 py-3">
                             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColor}`}>
@@ -749,7 +780,6 @@ const EstimateRecords = ({ darkMode }) => {
               </table>
             </div>
 
-            {/* Pagination */}
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center flex-wrap gap-3">
               <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredEstimates.length)} of {filteredEstimates.length} entries
@@ -833,26 +863,23 @@ const EstimateRecords = ({ darkMode }) => {
               </div>
             </div>
             <div className="p-6 space-y-6">
-              {/* Customer Info */}
               <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                 <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>VEHICLE / POLICY INFORMATION</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Company</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.company_name || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Policy Number</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.policy_number || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Vehicle</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.vehicle || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Color</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.color || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>VIN</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.vin || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Make</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.make || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Model</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.model || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Reg No</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.reg_no || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Engine No</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.engine_no || 'N/A'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Address</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.address || 'N/A'}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Name</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.name || selectedEstimate.company_name || ''}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Policy Number</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.policy_number || ''}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Color</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.color || ''}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>VIN</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.vin || ''}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Make</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.make || ''}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Model</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.model || ''}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Engine No</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.engine_no || ''}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Reg No</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.reg_no || ''}</p></div>
                   <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Date</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatDate(selectedEstimate.date)}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Valid Until</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatDate(selectedEstimate.valid_until)}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{getStatusText(selectedEstimate.valid_until)}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Items</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.items?.length || 0}</p></div>
                 </div>
               </div>
 
-              {/* Items */}
               <div>
                 <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Items</h3>
                 <div className="overflow-x-auto">
@@ -891,7 +918,6 @@ const EstimateRecords = ({ darkMode }) => {
                 </div>
               </div>
 
-              {/* Notes */}
               {selectedEstimate.notes && (
                 <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                   <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Notes</h3>

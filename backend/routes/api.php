@@ -16,6 +16,7 @@ use App\Http\Controllers\CreditPaymentController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\SavedCartController;
 use App\Http\Controllers\EstimateController;
+use App\Http\Controllers\OldBatteryController; // ✅ NEW
 
 /*
 |--------------------------------------------------------------------------
@@ -132,6 +133,7 @@ Route::prefix('employees')->group(function () {
     Route::get('/{id}', [EmployeeController::class, 'show']);
     Route::get('/{id}/monthly-history', [EmployeeController::class, 'monthlyHistory']);
     Route::get('/{id}/unpaid-months', [EmployeeController::class, 'unpaidMonths']);
+    Route::post('/{id}/restart-month', [EmployeeController::class, 'restartMonth']);
     Route::post('/', [EmployeeController::class, 'store']);
     Route::put('/{id}', [EmployeeController::class, 'update']);
     Route::delete('/{id}', [EmployeeController::class, 'destroy']);
@@ -140,10 +142,11 @@ Route::prefix('employees')->group(function () {
 // ==================== EMPLOYEE PAYMENT ROUTES ====================
 Route::prefix('employee-payments')->group(function () {
     Route::post('/', [EmployeeController::class, 'makePayment']);
+    Route::post('/advance', [EmployeeController::class, 'makeAdvancePayment']);
     Route::delete('/{id}', [EmployeeController::class, 'deletePayment']);
 });
 
-// ==================== ✅ ESTIMATES ROUTES ====================
+// ==================== ESTIMATES ROUTES ====================
 Route::prefix('estimates')->group(function () {
     // Main CRUD
     Route::get('/', [EstimateController::class, 'index']);
@@ -163,6 +166,18 @@ Route::prefix('estimates')->group(function () {
     Route::patch('/{id}/status', [EstimateController::class, 'updateStatus']);
     
     Route::delete('/{id}', [EstimateController::class, 'destroy']);
+});
+
+// ✅ ==================== OLD BATTERIES ROUTES (Complete CRUD) ====================
+Route::prefix('old-batteries')->group(function () {
+    Route::get('/', [OldBatteryController::class, 'index']);              // GET all
+    Route::get('/stats', [OldBatteryController::class, 'stats']);         // GET stats
+    Route::get('/date-range', [OldBatteryController::class, 'getByDateRange']); // GET by date
+    Route::get('/{id}', [OldBatteryController::class, 'show']);           // GET single
+    Route::post('/', [OldBatteryController::class, 'store']);             // POST create
+    Route::put('/{id}', [OldBatteryController::class, 'update']);         // PUT update
+    Route::delete('/{id}', [OldBatteryController::class, 'destroy']);     // DELETE single
+    Route::delete('/bulk-delete', [OldBatteryController::class, 'bulkDelete']); // DELETE bulk
 });
 
 // ==================== PROTECTED ROUTES (Authentication Required) ====================
@@ -188,7 +203,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/low-stock', [DashboardController::class, 'lowStockProducts']);
     });
     
-    // ✅ INVOICES ROUTES - UPDATED WITH PUT
+    // INVOICES ROUTES
     Route::prefix('invoices')->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/{id}', [InvoiceController::class, 'show']);
@@ -203,7 +218,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/{id}', [InvoiceController::class, 'updatePendingPayment']);
     });
     
-    // ✅ PAYMENT HISTORY ROUTE - ADDED
+    // PAYMENT HISTORY ROUTE
     Route::prefix('payment-history')->group(function () {
         Route::get('/{invoiceNo}', [InvoiceController::class, 'getPaymentHistory']);
     });
@@ -215,7 +230,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/expenses/{id}', [ExpenseController::class, 'update']);
     Route::delete('/expenses/{id}', [ExpenseController::class, 'destroy']);
     
-    // ==================== SAVED CARTS / DISCARDED BILLS ====================
+    // SAVED CARTS / DISCARDED BILLS
     Route::prefix('saved-carts')->group(function () {
         Route::get('/', [SavedCartController::class, 'index']);
         Route::get('/count', [SavedCartController::class, 'count']);

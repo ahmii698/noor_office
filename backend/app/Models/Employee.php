@@ -20,7 +20,7 @@ class Employee extends Model
         'status',
         'created_by',
         'due_date',
-        // ❌ current_cycle_start removed — no longer used in the new month-based system
+        'manual_cycles_added', // ✅ NEW: manual "Restart Month" counter
     ];
 
     protected $casts = [
@@ -30,6 +30,7 @@ class Employee extends Model
         'salary_date' => 'integer',
         'join_date' => 'date',
         'due_date' => 'date',
+        'manual_cycles_added' => 'integer', // ✅ NEW
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -49,13 +50,14 @@ class Employee extends Model
     }
 
     // =========================================================================
-    // ✅ NEW: MONTH-BASED SALARY SYSTEM
+    // ✅ MONTH-BASED SALARY SYSTEM
     // =========================================================================
 
     /**
-     * ✅ NEW: Get list of every salary month from join_date to the current month.
-     * Returns an array of 'Y-m' strings, e.g. ['2026-06', '2026-07', '2026-08']
-     * This is the full set of months an employee OWES salary for.
+     * Get list of every salary month from join_date to the current month.
+     * ✅ UPDATED: "now" can be manually pushed forward via manual_cycles_added
+     * (the Restart Month button), so an admin can force a new month to start
+     * before its calendar month naturally arrives.
      */
     public function getMonthsSinceJoinList(): array
     {
@@ -65,7 +67,7 @@ class Employee extends Model
 
         $months = [];
         $cursor = $this->join_date->copy()->startOfMonth();
-        $end = now()->startOfMonth();
+        $end = now()->addMonths($this->manual_cycles_added ?? 0)->startOfMonth();
 
         while ($cursor->lte($end)) {
             $months[] = $cursor->format('Y-m');
@@ -76,26 +78,41 @@ class Employee extends Model
     }
 
     /**
-     * ✅ NEW: Full month-by-month breakdown for the History view.
-     * Every month from join_date to now shows up — even months with
-     * NO payment at all (they show as Pending with paid = 0).
+     * ✅ NEW: Shared calculation used by getMonthlyBreakdown() and
+     * getAdvanceBalanceAttribute(). Builds the month-by-month breakdown
+     * AND applies any unspent advance payments to the oldest unpaid
+     * month(s) first, returning whatever advance is left over.
      */
-    public function getMonthlyBreakdown()
+    private function computeBreakdownAndAdvance()
     {
-        $months = $this->getMonthsSinceJoinList();
+        $months = $this->getMonthsSinceJoinList(); // ascending, oldest first
         $currentMonth = now()->format('Y-m');
+        $salary = (float) $this->monthly_salary;
 
-        // ✅ Get all payments grouped by for_month in one query (efficient)
         $paidByMonth = $this->payments()
             ->whereNotNull('for_month')
             ->selectRaw('for_month, SUM(amount) as total')
             ->groupBy('for_month')
             ->pluck('total', 'for_month');
 
-        return collect($months)->map(function ($month) use ($paidByMonth, $currentMonth) {
+        // ✅ Total advance pool (payments not tied to a specific month)
+        $advancePool = (float) $this->payments()
+            ->where('is_advance', true)
+            ->sum('amount');
+
+        $breakdown = collect();
+
+        foreach ($months as $month) {
             $paid = (float) ($paidByMonth[$month] ?? 0);
-            $salary = (float) $this->monthly_salary;
             $balance = $salary - $paid;
+
+            // ✅ Apply leftover advance to this month if it still owes something
+            if ($balance > 0 && $advancePool > 0) {
+                $applied = min($balance, $advancePool);
+                $paid += $applied;
+                $balance -= $applied;
+                $advancePool -= $applied;
+            }
 
             if ($balance <= 0) {
                 $status = 'Paid';
@@ -107,20 +124,33 @@ class Employee extends Model
 
             $date = Carbon::createFromFormat('Y-m', $month);
 
-            return [
+            $breakdown->push([
                 'month' => $month,
                 'month_name' => $date->format('F Y'),
                 'monthly_salary' => $salary,
-                'paid_amount' => $paid,
-                'balance_amount' => $balance,
+                'paid_amount' => round($paid, 2),
+                'balance_amount' => round($balance, 2),
                 'status' => $status,
                 'is_current_month' => $month === $currentMonth,
-            ];
-        })->sortByDesc('month')->values();
+            ]);
+        }
+
+        return [$breakdown->sortByDesc('month')->values(), round($advancePool, 2)];
     }
 
     /**
-     * ✅ NEW: List of months that still have an outstanding balance
+     * Full month-by-month breakdown for the History view.
+     * Every month from join_date to now (+ manual cycles) shows up,
+     * with advance payments already applied against unpaid months.
+     */
+    public function getMonthlyBreakdown()
+    {
+        [$breakdown, ] = $this->computeBreakdownAndAdvance();
+        return $breakdown;
+    }
+
+    /**
+     * List of months that still have an outstanding balance
      * (used to populate the "which month are you paying?" dropdown).
      * Oldest unpaid month first, so Ahmii pays in order.
      */
@@ -132,9 +162,20 @@ class Employee extends Model
             ->values();
     }
 
+    /**
+     * ✅ NEW: Advance amount given but not yet consumed by any owed month
+     * (e.g. gave 5000 advance but current month is already fully paid —
+     * this sits here and auto-applies the moment a new month appears).
+     */
+    public function getAdvanceBalanceAttribute()
+    {
+        [, $advance] = $this->computeBreakdownAndAdvance();
+        return $advance;
+    }
+
     // =========================================================================
-    // ✅ UPDATED: Balance now = total owed across ALL months since join,
-    // minus total paid across all time. No more "current cycle" concept.
+    // Balance = total owed across ALL months since join (incl. manual cycles),
+    // minus total paid across all time (for_month payments + advance payments).
     // =========================================================================
     public function updateBalance()
     {
@@ -154,6 +195,18 @@ class Employee extends Model
         }
 
         $this->save();
+    }
+
+    /**
+     * ✅ NEW: Manually force the next salary month to start now,
+     * regardless of calendar date. Called by the Restart Month button.
+     */
+    public function forceNextMonth()
+    {
+        $this->manual_cycles_added = ($this->manual_cycles_added ?? 0) + 1;
+        $this->save();
+        $this->updateBalance();
+        return $this;
     }
 
     // ✅ Check if salary is due for this month
@@ -287,6 +340,7 @@ class Employee extends Model
             'payment_percentage' => $this->payment_percentage,
             'payments_count' => $this->payments()->count(),
             'total_paid_all_time' => (float) $this->total_paid_all_time,
+            'advance_balance' => (float) $this->advance_balance,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

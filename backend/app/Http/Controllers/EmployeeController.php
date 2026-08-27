@@ -22,7 +22,6 @@ class EmployeeController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
 
-            // ✅ Transform data for frontend
             $transformed = $employees->map(function($employee) {
                 return [
                     'id' => $employee->id,
@@ -32,14 +31,16 @@ class EmployeeController extends Controller
                     'join_date' => $employee->join_date ? $employee->join_date->format('Y-m-d') : null,
                     'paid_amount' => (float) $employee->paid_amount,
                     'balance_amount' => (float) $employee->balance_amount,
+                    'advance_balance' => (float) $employee->advance_balance, // ✅ NEW
                     'status' => $employee->status,
                     'payments' => $employee->payments->map(function($payment) {
                         return [
                             'id' => $payment->id,
                             'amount' => (float) $payment->amount,
                             'payment_date' => $payment->payment_date,
-                            'for_month' => $payment->for_month,           // ✅ NEW
-                            'for_month_name' => $payment->for_month_name, // ✅ NEW
+                            'for_month' => $payment->for_month,
+                            'for_month_name' => $payment->for_month_name,
+                            'is_advance' => (bool) $payment->is_advance, // ✅ NEW
                             'note' => $payment->note,
                             'created_by' => $payment->created_by,
                         ];
@@ -99,6 +100,7 @@ class EmployeeController extends Controller
                     'join_date' => $employee->join_date ? $employee->join_date->format('Y-m-d') : null,
                     'paid_amount' => (float) $employee->paid_amount,
                     'balance_amount' => (float) $employee->balance_amount,
+                    'advance_balance' => (float) $employee->advance_balance, // ✅ NEW
                     'status' => $employee->status,
                     'payments' => $employee->payments->map(function($payment) {
                         return [
@@ -107,6 +109,7 @@ class EmployeeController extends Controller
                             'payment_date' => $payment->payment_date,
                             'for_month' => $payment->for_month,
                             'for_month_name' => $payment->for_month_name,
+                            'is_advance' => (bool) $payment->is_advance, // ✅ NEW
                             'note' => $payment->note,
                             'created_by' => $payment->created_by,
                         ];
@@ -160,10 +163,9 @@ class EmployeeController extends Controller
                 'join_date' => $request->join_date ?? now(),
                 'status' => 'Pending',
                 'created_by' => $createdBy,
+                'manual_cycles_added' => 0,
             ]);
 
-            // ✅ Set correct initial balance based on months since join
-            // (e.g. joined 3 months ago with no payments = balance owed for all 3)
             $employee->updateBalance();
 
             DB::commit();
@@ -236,7 +238,6 @@ class EmployeeController extends Controller
 
             $employee->update($updateData);
 
-            // ✅ Recalculate balance/status across all months since join
             $employee->updateBalance();
 
             DB::commit();
@@ -275,7 +276,6 @@ class EmployeeController extends Controller
 
             DB::beginTransaction();
 
-            // ✅ Delete payments and employee
             $employee->payments()->delete();
             $employee->delete();
 
@@ -297,7 +297,7 @@ class EmployeeController extends Controller
     }
 
     /**
-     * ✅ NEW: Get list of unpaid months for an employee (for the payment dropdown)
+     * Get list of unpaid months for an employee (for the payment dropdown)
      * GET /api/employees/{id}/unpaid-months
      */
     public function unpaidMonths($id)
@@ -327,6 +327,45 @@ class EmployeeController extends Controller
     }
 
     /**
+     * ✅ NEW: Manually force a new salary month to start right now
+     * (before its calendar month naturally arrives).
+     * POST /api/employees/{id}/restart-month
+     */
+    public function restartMonth($id)
+    {
+        try {
+            $employee = Employee::find($id);
+
+            if (!$employee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee not found'
+                ], 404);
+            }
+
+            DB::beginTransaction();
+
+            $employee->forceNextMonth();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'New salary month started for ' . $employee->name . '!',
+                'data' => $employee->load(['payments'])
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error restarting month: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to restart month: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Make payment to employee for a SPECIFIC month
      * POST /api/employee-payments
      */
@@ -336,7 +375,7 @@ class EmployeeController extends Controller
             $validator = Validator::make($request->all(), [
                 'employee_id' => 'required|exists:employees,id',
                 'amount' => 'required|numeric|min:1',
-                'for_month' => 'required|date_format:Y-m', // ✅ NEW: e.g. "2026-05"
+                'for_month' => 'required|date_format:Y-m',
                 'note' => 'nullable|string|max:500',
             ]);
 
@@ -359,7 +398,6 @@ class EmployeeController extends Controller
                 ], 404);
             }
 
-            // ✅ Find how much is already paid + still owed for THIS specific month
             $monthBreakdown = collect($employee->getMonthlyBreakdown())
                 ->firstWhere('month', $request->for_month);
 
@@ -371,7 +409,6 @@ class EmployeeController extends Controller
                 ], 422);
             }
 
-            // ✅ Check if payment exceeds THIS month's remaining balance
             if ($request->amount > $monthBreakdown['balance_amount']) {
                 DB::rollBack();
                 return response()->json([
@@ -382,17 +419,16 @@ class EmployeeController extends Controller
 
             $createdBy = $this->getCreatedBy($request);
 
-            // ✅ Create payment record tagged to the chosen month
             $payment = EmployeePayment::create([
                 'employee_id' => $employee->id,
                 'amount' => $request->amount,
                 'payment_date' => now(),
                 'for_month' => $request->for_month,
+                'is_advance' => false,
                 'note' => $request->note ?? 'Salary payment',
                 'created_by' => $createdBy,
             ]);
 
-            // ✅ Update employee's overall balance (also auto-runs via EmployeePayment::booted())
             $employee->updateBalance();
 
             DB::commit();
@@ -417,6 +453,83 @@ class EmployeeController extends Controller
     }
 
     /**
+     * ✅ NEW: Give an employee an advance — not tied to any month.
+     * Auto-applies to the next unpaid month(s) whenever they appear.
+     * POST /api/employee-payments/advance
+     */
+    public function makeAdvancePayment(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'employee_id' => 'required|exists:employees,id',
+                'amount' => 'required|numeric|min:1',
+                'note' => 'nullable|string|max:500',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            $employee = Employee::find($request->employee_id);
+
+            if (!$employee) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee not found'
+                ], 404);
+            }
+
+            // Sanity cap: an advance shouldn't exceed one month's salary
+            if ($request->amount > $employee->monthly_salary) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Advance amount (Rs. ' . number_format($request->amount) . ') cannot exceed one month\'s salary (Rs. ' . number_format($employee->monthly_salary) . ')'
+                ], 422);
+            }
+
+            $createdBy = $this->getCreatedBy($request);
+
+            $payment = EmployeePayment::create([
+                'employee_id' => $employee->id,
+                'amount' => $request->amount,
+                'payment_date' => now(),
+                'for_month' => null,
+                'is_advance' => true,
+                'note' => $request->note ?? 'Advance payment',
+                'created_by' => $createdBy,
+            ]);
+
+            $employee->updateBalance();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Advance payment of Rs. ' . number_format($request->amount) . ' recorded for ' . $employee->name . '!',
+                'data' => [
+                    'payment' => $payment,
+                    'employee' => $employee->load(['payments'])
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error making advance payment: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to record advance payment: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Delete payment
      * DELETE /api/employee-payments/{id}
      */
@@ -435,13 +548,10 @@ class EmployeeController extends Controller
             DB::beginTransaction();
 
             $employee = $payment->employee;
-
-            // ✅ Store amount before deleting
             $deletedAmount = $payment->amount;
 
             $payment->delete();
 
-            // ✅ Update employee balance
             $employee->updateBalance();
 
             DB::commit();
@@ -463,8 +573,7 @@ class EmployeeController extends Controller
     }
 
     /**
-     * ✅ UPDATED: Full month-by-month history since join_date
-     * Every month shows up — Paid, Partial, or Pending — not just months with a record.
+     * Full month-by-month history since join_date
      * GET /api/employees/{id}/monthly-history
      */
     public function monthlyHistory($id)
@@ -490,6 +599,7 @@ class EmployeeController extends Controller
                         'monthly_salary' => (float) $employee->monthly_salary,
                         'salary_date' => $employee->salary_date,
                         'join_date' => $employee->join_date ? $employee->join_date->format('Y-m-d') : null,
+                        'advance_balance' => (float) $employee->advance_balance, // ✅ NEW
                     ],
                     'history' => $history,
                     'current_month' => now()->format('F Y'),
@@ -519,7 +629,6 @@ class EmployeeController extends Controller
         $createdBy = 'System';
 
         try {
-            // Try sanctum guard
             if (auth()->guard('sanctum')->check()) {
                 $user = auth()->guard('sanctum')->user();
                 if ($user) {
@@ -527,7 +636,6 @@ class EmployeeController extends Controller
                 }
             }
 
-            // Try web guard
             if (auth()->guard('web')->check()) {
                 $user = auth()->guard('web')->user();
                 if ($user) {
@@ -535,7 +643,6 @@ class EmployeeController extends Controller
                 }
             }
 
-            // Try default auth
             if (auth()->check()) {
                 $user = auth()->user();
                 if ($user) {
@@ -543,7 +650,6 @@ class EmployeeController extends Controller
                 }
             }
 
-            // Try request user
             if ($request->user()) {
                 $user = $request->user();
                 return $user->name ?? $user->email ?? 'Admin';

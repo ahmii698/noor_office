@@ -183,6 +183,7 @@ class InvoiceController extends Controller
                 'customer_email' => 'nullable|email|max:255',
                 'customer_car_number' => 'nullable|string|max:50',
                 'customer_car_model' => 'nullable|string|max:100',
+                'customer_birthday' => 'nullable|date', // ✅ NEW: accept birthday from frontend
                 'subtotal' => 'required|numeric|min:0',
                 'discount' => 'required|numeric|min:0',
                 'discount_note' => 'nullable|string|max:255',
@@ -211,6 +212,7 @@ class InvoiceController extends Controller
                         'email' => $validated['customer_email'] ?? null,
                         'car_number' => $validated['customer_car_number'] ?? null,
                         'car_model' => $validated['customer_car_model'] ?? null,
+                        'birthday' => $validated['customer_birthday'] ?? null, // ✅ NEW: save birthday on create
                     ]);
                     Log::info('✅ New customer created: ID ' . $customer->id);
                 } else {
@@ -219,6 +221,7 @@ class InvoiceController extends Controller
                         'email' => $validated['customer_email'] ?? $customer->email,
                         'car_number' => $validated['customer_car_number'] ?? $customer->car_number,
                         'car_model' => $validated['customer_car_model'] ?? $customer->car_model,
+                        'birthday' => $validated['customer_birthday'] ?? $customer->birthday, // ✅ NEW: save birthday on update (preserves existing if not sent)
                     ]);
                     Log::info('✅ Customer updated: ID ' . $customer->id);
                 }

@@ -20,7 +20,25 @@ const debounce = (func, delay) => {
   };
 };
 
-// ✅ Helper: Get date range for filter (with custom date support)
+// ✅ Battery filter function - Battery items ko detect karega
+const isBatteryItem = (item) => {
+  if (!item) return false;
+  return item.service_category === 'Battery' || 
+         item.service_name?.toLowerCase().includes('battery');
+};
+
+// ✅ Helper: Get non-battery items from invoice
+const getNonBatteryItems = (items) => {
+  if (!items || !Array.isArray(items)) return [];
+  return items.filter(item => !isBatteryItem(item));
+};
+
+// ✅ Helper: Check if invoice has any non-battery items
+const hasNonBatteryItems = (items) => {
+  return getNonBatteryItems(items).length > 0;
+};
+
+// Helper: Get date range for filter (with custom date support)
 const getDateRange = (filter, customDate = null) => {
   const now = new Date();
   const start = new Date();
@@ -59,7 +77,7 @@ const getDateRange = (filter, customDate = null) => {
   return { start, end: now };
 };
 
-// ✅ Helper: Filter invoices by date range
+// Helper: Filter invoices by date range
 const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   if (filter === 'all' || !invoices || invoices.length === 0) return invoices;
   const range = getDateRange(filter, customDate);
@@ -72,7 +90,7 @@ const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   });
 };
 
-// ✅ Helper: Filter expenses by date range
+// Helper: Filter expenses by date range
 const filterExpensesByDate = (expenses, filter, customDate = null) => {
   if (filter === 'all' || !expenses || expenses.length === 0) return expenses;
   const range = getDateRange(filter, customDate);
@@ -85,7 +103,7 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   });
 };
 
-// Memoized Invoice Details Component
+// Memoized Invoice Details Component - ✅ Battery filtered out
 const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   if (!data?.details || data.details.length === 0) {
     return (
@@ -98,12 +116,22 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   const allItems = useMemo(() => {
     const items = [];
     data.details.forEach(inv => {
-      inv.items.forEach(item => {
+      // ✅ Sirf non-battery items include karo
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      nonBatteryItems.forEach(item => {
         items.push({ ...item, inv });
       });
     });
     return items;
   }, [data.details]);
+  
+  if (allItems.length === 0) {
+    return (
+      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
+        <p className="text-gray-500">No non-battery sales data available</p>
+      </div>
+    );
+  }
   
   return (
     <div className="mt-4 space-y-3">
@@ -220,7 +248,7 @@ const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
 });
 
 const FinanceOverview = ({ darkMode }) => {
-  // ✅ Filter states
+  // Filter states
   const [timeFilter, setTimeFilter] = useState('all');
   const [customDate, setCustomDate] = useState('');
   const [showCustomDate, setShowCustomDate] = useState(false);
@@ -244,7 +272,7 @@ const FinanceOverview = ({ darkMode }) => {
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
   
-  // ✅ Dynamic data states - updated based on filter
+  // Dynamic data states - updated based on filter
   const [filteredSalesData, setFilteredSalesData] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
   const [filteredExpenseData, setFilteredExpenseData] = useState([]);
   const [filteredStats, setFilteredStats] = useState({
@@ -278,7 +306,7 @@ const FinanceOverview = ({ darkMode }) => {
     monthDiscount: 0
   });
 
-  // ✅ Get filter label
+  // Get filter label
   const getFilterLabel = useCallback(() => {
     const labels = {
       all: 'All Time',
@@ -291,23 +319,22 @@ const FinanceOverview = ({ darkMode }) => {
     return labels[timeFilter] || 'All Time';
   }, [timeFilter, customDate]);
 
-  // ✅ Handle custom date change - FIXED: No page refresh, just update filter
+  // Handle custom date change
   const handleCustomDateChange = (e) => {
     const date = e.target.value;
     setCustomDate(date);
     if (date) {
       setTimeFilter('custom');
-      // ✅ Keep date picker open after selection
       setShowCustomDate(true);
     }
   };
 
-  // ✅ Toggle custom date picker - FIXED: Toggle without closing on selection
+  // Toggle custom date picker
   const toggleCustomDate = () => {
     setShowCustomDate(!showCustomDate);
   };
 
-  // ✅ Clear custom date
+  // Clear custom date
   const clearCustomDate = () => {
     setCustomDate('');
     setTimeFilter('all');
@@ -332,7 +359,7 @@ const FinanceOverview = ({ darkMode }) => {
     return date;
   }, []);
 
-  // ✅ Calculate filtered data based on time filter
+  // ✅ Calculate filtered data based on time filter - BATTERY EXCLUDED
   const calculateFilteredData = useCallback((invoicesList, expensesList, productsMap) => {
     // Filter invoices by date
     const filteredInvoices = filterInvoicesByDate(invoicesList, timeFilter, customDate || null);
@@ -341,41 +368,50 @@ const FinanceOverview = ({ darkMode }) => {
     let total = 0, items = 0, profit = 0, discount = 0, details = [];
     
     filteredInvoices.forEach(inv => {
-      let invTotal = parseFloat(inv.total_amount) || 0;
+      // ✅ Sirf non-battery items lo
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      
+      // ✅ Agar koi non-battery item nahi hai toh invoice skip karo
+      if (nonBatteryItems.length === 0) {
+        return;
+      }
+      
+      let invTotal = 0;
       let invProfit = 0;
       let itemCount = 0;
       let invDiscount = parseFloat(inv.discount) || 0;
       
-      if (inv.items && inv.items.length > 0) {
-        inv.items.forEach(item => {
-          const itemQty = parseInt(item.quantity) || 0;
-          const itemPrice = parseFloat(item.price) || 0;
-          itemCount += itemQty;
-          
-          let itemProfit = 0;
-          let purchasePrice = 0;
-          
-          const product = productsMap.get(item.service_name);
-          
-          if (product) {
-            purchasePrice = parseFloat(product.purchase_price) || 0;
-            itemProfit = (itemPrice - purchasePrice) * itemQty;
-          } else {
-            itemProfit = itemPrice * itemQty;
-            purchasePrice = 0;
-          }
-          
-          invProfit += itemProfit;
-          item.purchasePrice = purchasePrice;
-          item.isProduct = !!product;
-          item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
-        });
-      }
+      // ✅ Sirf non-battery items ka calculation karo
+      nonBatteryItems.forEach(item => {
+        const itemQty = parseInt(item.quantity) || 0;
+        const itemPrice = parseFloat(item.price) || 0;
+        itemCount += itemQty;
+        invTotal += itemPrice * itemQty;
+        
+        let itemProfit = 0;
+        let purchasePrice = 0;
+        
+        const product = productsMap.get(item.service_name);
+        
+        if (product) {
+          purchasePrice = parseFloat(product.purchase_price) || 0;
+          itemProfit = (itemPrice - purchasePrice) * itemQty;
+        } else {
+          itemProfit = itemPrice * itemQty;
+          purchasePrice = 0;
+        }
+        
+        invProfit += itemProfit;
+        item.purchasePrice = purchasePrice;
+        item.isProduct = !!product;
+        item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
+      });
       
       total += invTotal;
       items += itemCount;
       profit += invProfit;
       discount += invDiscount;
+      
       details.push({
         invoiceNo: inv.invoice_no,
         customer: inv.customer_name,
@@ -383,7 +419,7 @@ const FinanceOverview = ({ darkMode }) => {
         total: invTotal,
         profit: invProfit,
         discount: invDiscount,
-        items: inv.items || [],
+        items: nonBatteryItems,
         itemCount: itemCount
       });
     });
@@ -476,7 +512,7 @@ const FinanceOverview = ({ darkMode }) => {
         productsMap.set(p.name, p);
       });
       
-      // ✅ Calculate filtered data based on selected filter
+      // Calculate filtered data based on selected filter - ✅ Battery excluded
       const filtered = calculateFilteredData(invoicesList, expensesList, productsMap);
       setFilteredSalesData(filtered.sales);
       setFilteredExpenseData(filtered.expenses);
@@ -487,7 +523,7 @@ const FinanceOverview = ({ darkMode }) => {
         discount: filtered.sales.discount
       });
       
-      // Also calculate today, week, month for individual cards
+      // Also calculate today, week, month for individual cards - ✅ Battery excluded
       const todayStr = new Date().toDateString();
       const weekStart = getStartOfWeek();
       const monthStart = getStartOfMonth();
@@ -499,42 +535,46 @@ const FinanceOverview = ({ darkMode }) => {
       invoicesList.forEach(inv => {
         if (!inv.invoice_date) return;
         
+        // ✅ Sirf non-battery items lo
+        const nonBatteryItems = getNonBatteryItems(inv.items);
+        if (nonBatteryItems.length === 0) return;
+        
         const invDate = new Date(inv.invoice_date);
         const invDateStr = invDate.toDateString();
         const isToday = invDateStr === todayStr;
         const isThisWeek = invDate >= weekStart;
         const isThisMonth = invDate >= monthStart;
         
-        let invTotal = parseFloat(inv.total_amount) || 0;
+        let invTotal = 0;
         let invProfit = 0;
         let itemCount = 0;
         let invDiscount = parseFloat(inv.discount) || 0;
         
-        if (inv.items && inv.items.length > 0) {
-          inv.items.forEach(item => {
-            const itemQty = parseInt(item.quantity) || 0;
-            const itemPrice = parseFloat(item.price) || 0;
-            itemCount += itemQty;
-            
-            let itemProfit = 0;
-            let purchasePrice = 0;
-            
-            const product = productsMap.get(item.service_name);
-            
-            if (product) {
-              purchasePrice = parseFloat(product.purchase_price) || 0;
-              itemProfit = (itemPrice - purchasePrice) * itemQty;
-            } else {
-              itemProfit = itemPrice * itemQty;
-              purchasePrice = 0;
-            }
-            
-            invProfit += itemProfit;
-            item.purchasePrice = purchasePrice;
-            item.isProduct = !!product;
-            item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
-          });
-        }
+        // ✅ Sirf non-battery items ka calculation karo
+        nonBatteryItems.forEach(item => {
+          const itemQty = parseInt(item.quantity) || 0;
+          const itemPrice = parseFloat(item.price) || 0;
+          itemCount += itemQty;
+          invTotal += itemPrice * itemQty;
+          
+          let itemProfit = 0;
+          let purchasePrice = 0;
+          
+          const product = productsMap.get(item.service_name);
+          
+          if (product) {
+            purchasePrice = parseFloat(product.purchase_price) || 0;
+            itemProfit = (itemPrice - purchasePrice) * itemQty;
+          } else {
+            itemProfit = itemPrice * itemQty;
+            purchasePrice = 0;
+          }
+          
+          invProfit += itemProfit;
+          item.purchasePrice = purchasePrice;
+          item.isProduct = !!product;
+          item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
+        });
         
         const detailItem = {
           invoiceNo: inv.invoice_no,
@@ -543,7 +583,7 @@ const FinanceOverview = ({ darkMode }) => {
           total: invTotal,
           profit: invProfit,
           discount: invDiscount,
-          items: inv.items || [],
+          items: nonBatteryItems,
           itemCount: itemCount
         };
         
@@ -629,6 +669,7 @@ const FinanceOverview = ({ darkMode }) => {
         monthDiscount: monthDiscount
       });
       
+      // ✅ Yearly Report - Battery Excluded
       const year = selectedYear;
       const yearInvoices = invoicesList.filter(inv => {
         if (!inv.invoice_date) return false;
@@ -638,36 +679,40 @@ const FinanceOverview = ({ darkMode }) => {
       let yearlyTotal = 0, yearlyItems = 0, yearlyProfit = 0, yearlyDiscount = 0, yearlyDetails = [];
       
       yearInvoices.forEach(inv => {
-        let invTotal = parseFloat(inv.total_amount) || 0;
+        // ✅ Sirf non-battery items lo
+        const nonBatteryItems = getNonBatteryItems(inv.items);
+        if (nonBatteryItems.length === 0) return;
+        
+        let invTotal = 0;
         let invProfit = 0;
         let itemCount = 0;
         let invDiscount = parseFloat(inv.discount) || 0;
         
-        if (inv.items && inv.items.length > 0) {
-          inv.items.forEach(item => {
-            const itemQty = parseInt(item.quantity) || 0;
-            const itemPrice = parseFloat(item.price) || 0;
-            itemCount += itemQty;
-            
-            let itemProfit = 0;
-            let purchasePrice = 0;
-            
-            const product = productsMap.get(item.service_name);
-            
-            if (product) {
-              purchasePrice = parseFloat(product.purchase_price) || 0;
-              itemProfit = (itemPrice - purchasePrice) * itemQty;
-            } else {
-              itemProfit = itemPrice * itemQty;
-              purchasePrice = 0;
-            }
-            
-            invProfit += itemProfit;
-            item.purchasePrice = purchasePrice;
-            item.isProduct = !!product;
-            item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
-          });
-        }
+        // ✅ Sirf non-battery items ka calculation karo
+        nonBatteryItems.forEach(item => {
+          const itemQty = parseInt(item.quantity) || 0;
+          const itemPrice = parseFloat(item.price) || 0;
+          itemCount += itemQty;
+          invTotal += itemPrice * itemQty;
+          
+          let itemProfit = 0;
+          let purchasePrice = 0;
+          
+          const product = productsMap.get(item.service_name);
+          
+          if (product) {
+            purchasePrice = parseFloat(product.purchase_price) || 0;
+            itemProfit = (itemPrice - purchasePrice) * itemQty;
+          } else {
+            itemProfit = itemPrice * itemQty;
+            purchasePrice = 0;
+          }
+          
+          invProfit += itemProfit;
+          item.purchasePrice = purchasePrice;
+          item.isProduct = !!product;
+          item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
+        });
         
         yearlyTotal += invTotal;
         yearlyItems += itemCount;
@@ -680,7 +725,7 @@ const FinanceOverview = ({ darkMode }) => {
           total: invTotal,
           profit: invProfit,
           discount: invDiscount,
-          items: inv.items || [],
+          items: nonBatteryItems,
           itemCount: itemCount
         });
       });
@@ -707,10 +752,13 @@ const FinanceOverview = ({ darkMode }) => {
     };
   }, [loadAllData]);
 
+  // ✅ Yearly Report items - Battery already filtered out in loadAllData
   const flattenedItems = useMemo(() => {
     const items = [];
     selectedYearData.details.forEach(inv => {
-      inv.items.forEach(item => {
+      // ✅ Already non-battery items only, but double-check
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      nonBatteryItems.forEach(item => {
         items.push({ ...item, inv });
       });
     });
@@ -750,7 +798,9 @@ const FinanceOverview = ({ darkMode }) => {
     
     const exportData = [];
     selectedYearData.details.forEach(inv => {
-      inv.items.forEach(item => {
+      // ✅ Already non-battery items, but double-check
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      nonBatteryItems.forEach(item => {
         exportData.push({
           'Invoice #': inv.invoiceNo,
           'Customer': inv.customer,
@@ -765,6 +815,11 @@ const FinanceOverview = ({ darkMode }) => {
         });
       });
     });
+    
+    if (exportData.length === 0) {
+      toast.error('No non-battery data available for export');
+      return;
+    }
     
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
@@ -783,7 +838,9 @@ const FinanceOverview = ({ darkMode }) => {
     doc.text(`Sales Report for Year ${selectedYear}`, 14, 10);
     const tableData = [];
     selectedYearData.details.forEach(inv => {
-      inv.items.forEach(item => {
+      // ✅ Already non-battery items, but double-check
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      nonBatteryItems.forEach(item => {
         tableData.push([
           inv.invoiceNo,
           inv.customer,
@@ -798,6 +855,11 @@ const FinanceOverview = ({ darkMode }) => {
         ]);
       });
     });
+    
+    if (tableData.length === 0) {
+      toast.error('No non-battery data available for export');
+      return;
+    }
     
     doc.autoTable({
       head: [['Invoice', 'Customer', 'Date', 'Item', 'Type', 'Qty', 'Purchase', 'Sell', 'Unit Profit', 'Total Profit']],
@@ -821,7 +883,7 @@ const FinanceOverview = ({ darkMode }) => {
 
   return (
     <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-      {/* ✅ FILTER BUTTONS with Custom Date - FIXED: Date picker stays open */}
+      {/* Filter Buttons with Custom Date */}
       <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="flex items-center gap-2 mr-4">
           <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -888,7 +950,7 @@ const FinanceOverview = ({ darkMode }) => {
           This Year
         </button>
         
-        {/* Custom Date Button - FIXED: Toggle without closing on selection */}
+        {/* Custom Date Button */}
         <button
           onClick={toggleCustomDate}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -902,7 +964,7 @@ const FinanceOverview = ({ darkMode }) => {
           📅 Custom Date
         </button>
         
-        {/* Custom Date Input - FIXED: Stays open after selection */}
+        {/* Custom Date Input */}
         {showCustomDate && (
           <div className="flex items-center gap-2">
             <input
@@ -924,10 +986,11 @@ const FinanceOverview = ({ darkMode }) => {
         
         <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
+          <span className="ml-2 text-green-500">(Battery Sales Excluded)</span>
         </span>
       </div>
 
-      {/* ✅ DYNAMIC FILTERED SALES CARD */}
+      {/* Dynamic Filtered Sales Card - ✅ Battery Excluded */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
@@ -936,6 +999,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-3xl font-bold mt-2">Rs. {filteredSalesData.total.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-1">{filteredSalesData.items} items sold</p>
               <p className="text-xs opacity-75 mt-1">Profit: Rs. {filteredSalesData.profit.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiDollarSign className="text-3xl opacity-50" />
           </div>
@@ -958,13 +1022,14 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">{getFilterLabel()} Profit</p>
               <p className="text-3xl font-bold mt-2">Rs. {filteredStats.profit.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-1">After expenses</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiTrendingUp className="text-3xl opacity-50" />
           </div>
         </div>
       </div>
 
-      {/* Today's Sales Card */}
+      {/* Today's Sales Card - ✅ Battery Excluded */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayDetails(!showTodayDetails)}>
           <div className="flex justify-between items-start">
@@ -974,6 +1039,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-xs opacity-75 mt-1">{todaySales.items} items sold</p>
               <p className="text-xs opacity-75 mt-1">Profit: Rs. {todaySales.profit.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiCalendar className="text-3xl opacity-50" />
           </div>
@@ -987,6 +1053,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-xs opacity-75 mt-1">{weeklySales.items} items sold</p>
               <p className="text-xs opacity-75 mt-1">Profit: Rs. {weeklySales.profit.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiTrendingUp className="text-3xl opacity-50" />
           </div>
@@ -1000,6 +1067,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-xs opacity-75 mt-1">{monthlySales.items} items sold</p>
               <p className="text-xs opacity-75 mt-1">Profit: Rs. {monthlySales.profit.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiDollarSign className="text-3xl opacity-50" />
           </div>
@@ -1053,7 +1121,7 @@ const FinanceOverview = ({ darkMode }) => {
       {showWeekExpenses && <ExpenseDetails title="This Week's Expenses" expenses={weekExpenseDetails} darkMode={darkMode} onClose={() => setShowWeekExpenses(false)} />}
       {showMonthExpenses && <ExpenseDetails title="This Month's Expenses" expenses={monthExpenseDetails} darkMode={darkMode} onClose={() => setShowMonthExpenses(false)} />}
 
-      {/* Profit Cards */}
+      {/* Profit Cards - ✅ Battery Excluded */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
@@ -1061,6 +1129,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">Today's Profit</p>
               <p className="text-3xl font-bold mt-2">Rs. {stats.todayProfit?.toLocaleString() || 0}</p>
               <p className="text-xs opacity-75 mt-1">After expenses</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiTrendingUp className="text-3xl opacity-50" />
           </div>
@@ -1072,6 +1141,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">This Week's Profit</p>
               <p className="text-3xl font-bold mt-2">Rs. {stats.weekProfit?.toLocaleString() || 0}</p>
               <p className="text-xs opacity-75 mt-1">After expenses</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiTrendingUp className="text-3xl opacity-50" />
           </div>
@@ -1083,13 +1153,14 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">This Month's Profit</p>
               <p className="text-3xl font-bold mt-2">Rs. {stats.monthProfit?.toLocaleString() || 0}</p>
               <p className="text-xs opacity-75 mt-1">After expenses</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiTrendingUp className="text-3xl opacity-50" />
           </div>
         </div>
       </div>
 
-      {/* Discount Cards */}
+      {/* Discount Cards - ✅ Battery Excluded */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
@@ -1097,6 +1168,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">Today's Discount</p>
               <p className="text-3xl font-bold mt-2">Rs. {stats.todayDiscount?.toLocaleString() || 0}</p>
               <p className="text-xs opacity-75 mt-1">Given today</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiGift className="text-3xl opacity-50" />
           </div>
@@ -1108,6 +1180,7 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">This Week's Discount</p>
               <p className="text-3xl font-bold mt-2">Rs. {stats.weekDiscount?.toLocaleString() || 0}</p>
               <p className="text-xs opacity-75 mt-1">Given this week</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiGift className="text-3xl opacity-50" />
           </div>
@@ -1119,19 +1192,21 @@ const FinanceOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">This Month's Discount</p>
               <p className="text-3xl font-bold mt-2">Rs. {stats.monthDiscount?.toLocaleString() || 0}</p>
               <p className="text-xs opacity-75 mt-1">Given this month</p>
+              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
             </div>
             <FiGift className="text-3xl opacity-50" />
           </div>
         </div>
       </div>
 
-      {/* Monthly Breakdown */}
+      {/* Monthly Breakdown - ✅ Battery Excluded */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className="font-semibold mb-4 flex items-center gap-2">
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
           <span className={`text-xs font-normal ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             ({getFilterLabel()})
           </span>
+          <span className="text-xs font-normal ml-2 text-yellow-500">(Battery Excluded)</span>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
@@ -1155,12 +1230,13 @@ const FinanceOverview = ({ darkMode }) => {
         </div>
       </div>
 
-      {/* Yearly Report Section with Pagination */}
+      {/* Yearly Report Section with Pagination - ✅ Battery Excluded */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <button onClick={() => setShowYearlyReport(!showYearlyReport)} className="w-full px-6 py-4 flex justify-between items-center hover:bg-red-50 dark:hover:bg-red-900/20 transition">
           <div className="flex items-center gap-2">
             <FiBarChart2 className="text-red-500 text-xl" />
             <h3 className="text-lg font-semibold">📊 Yearly Sales Report</h3>
+            <span className="text-xs ml-2 text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 px-2 py-1 rounded">Battery Excluded</span>
           </div>
           {showYearlyReport ? <FiChevronUp /> : <FiChevronDown />}
         </button>
@@ -1184,14 +1260,17 @@ const FinanceOverview = ({ darkMode }) => {
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className="text-sm opacity-70">Total Sales</p>
                 <p className="text-2xl font-bold text-blue-500">Rs. {selectedYearData.total.toLocaleString()}</p>
+                <p className="text-xs text-yellow-500 mt-1">(Battery Excluded)</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className="text-sm opacity-70">Total Invoices</p>
                 <p className="text-2xl font-bold">{selectedYearData.count}</p>
+                <p className="text-xs text-yellow-500 mt-1">(Non-Battery Only)</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className="text-sm opacity-70">Total Profit</p>
                 <p className="text-2xl font-bold text-green-500">Rs. {selectedYearData.profit.toLocaleString()}</p>
+                <p className="text-xs text-yellow-500 mt-1">(Battery Excluded)</p>
               </div>
             </div>
 
@@ -1214,7 +1293,7 @@ const FinanceOverview = ({ darkMode }) => {
                 <tbody>
                   {currentItems.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="px-4 py-8 text-center">No invoices found</td>
+                      <td colSpan="10" className="px-4 py-8 text-center">No non-battery invoices found</td>
                     </tr>
                   ) : (
                     currentItems.map((item, idx) => (

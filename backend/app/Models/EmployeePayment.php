@@ -13,7 +13,8 @@ class EmployeePayment extends Model
         'employee_id',
         'amount',
         'payment_date',
-        'for_month',   // ✅ NEW: which salary month this payment is for, e.g. '2026-05'
+        'for_month',
+        'is_advance', // ✅ NEW
         'note',
         'created_by'
     ];
@@ -21,6 +22,7 @@ class EmployeePayment extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'payment_date' => 'datetime',
+        'is_advance' => 'boolean', // ✅ NEW
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -79,9 +81,11 @@ class EmployeePayment extends Model
         return $this->payment_date->format('Y-m-d');
     }
 
-    // ✅ NEW: Get the salary month name for display (e.g. "May 2026")
+    // ✅ Get the salary month name for display (e.g. "May 2026")
+    // ✅ UPDATED: advance payments have no for_month — label them clearly
     public function getForMonthNameAttribute()
     {
+        if ($this->is_advance) return 'Advance Payment';
         if (!$this->for_month) return 'N/A';
         try {
             $date = \Carbon\Carbon::createFromFormat('Y-m', $this->for_month);
@@ -121,10 +125,16 @@ class EmployeePayment extends Model
                      ->whereMonth('payment_date', now()->month);
     }
 
-    // ✅ NEW: Filter payments by which salary month they were FOR
+    // ✅ Filter payments by which salary month they were FOR
     public function scopeForMonth($query, $month)
     {
         return $query->where('for_month', $month);
+    }
+
+    // ✅ NEW: Filter only advance payments
+    public function scopeAdvanceOnly($query)
+    {
+        return $query->where('is_advance', true);
     }
 
     public function scopeOrderByDateDesc($query)
@@ -133,9 +143,6 @@ class EmployeePayment extends Model
     }
 
     // ✅ Boot method to auto-update employee balance
-    // Still fires on every create/update/delete — but Employee::updateBalance()
-    // itself has been rewritten to sum ACROSS ALL MONTHS (not just current cycle),
-    // so this stays correct no matter which for_month a payment belongs to.
     protected static function booted()
     {
         static::created(function ($payment) {

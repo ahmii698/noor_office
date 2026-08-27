@@ -4,7 +4,8 @@ import {
   FiPlus, FiSearch, FiEye, FiEdit, FiX, 
   FiUser, FiTrash2, FiLoader,
   FiChevronLeft, FiChevronRight, FiInbox,
-  FiCreditCard, FiList, FiDollarSign, FiCalendar
+  FiCreditCard, FiList, FiDollarSign, FiCalendar,
+  FiRefreshCw, FiGift   // ✅ NEW
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -142,6 +143,12 @@ const EmployeeSalary = ({ darkMode }) => {
   // Loading states
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
+
+  // ✅ NEW: Advance payment modal state
+  const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+  const [advanceData, setAdvanceData] = useState({ amount: '', note: '' });
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
 
   // Fetch employees
   const fetchEmployees = useCallback(async () => {
@@ -412,6 +419,74 @@ const EmployeeSalary = ({ darkMode }) => {
     setMonthlyBreakdown(history);
   };
 
+  // ✅ NEW: Restart Month
+  const handleRestartMonth = async (employee) => {
+    if (!window.confirm(`Start a new salary month now for ${employee.name}?`)) return;
+    setIsRestarting(true);
+    try {
+      const response = await api.post(`/employees/${employee.id}/restart-month`);
+      if (response.data.success) {
+        toast.success(response.data.message || 'New month started!');
+        await fetchEmployees();
+        if (isViewModalOpen && selectedEmployee?.id === employee.id) {
+          const updated = await fetchSingleEmployee(employee.id);
+          if (updated) setSelectedEmployee(updated);
+          const history = await fetchMonthlyHistory(employee.id);
+          setMonthlyBreakdown(history);
+        }
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to restart month');
+    } finally {
+      setIsRestarting(false);
+    }
+  };
+
+  // ✅ NEW: Open advance modal
+  const openAdvanceModal = (employee) => {
+    setSelectedEmployee(employee);
+    setAdvanceData({ amount: '', note: '' });
+    setIsAdvanceModalOpen(true);
+  };
+
+  // ✅ NEW: Submit advance payment
+  const handleAdvancePayment = async (e) => {
+    e.preventDefault();
+    if (isAdvancing) return;
+
+    const amount = parseFloat(advanceData.amount);
+    if (!amount || amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    setIsAdvancing(true);
+    try {
+      const response = await api.post('/employee-payments/advance', {
+        employee_id: selectedEmployee.id,
+        amount: amount,
+        note: advanceData.note || 'Advance payment'
+      });
+
+      if (response.data.success) {
+        toast.success(response.data.message || 'Advance payment recorded!');
+        await fetchEmployees();
+        if (isViewModalOpen && selectedEmployee) {
+          const updated = await fetchSingleEmployee(selectedEmployee.id);
+          if (updated) setSelectedEmployee(updated);
+          const history = await fetchMonthlyHistory(selectedEmployee.id);
+          setMonthlyBreakdown(history);
+        }
+        setIsAdvanceModalOpen(false);
+        setAdvanceData({ amount: '', note: '' });
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to record advance payment');
+    } finally {
+      setIsAdvancing(false);
+    }
+  };
+
   // Get status badge
   const getStatusBadge = (status) => {
     const styles = {
@@ -610,6 +685,25 @@ const EmployeeSalary = ({ darkMode }) => {
                               Pay Now
                             </button>
                           )}
+
+                          {/* ✅ NEW: Restart Month */}
+                          <button 
+                            onClick={() => handleRestartMonth(employee)} 
+                            className="px-2 py-1 rounded text-white bg-purple-500 hover:bg-purple-600 text-xs flex items-center gap-1"
+                            title="Force start next month"
+                            disabled={isRestarting}
+                          >
+                            <FiRefreshCw className={isRestarting ? 'animate-spin' : ''} /> Restart
+                          </button>
+
+                          {/* ✅ NEW: Give Advance */}
+                          <button 
+                            onClick={() => openAdvanceModal(employee)} 
+                            className="px-2 py-1 rounded text-white bg-pink-500 hover:bg-pink-600 text-xs flex items-center gap-1"
+                            title="Give advance payment"
+                          >
+                            <FiGift /> Advance
+                          </button>
                           
                           {/* ❌ Reset button removed — no longer needed.
                               Every month now tracks its own Paid/Partial/Pending
@@ -716,6 +810,14 @@ const EmployeeSalary = ({ darkMode }) => {
                     {selectedEmployee.status}
                   </p>
                 </div>
+                {selectedEmployee.advance_balance > 0 && (
+                  <div className="employee-salary-summary-item">
+                    <p className="employee-salary-summary-label">Advance Balance</p>
+                    <p className="employee-salary-summary-value" style={{color: '#ec4899'}}>
+                      Rs.{formatCurrency(selectedEmployee.advance_balance)}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Payment History */}
@@ -1120,6 +1222,62 @@ const EmployeeSalary = ({ darkMode }) => {
                 <button type="button" onClick={() => setIsPayModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
                 <button type="submit" className="employee-salary-btn-pay-submit" disabled={isPaying || unpaidMonths.length === 0}>
                   {isPaying ? <><FiLoader className="animate-spin mr-2" /> Processing...</> : 'Pay Now'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NEW: Advance Payment Modal */}
+      {isAdvanceModalOpen && selectedEmployee && (
+        <div className="employee-salary-modal-overlay">
+          <div className={`employee-salary-modal ${darkMode ? 'dark' : ''}`}>
+            <div className={`employee-salary-modal-header ${darkMode ? 'dark' : ''}`}>
+              <h2 className="employee-salary-modal-title">
+                <FiGift className="employee-salary-modal-title-icon" /> Give Advance Payment
+              </h2>
+              <button onClick={() => setIsAdvanceModalOpen(false)} className="employee-salary-modal-close">
+                <FiX />
+              </button>
+            </div>
+            <form onSubmit={handleAdvancePayment} className="employee-salary-modal-body">
+              <div className="employee-salary-payment-summary">
+                <p className="employee-salary-payment-label">Employee</p>
+                <p className="employee-salary-payment-vendor">{selectedEmployee.name}</p>
+                <p className="employee-salary-payment-label">Monthly Salary (max advance)</p>
+                <p className="employee-salary-payment-balance" style={{color: '#111827'}}>
+                  Rs.{formatCurrency(selectedEmployee.monthly_salary)}
+                </p>
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Advance Amount (Rs.) *</label>
+                <input
+                  type="number"
+                  value={advanceData.amount}
+                  onChange={(e) => setAdvanceData({ ...advanceData, amount: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  placeholder="Enter advance amount"
+                  min="1"
+                  max={selectedEmployee.monthly_salary}
+                  step="0.01"
+                  required
+                />
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Note (Optional)</label>
+                <input
+                  type="text"
+                  value={advanceData.note}
+                  onChange={(e) => setAdvanceData({ ...advanceData, note: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  placeholder="Add a note"
+                />
+              </div>
+              <div className="employee-salary-form-actions">
+                <button type="button" onClick={() => setIsAdvanceModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
+                <button type="submit" className="employee-salary-btn-pay-submit" disabled={isAdvancing}>
+                  {isAdvancing ? <><FiLoader className="animate-spin mr-2" /> Processing...</> : 'Give Advance'}
                 </button>
               </div>
             </form>

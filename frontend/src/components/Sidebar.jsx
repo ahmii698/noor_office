@@ -5,7 +5,7 @@ import {
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
   FiLogOut, FiCreditCard, FiClock, FiFile, FiBattery,
-  FiArchive // ✅ NEW ICON for Estimate Records
+  FiArchive
 } from 'react-icons/fi';
 import { HiMenu, HiX } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +14,7 @@ import api from '../services/api';
 const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => {
   const [logoExists, setLogoExists] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
+  const [isBatteryOpen, setIsBatteryOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [reminderCount, setReminderCount] = useState(0);
   const [discardedCount, setDiscardedCount] = useState(0);
@@ -22,15 +23,23 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
 
+  // ✅ Battery Submenu - OLD BATTERIES BHI ANDAR
+  const batterySubmenu = [
+    { id: 'battery-overview', label: 'Overview', icon: FiTrendingUp, path: '/battery-overview' },
+    { id: 'battery-charts', label: 'Charts', icon: FiPieChart, path: '/battery-charts' },
+    { id: 'old-batteries', label: 'Old Batteries', icon: FiArchive, path: '/old-batteries' }, // ✅ YAHAN
+  ];
+
   // Admin menu items
   const adminMenuItems = [
     { id: 'all-data', label: 'Dashboard', icon: FiHome, path: '/dashboard' },
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
-    { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery' },
+    { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery', hasSubmenu: true },
+    // ✅ Old Batteries HATAYA - ab battery submenu mein hai
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
-    { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' }, // ✅ NEW
+    { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
     { id: 'discarded', label: 'Draft', icon: FiClock, path: '/discarded', badge: discardedCount },
     { id: 'record', label: 'Records', icon: FiBarChart2, path: '/records' },
@@ -41,9 +50,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const employeeMenuItems = [
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
-    { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery' },
+    { id: 'battery', label: 'Battery', icon: FiBattery, path: '/battery', hasSubmenu: true },
+    // ✅ Old Batteries HATAYA - ab battery submenu mein hai
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
-    { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' }, // ✅ NEW
+    { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' },
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
     { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount },
   ];
@@ -55,6 +65,26 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'finance-charts', label: 'Charts', icon: FiPieChart, path: '/finance-charts' },
     { id: 'finance-credit', label: 'Credit', icon: FiCreditCard, path: '/finance-credit' },
   ];
+
+  // ✅ Check if Finance is active
+  const isFinanceActive = () => {
+    return financeSubmenu.some(item => item.id === activeMenu);
+  };
+
+  // ✅ Check if Battery submenu is active
+  const isBatteryActive = () => {
+    return batterySubmenu.some(item => item.id === activeMenu);
+  };
+
+  // ✅ Open submenus if active
+  useEffect(() => {
+    if (isFinanceActive()) {
+      setIsFinanceOpen(true);
+    }
+    if (isBatteryActive()) {
+      setIsBatteryOpen(true);
+    }
+  }, [activeMenu]);
 
   // Fetch user data
   const fetchUserData = async () => {
@@ -108,7 +138,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // ✅ ESTIMATE COUNT - No backend needed (always 0)
+  // Estimate count
   const fetchEstimateCount = async () => {
     setEstimateCount(0);
   };
@@ -176,21 +206,23 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     };
   }, []);
 
-  const isFinanceActive = () => {
-    return financeSubmenu.some(item => item.id === activeMenu);
-  };
-
-  useEffect(() => {
-    if (isFinanceActive()) {
-      setIsFinanceOpen(true);
-    }
-  }, [activeMenu]);
-
+  // ✅ Handle menu click
   const handleMenuClick = (item) => {
     if (item.hasSubmenu) {
-      setIsFinanceOpen(!isFinanceOpen);
-      if (!isFinanceOpen && !isFinanceActive()) {
-        setActiveMenu('finance-overview');
+      if (item.id === 'battery') {
+        setIsBatteryOpen(!isBatteryOpen);
+        setActiveMenu('battery');
+        if (item.path) {
+          navigate(item.path);
+        }
+        if (isMobile) {
+          setIsOpen(false);
+        }
+      } else if (item.id === 'finance') {
+        setIsFinanceOpen(!isFinanceOpen);
+        if (!isFinanceOpen && !isFinanceActive()) {
+          setActiveMenu('finance-overview');
+        }
       }
     } else {
       setActiveMenu(item.id);
@@ -233,7 +265,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
           {allMenuItems.map((item) => {
             const Icon = item.icon;
             const isFinanceMenuItem = item.id === 'finance';
-            const isActive = activeMenu === item.id || (isFinanceMenuItem && isFinanceActive());
+            const isBatteryMenuItem = item.id === 'battery';
+            const isActive = activeMenu === item.id || 
+                           (isFinanceMenuItem && isFinanceActive()) ||
+                           (isBatteryMenuItem && isBatteryActive());
             const showBadge = item.badge > 0;
             
             return (
@@ -264,7 +299,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                         </span>
                       )}
                       {item.hasSubmenu && (
-                        <span>{isFinanceOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />}</span>
+                        <span>
+                          {item.id === 'finance' && (isFinanceOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />)}
+                          {item.id === 'battery' && (isBatteryOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />)}
+                        </span>
                       )}
                     </div>
                   )}
@@ -280,9 +318,40 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                 </button>
                 
                 {/* Finance Submenu - Admin only */}
-                {isOpen && isAdmin && item.hasSubmenu && isFinanceOpen && (
+                {isOpen && isAdmin && item.id === 'finance' && isFinanceOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {financeSubmenu.map((subItem) => {
+                      const SubIcon = subItem.icon;
+                      return (
+                        <button
+                          key={subItem.id}
+                          onClick={() => {
+                            setActiveMenu(subItem.id);
+                            if (subItem.path) {
+                              navigate(subItem.path);
+                            }
+                            if (isMobile) {
+                              setIsOpen(false);
+                            }
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-300 ${
+                            activeMenu === subItem.id
+                              ? 'bg-red-500/20 text-red-500'
+                              : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
+                          }`}
+                        >
+                          <SubIcon className="text-base" />
+                          <span>{subItem.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ✅ Battery Submenu - WITH OLD BATTERIES */}
+                {isOpen && item.id === 'battery' && isBatteryOpen && (
+                  <div className="ml-8 mt-1 mb-2 space-y-1">
+                    {batterySubmenu.map((subItem) => {
                       const SubIcon = subItem.icon;
                       return (
                         <button
@@ -347,7 +416,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                 <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center">
                   <FiUser className="text-red-500 text-xl" />
                 </div>
-                {/* Tooltip on hover */}
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
                   {user?.name || 'User'} ({user?.role || 'employee'})
                 </div>

@@ -360,6 +360,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     }
   }, [customerDetails]);
 
+  // ✅ FIX: Previous visits - USE /invoices DIRECTLY (no 404)
   useEffect(() => {
     const fetchPreviousVisits = async () => {
       if (!isAdmin || !customerDetails?.phone) {
@@ -368,19 +369,32 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
       }
       
       try {
-        const response = await api.get(`/invoices/customer/${customerDetails.phone}`);
-        if (response.data && Array.isArray(response.data)) {
-          const visits = response.data.slice(0, 10).map(inv => ({
-            id: inv.id,
-            date: inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : 'N/A',
-            services: inv.items?.map(item => item.service_name).join(', ') || 'N/A',
-            total: inv.total_amount || 0,
-            status: inv.status || 'Paid'
-          }));
-          setPreviousVisits(visits);
+        // ✅ FIX: Use /invoices endpoint directly instead of /invoices/customer/{phone}
+        const response = await api.get('/invoices');
+        let invoices = [];
+        if (Array.isArray(response.data)) {
+          invoices = response.data;
+        } else if (response.data?.data && Array.isArray(response.data.data)) {
+          invoices = response.data.data;
         } else {
-          setPreviousVisits([]);
+          invoices = [];
         }
+        
+        // ✅ Filter by phone number client-side
+        const phone = customerDetails.phone.replace(/\D/g, '');
+        const filteredInvoices = invoices.filter(inv => {
+          const invPhone = inv.customer_phone?.replace(/\D/g, '') || '';
+          return invPhone === phone;
+        });
+        
+        const visits = filteredInvoices.slice(0, 10).map(inv => ({
+          id: inv.id,
+          date: inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : 'N/A',
+          services: inv.items?.map(item => item.service_name).join(', ') || 'N/A',
+          total: inv.total_amount || 0,
+          status: inv.status || 'Paid'
+        }));
+        setPreviousVisits(visits);
       } catch (error) {
         console.error('Error fetching previous visits:', error);
         setPreviousVisits([]);
@@ -796,7 +810,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     }
   };
 
-  // ==================== PRINT BILL - UPDATED (NO SEPARATION LINE) ====================
+  // ==================== PRINT BILL ====================
   const printBill = () => {
     if (cart.length === 0) {
       toast.error('No items to print');
@@ -1166,13 +1180,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     toast.success('Print preview opened');
   };
 
-  // ==================== PDF EXPORT - REMOVED ====================
-  // exportToPDF function completely removed
-
-  // ==================== EXCEL EXPORT - REMOVED ====================
-  // exportToExcel function completely removed
-
-  // handlePayment — Payment amount is OPTIONAL, 0 allowed
+  // handlePayment — ✅ FIXED: Added customer_birthday in payload
   const handlePayment = async () => {
     if (isProcessingRef.current || paymentExecutedRef.current) return;
     if (cart.length === 0) {
@@ -1225,6 +1233,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
       const customerCarNumber = customerDetails.carNumber?.trim() || 'N/A';
       const customerCarModel = customerDetails.carModel?.trim() || null;
       
+      // ✅ FIX: Added customer_birthday field
       const payload = {
         invoice_no: invoiceNo,
         customer_name: customerName,
@@ -1232,6 +1241,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
         customer_email: customerEmail,
         customer_car_number: customerCarNumber,
         customer_car_model: customerCarModel,
+        customer_birthday: customerBirthday ? formatDateForAPI(customerBirthday) : null, // ✅ ADDED
         subtotal: roundedSubtotal,
         discount: roundedDiscount,
         discount_note: discountNote?.trim() || null,
@@ -1739,7 +1749,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                     )}
                   </div>
 
-                  {/* ✅ UPDATED: PAY NOW + SAVE AS DRAFT - UPPAR */}
+                  {/* PAY NOW + SAVE AS DRAFT */}
                   <div className="grid grid-cols-2 gap-2 pt-2">
                     <button 
                       onClick={handlePayment} 
@@ -1768,7 +1778,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                     </button>
                   </div>
 
-                  {/* ✅ PRINT BUTTON - NEEECHE */}
+                  {/* PRINT BUTTON */}
                   <div className="grid grid-cols-1 gap-2 pt-1">
                     <button 
                       onClick={printBill} 

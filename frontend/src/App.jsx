@@ -13,6 +13,13 @@ import EstimatedBill from './components/EstimatedBill';
 import BatteryPage from './components/BatteryPage';
 import EstimateRecords from './components/EstimateRecords';
 
+// ✅ NEW IMPORTS - Battery Overview & Charts
+import BatteryOverview from './components/BatteryOverview';
+import BatteryCharts from './components/BatteryCharts';
+
+// ✅ NEW IMPORT - Old Batteries
+import OldBatteries from './components/OldBatteries';
+
 function App() {
   const getDarkMode = () => {
     const saved = localStorage.getItem('darkMode');
@@ -286,7 +293,7 @@ function App() {
           }
         />
 
-        {/* ✅ FIXED: Estimate Records - DASHBOARD KE ANDAR (baqi pages ki tarah) */}
+        {/* Estimate Records */}
         <Route
           path="/estimate-records"
           element={
@@ -299,8 +306,48 @@ function App() {
           }
         />
 
+        {/* Battery Page - Direct (Existing) */}
         <Route
           path="/battery"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Battery Overview */}
+        <Route
+          path="/battery-overview"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Battery Charts */}
+        <Route
+          path="/battery-charts"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NEW: Old Batteries History */}
+        <Route
+          path="/old-batteries"
           element={
             <ProtectedRoute>
               <Dashboard

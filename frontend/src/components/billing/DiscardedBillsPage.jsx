@@ -13,7 +13,8 @@ import {
   FiDollarSign,
   FiCalendar,
   FiTool,
-  FiArrowLeft
+  FiArrowLeft,
+  FiCheckCircle
 } from 'react-icons/fi';
 import { 
   getDiscardedCarts, 
@@ -28,6 +29,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
   const [discardedBills, setDiscardedBills] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
+  const [restoringId, setRestoringId] = useState(null);
   const navigate = useNavigate();
 
   const fetchDiscardedBills = async () => {
@@ -52,41 +54,43 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     fetchDiscardedBills();
   }, []);
 
+  // ✅ FIXED: List se hataya nahi jata, na hi "is_restored" wala fake state banaya jata.
+  // Backend se jo bhi data aata hai (including last_restored_at agar hai) wahi use hota hai.
+  // Isliye page change karne ya refresh karne par bhi entry maujood rahegi.
   const handleRestore = async (cartId) => {
+    setRestoringId(cartId);
     try {
       const response = await restoreCart(cartId);
       if (response.success) {
         const restoredData = response.data;
         
-        // ✅ Save restored data to localStorage or pass via callback
-        if (onRestore) {
-          onRestore(restoredData);
-        } else {
-          // ✅ Fallback: Save to localStorage so Billing page can read it
-          localStorage.setItem('restoredBill', JSON.stringify({
-            cart_items: restoredData.cart_items || [],
-            customer_name: restoredData.customer_name || '',
-            customer_phone: restoredData.customer_phone || '',
-            customer_email: restoredData.customer_email || '',
-            customer_car_number: restoredData.customer_car_number || '',
-            customer_car_model: restoredData.customer_car_model || '',
-            customer_birthday: restoredData.customer_birthday || '',
-            cart_summary: restoredData.cart_summary || {}
-          }));
-        }
+        localStorage.setItem('restoredBill', JSON.stringify({
+          cart_items: restoredData.cart_items || [],
+          customer_name: restoredData.customer_name || '',
+          customer_phone: restoredData.customer_phone || '',
+          customer_email: restoredData.customer_email || '',
+          customer_car_number: restoredData.customer_car_number || '',
+          customer_car_model: restoredData.customer_car_model || '',
+          customer_birthday: restoredData.customer_birthday || '',
+          cart_summary: restoredData.cart_summary || {}
+        }));
         
-        toast.success('✅ Bill restored! Redirecting to billing...');
-        setDiscardedBills(prev => prev.filter(c => c.id !== cartId));
+        toast.success('✅ Bill restored! Draft still saved here — delete manually when done.');
         window.dispatchEvent(new Event('discarded-update'));
         
-        // ✅ Redirect to billing page
+        // ✅ Sirf list ko backend se refresh karo (last_restored_at wagera update ho jayega)
+        // list se remove NAHI karna, na hi fake "completed" state lagani
+        await fetchDiscardedBills();
+        
         setTimeout(() => {
           navigate('/billing');
-        }, 500);
+        }, 1000);
       }
     } catch (error) {
       console.error('Error restoring bill:', error);
       toast.error(error.response?.data?.message || 'Failed to restore bill');
+    } finally {
+      setRestoringId(null);
     }
   };
 
@@ -164,7 +168,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} flex items-center gap-3`}>
                 <FiClock className="text-yellow-500" />
@@ -174,7 +178,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                 </span>
               </h1>
               <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Bills that were discarded and can be restored
+                Bills that were discarded and can be restored anytime — they stay here until you delete them
               </p>
             </div>
             <button
@@ -213,6 +217,9 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                 const totalAmount = getTotalAmount(bill.cart_summary);
                 const itemCount = getItemCount(bill.cart_items);
                 const hasCustomer = bill.customer_name || bill.customer_phone;
+                // ✅ Ab ye backend field se aata hai (agar column banaya hai), fake state nahi
+                const wasRestored = !!bill.last_restored_at;
+                const isRestoring = restoringId === bill.id;
 
                 return (
                   <div 
@@ -236,7 +243,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                               🗑️ Discarded
                             </span>
                             <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {formatDate(bill.discarded_at)}
+                              {formatDate(bill.discarded_at || bill.created_at)}
                             </span>
                             <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                               #{bill.id}
@@ -244,6 +251,11 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                             {hasCustomer && (
                               <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                                 • {bill.customer_name || bill.customer_phone}
+                              </span>
+                            )}
+                            {wasRestored && (
+                              <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 bg-green-500/20 text-green-400`}>
+                                <FiCheckCircle size={12} /> Restored {formatDate(bill.last_restored_at)}
                               </span>
                             )}
                           </div>
@@ -288,20 +300,32 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
 
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                          {/* ✅ Restore Button - Hamesha enabled, chahe pehle bhi restore ho chuka ho */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleRestore(bill.id);
                             }}
+                            disabled={isRestoring}
                             className={`p-2 rounded-lg transition ${
-                              darkMode 
-                                ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400' 
-                                : 'bg-green-100 hover:bg-green-200 text-green-600'
+                              isRestoring
+                                ? darkMode 
+                                  ? 'bg-green-500/20 text-green-400 animate-pulse' 
+                                  : 'bg-green-100 text-green-600 animate-pulse'
+                                : darkMode 
+                                  ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400' 
+                                  : 'bg-green-100 hover:bg-green-200 text-green-600'
                             }`}
-                            title="Restore this bill"
+                            title="Restore this bill to billing page"
                           >
-                            <FiRefreshCw size={16} />
+                            {isRestoring ? (
+                              <div className="animate-spin h-4 w-4 border-2 border-green-500 border-t-transparent rounded-full" />
+                            ) : (
+                              <FiRefreshCw size={16} />
+                            )}
                           </button>
+                          
+                          {/* Delete Button - Always available */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -316,6 +340,8 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                           >
                             <FiTrash2 size={16} />
                           </button>
+                          
+                          {/* Expand Button */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -432,7 +458,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
 
         {/* Footer Actions */}
         {discardedBills.length > 0 && (
-          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mt-6 flex justify-between items-center`}>
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mt-6 flex justify-between items-center flex-wrap gap-3`}>
             <button
               onClick={handleClearAll}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -444,17 +470,19 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
               <FiTrash2 className="inline mr-2" size={14} />
               Clear All ({discardedBills.length})
             </button>
-            <button
-              onClick={fetchDiscardedBills}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                darkMode 
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              <FiRefreshCw className="inline mr-2" size={14} />
-              Refresh
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={fetchDiscardedBills}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  darkMode 
+                    ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <FiRefreshCw className="inline mr-2" size={14} />
+                Refresh
+              </button>
+            </div>
           </div>
         )}
       </div>

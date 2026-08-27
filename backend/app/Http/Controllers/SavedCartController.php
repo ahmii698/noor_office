@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 class SavedCartController extends Controller
 {
     /**
-     * Save current cart to discard - ✅ FIXED: Always create new, never update existing
+     * Save current cart to discard - Always create new, never update existing
      */
     public function store(Request $request)
     {
@@ -30,7 +30,6 @@ class SavedCartController extends Controller
 
         Log::info('📝 Saving new cart - User:', ['user_id' => $userId, 'session_id' => $sessionId]);
 
-        // ✅ ALWAYS CREATE NEW RECORD - NO EXISTING CHECK
         $savedCart = SavedCart::create([
             'user_id' => $userId,
             'session_id' => $sessionId,
@@ -56,13 +55,12 @@ class SavedCartController extends Controller
     }
 
     /**
-     * Get all discarded bills - ✅ Get ALL pending carts
+     * Get all discarded bills - Get ALL pending carts
      */
     public function index(Request $request)
     {
         Log::info('📦 Fetching all pending discarded bills');
 
-        // ✅ Get ALL pending carts - NO user_id filter
         $carts = SavedCart::where('status', 'pending')
             ->orderBy('discarded_at', 'desc')
             ->get();
@@ -99,6 +97,10 @@ class SavedCartController extends Controller
 
     /**
      * Restore discarded bill
+     * ✅ FIXED: Status ko change NAHI karte — cart 'pending' hi rehta hai
+     * takay list se gayab na ho aur user jab chahe dobara restore kar sake.
+     * Sirf ek 'restored_at' timestamp save karte hain (tracking ke liye, optional).
+     * Permanent removal sirf destroy() ya clearAll() se hoga.
      */
     public function restore($id)
     {
@@ -113,10 +115,13 @@ class SavedCartController extends Controller
             ], 404);
         }
 
-        $cart->update([
-            'status' => 'completed',
-            'updated_at' => now()
-        ]);
+        // ❌ Status change NAHI kar rahe (pehle: 'completed' set hota tha)
+        // ✅ Sirf last_restored_at update kar rahe hain, agar column ho to
+        if (\Schema::hasColumn('saved_carts', 'last_restored_at')) {
+            $cart->update([
+                'last_restored_at' => now()
+            ]);
+        }
 
         return response()->json([
             'success' => true,

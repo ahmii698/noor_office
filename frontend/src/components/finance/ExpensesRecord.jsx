@@ -851,7 +851,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         </table>
       </div>
 
-      {/* ✅ Add/Edit Modal with Category Dropdown + Other Sub-category */}
+      {/* ✅ Add/Edit Modal with Category Dropdown - CORRECT ORDER */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -901,7 +901,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                 />
               </div>
               
-              {/* ✅ Category Field with Dropdown and "Other" option */}
+              {/* ✅ Category Field with Dropdown - CORRECT ORDER */}
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Category *
@@ -924,30 +924,20 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                   {showCategoryDropdown && (
                     <div className={`absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                       <div className="p-2 space-y-1">
-                        {/* Fixed categories */}
-                        <div className="text-xs font-semibold text-gray-400 px-3 py-1">Fixed Monthly</div>
-                        {['Rent', 'Utilities', 'Salary', 'Office', 'Staff'].map(cat => (
-                          <button
-                            key={cat}
-                            type="button"
-                            onClick={() => handleCategorySelect(cat)}
-                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
-                        
-                        <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Other Expenses</div>
-                        {['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair'].map(cat => (
-                          <button
-                            key={cat}
-                            type="button"
-                            onClick={() => handleCategorySelect(cat)}
-                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
+                        {/* ✅ Other (New Sub-Category) - SAB SE PEHLE */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowOtherInput(true);
+                            setFormData(prev => ({ ...prev, category: '' }));
+                            setShowCategoryDropdown(false);
+                          }}
+                          className={`w-full px-3 py-2 rounded-lg text-left text-sm transition border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${showOtherInput ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <FiFolderPlus className="text-sm text-purple-500" /> Other (New Sub-Category)
+                          </span>
+                        </button>
                         
                         {/* ✅ Existing "Other" sub-categories from expenses */}
                         {otherSubCategories.length > 0 && (
@@ -975,20 +965,31 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                           </>
                         )}
                         
-                        {/* ✅ "Other" option to add new category */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowOtherInput(true);
-                            setFormData(prev => ({ ...prev, category: '' }));
-                            setShowCategoryDropdown(false);
-                          }}
-                          className={`w-full px-3 py-2 rounded-lg text-left text-sm transition border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${showOtherInput ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                        >
-                          <span className="flex items-center gap-2">
-                            <FiFolderPlus className="text-sm text-purple-500" /> Other (New Sub-Category)
-                          </span>
-                        </button>
+                        {/* ✅ Base Other Categories - General, Maintenance, etc. */}
+                        <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Other Expenses</div>
+                        {['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair'].map(cat => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => handleCategorySelect(cat)}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
+                        
+                        {/* ✅ Fixed categories - BAAD MEIN */}
+                        <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Fixed Monthly</div>
+                        {['Rent', 'Utilities', 'Salary', 'Office', 'Staff'].map(cat => (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => handleCategorySelect(cat)}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                          >
+                            {cat}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}

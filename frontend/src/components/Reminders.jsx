@@ -11,15 +11,6 @@ import {
 } from 'react-icons/fi';
 import api from '../services/api';
 
-// ✅ Bank Names List - Same as Billing
-const BANK_NAMES = [
-  { value: 'allied', label: 'Allied Bank' },
-  { value: 'alfalah', label: 'Bank Alfalah' },
-  { value: 'hbl', label: 'HBL (Habib Bank Limited)' },
-  { value: 'meezan', label: 'Meezan Bank' },
-  { value: 'ubl', label: 'UBL (United Bank Limited)' },
-];
-
 const Reminders = ({ darkMode }) => {
   const [activeTab, setActiveTab] = useState('birthday');
   const [birthdayCustomers, setBirthdayCustomers] = useState([]);
@@ -49,15 +40,16 @@ const Reminders = ({ darkMode }) => {
   const [selectedInvoiceNo, setSelectedInvoiceNo] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // ✅ Get payment method display with bank name
+  // ✅ Get payment method display with bank/wallet name
   const getPaymentMethodDisplay = () => {
     if (paymentMethod === 'cash') return 'Cash';
     if (paymentMethod === 'card') return 'Credit/Debit Card';
     if (paymentMethod === 'bank') {
-      const bank = BANK_NAMES.find(b => b.value === selectedBank);
-      return bank ? `Bank Transfer (${bank.label})` : 'Bank Transfer';
+      return selectedBank ? `Bank Transfer (${selectedBank})` : 'Bank Transfer';
     }
-    if (paymentMethod === 'online') return 'Mobile Wallet';
+    if (paymentMethod === 'online') {
+      return selectedBank ? `Mobile Wallet (${selectedBank})` : 'Mobile Wallet';
+    }
     return paymentMethod;
   };
 
@@ -113,7 +105,7 @@ const Reminders = ({ darkMode }) => {
   // ✅ Auto-refresh every 3 hours (10800000 milliseconds)
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(fetchAllData, 10800000); // 3 hours in milliseconds
+    const interval = setInterval(fetchAllData, 10800000);
     return () => clearInterval(interval);
   }, [isAdmin]);
 
@@ -237,7 +229,7 @@ const Reminders = ({ darkMode }) => {
     }
   };
 
-  // ✅ Handle payment update with payment method + bank name + date/time
+  // ✅ Handle payment update with payment method + bank/wallet name + date/time
   const handlePaymentUpdate = async () => {
     if (!isAdmin) {
       toast.error('Only admin can record payments');
@@ -256,7 +248,12 @@ const Reminders = ({ darkMode }) => {
     }
 
     if (paymentMethod === 'bank' && !selectedBank) {
-      toast.error('Please select a bank for bank transfer');
+      toast.error('Please enter bank name');
+      return;
+    }
+
+    if (paymentMethod === 'online' && !selectedBank) {
+      toast.error('Please enter wallet name');
       return;
     }
 
@@ -707,7 +704,7 @@ const Reminders = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Payment Modal - WITH BANK DROPDOWN like Billing */}
+      {/* ✅ Payment Modal - WITH MANUAL INPUT for Bank and Wallet */}
       {showPaymentModal && selectedPayment && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -775,7 +772,7 @@ const Reminders = ({ darkMode }) => {
                   value={paymentMethod}
                   onChange={(e) => {
                     setPaymentMethod(e.target.value);
-                    if (e.target.value !== 'bank') {
+                    if (e.target.value !== 'bank' && e.target.value !== 'online') {
                       setSelectedBank('');
                     }
                   }}
@@ -784,40 +781,63 @@ const Reminders = ({ darkMode }) => {
                   }`}
                 >
                   <option value="cash">Cash</option>
-                  <option value="bank">Bank Transfer</option>
                   <option value="card">Credit/Debit Card</option>
+                  <option value="bank">Bank Transfer</option>
                   <option value="online">Mobile Wallet</option>
                 </select>
               </div>
 
-              {/* Bank Selection - Only when Bank Transfer selected */}
+              {/* ✅ Bank Transfer - Manual Input */}
               {paymentMethod === 'bank' && (
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Select Bank
+                    Bank Name
                   </label>
-                  <select
+                  <input
+                    type="text"
                     value={selectedBank}
                     onChange={(e) => setSelectedBank(e.target.value)}
+                    placeholder="e.g., Allied Bank, HBL, Meezan Bank"
                     className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
                     }`}
-                  >
-                    <option value="">-- Select Bank --</option>
-                    {BANK_NAMES.map((bank) => (
-                      <option key={bank.value} value={bank.value}>
-                        {bank.label}
-                      </option>
-                    ))}
-                  </select>
-                  {!selectedBank && paymentMethod === 'bank' && (
+                  />
+                  {!selectedBank && (
                     <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
-                      ⚠️ Please select a bank
+                      ⚠️ Please enter bank name
                     </p>
                   )}
-                  {selectedBank && paymentMethod === 'bank' && (
+                  {selectedBank && (
                     <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                      ✅ Selected: {BANK_NAMES.find(b => b.value === selectedBank)?.label}
+                      ✅ Bank: {selectedBank}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* ✅ Mobile Wallet - Manual Input */}
+              {paymentMethod === 'online' && (
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Wallet Name
+                  </label>
+                  <input
+                    type="text"
+                    value={selectedBank}
+                    onChange={(e) => setSelectedBank(e.target.value)}
+                    placeholder="e.g., Sadapay, Easypaisa, JazzCash, Nayapay"
+                    className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                    }`}
+                  />
+                  {!selectedBank && (
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+                      ⚠️ Please enter wallet name
+                    </p>
+                  )}
+                  {selectedBank && (
+                    <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                      ✅ Wallet: {selectedBank}
                     </p>
                   )}
                 </div>
@@ -836,9 +856,9 @@ const Reminders = ({ darkMode }) => {
                 <button
                   type="button"
                   onClick={handlePaymentUpdate}
-                  disabled={isSubmitting || (paymentMethod === 'bank' && !selectedBank)}
+                  disabled={isSubmitting || (paymentMethod === 'bank' && !selectedBank) || (paymentMethod === 'online' && !selectedBank)}
                   className={`flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2 shadow-md ${
-                    isSubmitting || (paymentMethod === 'bank' && !selectedBank) ? 'opacity-50 cursor-not-allowed' : ''
+                    isSubmitting || (paymentMethod === 'bank' && !selectedBank) || (paymentMethod === 'online' && !selectedBank) ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                 >
                   {isSubmitting ? (
@@ -858,7 +878,7 @@ const Reminders = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Payment History Modal - WITH CORRECT TIME ZONE */}
+      {/* ✅ Payment History Modal */}
       {showHistoryModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-2xl w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

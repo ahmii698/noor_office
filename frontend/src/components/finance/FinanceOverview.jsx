@@ -103,6 +103,37 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   });
 };
 
+// ✅ Collapsible Stat Card - sirf 2 lines default (title + amount).
+// Expand/collapse ab is card ka apna nahi, poore page ka EK global switch control karta hai (expanded prop se aata hai)
+const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onClick, expanded }) => {
+  return (
+    <div
+      className={`bg-gradient-to-r ${gradient} rounded-2xl p-6 text-white shadow-lg transition-transform ${onClick ? 'cursor-pointer hover:scale-105' : ''}`}
+      onClick={onClick}
+    >
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <p className="text-sm opacity-90">{title}</p>
+          <p className="text-3xl font-bold mt-2">{mainValue}</p>
+        </div>
+        <Icon className="text-3xl opacity-50" />
+      </div>
+
+      {subLines.length > 0 && (
+        <div
+          className={`overflow-hidden transition-all duration-300 ${
+            expanded ? 'max-h-40 opacity-100 mt-1' : 'max-h-0 opacity-0'
+          }`}
+        >
+          {subLines.map((line, i) => (
+            <p key={i} className="text-xs opacity-75 mt-1">{line}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Memoized Invoice Details Component - ✅ Battery filtered out
 const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   if (!data?.details || data.details.length === 0) {
@@ -263,6 +294,9 @@ const FinanceOverview = ({ darkMode }) => {
   const [showMonthExpenses, setShowMonthExpenses] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // ✅ Ek hi global switch - saare stat cards ki extra lines yahan se control hoti hain
+  const [showAllDetails, setShowAllDetails] = useState(false);
   
   // Pagination state for yearly report
   const [currentPage, setCurrentPage] = useState(1);
@@ -984,6 +1018,19 @@ const FinanceOverview = ({ darkMode }) => {
           </div>
         )}
         
+        {/* ✅ Ek hi global button - saare cards ek sath expand/collapse honge */}
+        <button
+          onClick={() => setShowAllDetails(!showAllDetails)}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 ${
+            darkMode
+              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          {showAllDetails ? <FiChevronUp /> : <FiChevronDown />}
+          {showAllDetails ? 'Hide Details' : 'Show Details'}
+        </button>
+
         <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
           <span className="ml-2 text-green-500">(Battery Sales Excluded)</span>
@@ -992,212 +1039,223 @@ const FinanceOverview = ({ darkMode }) => {
 
       {/* Dynamic Filtered Sales Card - ✅ Battery Excluded */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">{getFilterLabel()} Sales</p>
-              <p className="text-3xl font-bold mt-2">Rs. {filteredSalesData.total.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{filteredSalesData.items} items sold</p>
-              <p className="text-xs opacity-75 mt-1">Profit: Rs. {filteredSalesData.profit.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiDollarSign className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">{getFilterLabel()} Expenses</p>
-              <p className="text-3xl font-bold mt-2">Rs. {filteredStats.expenses.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{filteredStats.expenseCount} transactions</p>
-            </div>
-            <FiTrendingDown className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className={`bg-gradient-to-r ${filteredStats.profit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'} rounded-2xl p-6 text-white shadow-lg`}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">{getFilterLabel()} Profit</p>
-              <p className="text-3xl font-bold mt-2">Rs. {filteredStats.profit.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">After expenses</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
+        <StatCard
+          gradient="from-blue-500 to-blue-600"
+          icon={FiDollarSign}
+          title={`${getFilterLabel()} Sales`}
+          mainValue={`Rs. ${filteredSalesData.total.toLocaleString()}`}
+          subLines={[
+            `${filteredSalesData.items} items sold`,
+            `Profit: Rs. ${filteredSalesData.profit.toLocaleString()}`,
+            '(Battery sales excluded)'
+          ]}
+          expanded={showAllDetails}
+        />
+
+        <StatCard
+          gradient="from-red-500 to-red-600"
+          icon={FiTrendingDown}
+          title={`${getFilterLabel()} Expenses`}
+          mainValue={`Rs. ${filteredStats.expenses.toLocaleString()}`}
+          subLines={[
+            `${filteredStats.expenseCount} transactions`
+          ]}
+          expanded={showAllDetails}
+        />
+
+        <StatCard
+          gradient={filteredStats.profit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'}
+          icon={FiTrendingUp}
+          title={`${getFilterLabel()} Profit`}
+          mainValue={`Rs. ${filteredStats.profit.toLocaleString()}`}
+          subLines={[
+            'After expenses',
+            '(Battery sales excluded)'
+          ]}
+          expanded={showAllDetails}
+        />
       </div>
 
-      {/* Today's Sales Card - ✅ Battery Excluded */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayDetails(!showTodayDetails)}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Today's Sales</p>
-              <p className="text-3xl font-bold mt-2">Rs. {todaySales.total.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{todaySales.items} items sold</p>
-              <p className="text-xs opacity-75 mt-1">Profit: Rs. {todaySales.profit.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiCalendar className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowWeekDetails(!showWeekDetails)}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Week's Sales</p>
-              <p className="text-3xl font-bold mt-2">Rs. {weeklySales.total.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{weeklySales.items} items sold</p>
-              <p className="text-xs opacity-75 mt-1">Profit: Rs. {weeklySales.profit.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowMonthDetails(!showMonthDetails)}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Month's Sales</p>
-              <p className="text-3xl font-bold mt-2">Rs. {monthlySales.total.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{monthlySales.items} items sold</p>
-              <p className="text-xs opacity-75 mt-1">Profit: Rs. {monthlySales.profit.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiDollarSign className="text-3xl opacity-50" />
-          </div>
-        </div>
-      </div>
+      {/* ✅ Yeh poora block (Today/Week/Month Sales, Expenses, Profit, Discount) sirf "Show Details" dabane par nazar aayega */}
+      {showAllDetails && (
+        <>
+          {/* Today's Sales Card - ✅ Battery Excluded */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <StatCard
+              gradient="from-blue-500 to-blue-600"
+              icon={FiCalendar}
+              title="Today's Sales"
+              mainValue={`Rs. ${todaySales.total.toLocaleString()}`}
+              onClick={() => setShowTodayDetails(!showTodayDetails)}
+              subLines={[
+                `${todaySales.items} items sold`,
+                `Profit: Rs. ${todaySales.profit.toLocaleString()}`,
+                'Click for details',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
 
-      {showTodayDetails && <InvoiceDetails title="Today's Sales" data={todaySales} darkMode={darkMode} onClose={() => setShowTodayDetails(false)} />}
-      {showWeekDetails && <InvoiceDetails title="This Week's Sales" data={weeklySales} darkMode={darkMode} onClose={() => setShowWeekDetails(false)} />}
-      {showMonthDetails && <InvoiceDetails title="This Month's Sales" data={monthlySales} darkMode={darkMode} onClose={() => setShowMonthDetails(false)} />}
+            <StatCard
+              gradient="from-blue-500 to-blue-600"
+              icon={FiTrendingUp}
+              title="This Week's Sales"
+              mainValue={`Rs. ${weeklySales.total.toLocaleString()}`}
+              onClick={() => setShowWeekDetails(!showWeekDetails)}
+              subLines={[
+                `${weeklySales.items} items sold`,
+                `Profit: Rs. ${weeklySales.profit.toLocaleString()}`,
+                'Click for details',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
 
-      {/* Expense Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowTodayExpenses(!showTodayExpenses)}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Today's Expenses</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.todayExpenses.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{stats.todayExpenseCount} transactions</p>
-              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
-            </div>
-            <FiTrendingDown className="text-3xl opacity-50" />
+            <StatCard
+              gradient="from-blue-500 to-blue-600"
+              icon={FiDollarSign}
+              title="This Month's Sales"
+              mainValue={`Rs. ${monthlySales.total.toLocaleString()}`}
+              onClick={() => setShowMonthDetails(!showMonthDetails)}
+              subLines={[
+                `${monthlySales.items} items sold`,
+                `Profit: Rs. ${monthlySales.profit.toLocaleString()}`,
+                'Click for details',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
           </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowWeekExpenses(!showWeekExpenses)}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Week's Expenses</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.weekExpenses.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{stats.weekExpenseCount} transactions</p>
-              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
-            </div>
-            <FiTrendingDown className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onClick={() => setShowMonthExpenses(!showMonthExpenses)}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Month's Expenses</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.monthExpenses.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{stats.monthExpenseCount} transactions</p>
-              <p className="text-xs opacity-75 mt-2 flex items-center gap-1"><FiClock /> Click for details</p>
-            </div>
-            <FiTrendingDown className="text-3xl opacity-50" />
-          </div>
-        </div>
-      </div>
 
-      {showTodayExpenses && <ExpenseDetails title="Today's Expenses" expenses={todayExpenseDetails} darkMode={darkMode} onClose={() => setShowTodayExpenses(false)} />}
-      {showWeekExpenses && <ExpenseDetails title="This Week's Expenses" expenses={weekExpenseDetails} darkMode={darkMode} onClose={() => setShowWeekExpenses(false)} />}
-      {showMonthExpenses && <ExpenseDetails title="This Month's Expenses" expenses={monthExpenseDetails} darkMode={darkMode} onClose={() => setShowMonthExpenses(false)} />}
+          {showTodayDetails && <InvoiceDetails title="Today's Sales" data={todaySales} darkMode={darkMode} onClose={() => setShowTodayDetails(false)} />}
+          {showWeekDetails && <InvoiceDetails title="This Week's Sales" data={weeklySales} darkMode={darkMode} onClose={() => setShowWeekDetails(false)} />}
+          {showMonthDetails && <InvoiceDetails title="This Month's Sales" data={monthlySales} darkMode={darkMode} onClose={() => setShowMonthDetails(false)} />}
 
-      {/* Profit Cards - ✅ Battery Excluded */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Today's Profit</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.todayProfit?.toLocaleString() || 0}</p>
-              <p className="text-xs opacity-75 mt-1">After expenses</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Week's Profit</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.weekProfit?.toLocaleString() || 0}</p>
-              <p className="text-xs opacity-75 mt-1">After expenses</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Month's Profit</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.monthProfit?.toLocaleString() || 0}</p>
-              <p className="text-xs opacity-75 mt-1">After expenses</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
-      </div>
+          {/* Expense Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <StatCard
+              gradient="from-red-500 to-red-600"
+              icon={FiTrendingDown}
+              title="Today's Expenses"
+              mainValue={`Rs. ${stats.todayExpenses.toLocaleString()}`}
+              onClick={() => setShowTodayExpenses(!showTodayExpenses)}
+              subLines={[
+                `${stats.todayExpenseCount} transactions`,
+                'Click for details'
+              ]}
+              expanded={true}
+            />
 
-      {/* Discount Cards - ✅ Battery Excluded */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Today's Discount</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.todayDiscount?.toLocaleString() || 0}</p>
-              <p className="text-xs opacity-75 mt-1">Given today</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiGift className="text-3xl opacity-50" />
+            <StatCard
+              gradient="from-red-500 to-red-600"
+              icon={FiTrendingDown}
+              title="This Week's Expenses"
+              mainValue={`Rs. ${stats.weekExpenses.toLocaleString()}`}
+              onClick={() => setShowWeekExpenses(!showWeekExpenses)}
+              subLines={[
+                `${stats.weekExpenseCount} transactions`,
+                'Click for details'
+              ]}
+              expanded={true}
+            />
+
+            <StatCard
+              gradient="from-red-500 to-red-600"
+              icon={FiTrendingDown}
+              title="This Month's Expenses"
+              mainValue={`Rs. ${stats.monthExpenses.toLocaleString()}`}
+              onClick={() => setShowMonthExpenses(!showMonthExpenses)}
+              subLines={[
+                `${stats.monthExpenseCount} transactions`,
+                'Click for details'
+              ]}
+              expanded={true}
+            />
           </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Week's Discount</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.weekDiscount?.toLocaleString() || 0}</p>
-              <p className="text-xs opacity-75 mt-1">Given this week</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiGift className="text-3xl opacity-50" />
+
+          {showTodayExpenses && <ExpenseDetails title="Today's Expenses" expenses={todayExpenseDetails} darkMode={darkMode} onClose={() => setShowTodayExpenses(false)} />}
+          {showWeekExpenses && <ExpenseDetails title="This Week's Expenses" expenses={weekExpenseDetails} darkMode={darkMode} onClose={() => setShowWeekExpenses(false)} />}
+          {showMonthExpenses && <ExpenseDetails title="This Month's Expenses" expenses={monthExpenseDetails} darkMode={darkMode} onClose={() => setShowMonthExpenses(false)} />}
+
+          {/* Profit Cards - ✅ Battery Excluded */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <StatCard
+              gradient="from-green-500 to-green-600"
+              icon={FiTrendingUp}
+              title="Today's Profit"
+              mainValue={`Rs. ${stats.todayProfit?.toLocaleString() || 0}`}
+              subLines={[
+                'After expenses',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
+
+            <StatCard
+              gradient="from-green-500 to-green-600"
+              icon={FiTrendingUp}
+              title="This Week's Profit"
+              mainValue={`Rs. ${stats.weekProfit?.toLocaleString() || 0}`}
+              subLines={[
+                'After expenses',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
+
+            <StatCard
+              gradient="from-green-500 to-green-600"
+              icon={FiTrendingUp}
+              title="This Month's Profit"
+              mainValue={`Rs. ${stats.monthProfit?.toLocaleString() || 0}`}
+              subLines={[
+                'After expenses',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
           </div>
-        </div>
-        
-        <div className="bg-gradient-to-r from-sky-400 to-sky-500 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">This Month's Discount</p>
-              <p className="text-3xl font-bold mt-2">Rs. {stats.monthDiscount?.toLocaleString() || 0}</p>
-              <p className="text-xs opacity-75 mt-1">Given this month</p>
-              <p className="text-xs opacity-75 mt-1 text-yellow-200">(Battery sales excluded)</p>
-            </div>
-            <FiGift className="text-3xl opacity-50" />
+
+          {/* Discount Cards - ✅ Battery Excluded */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <StatCard
+              gradient="from-sky-400 to-sky-500"
+              icon={FiGift}
+              title="Today's Discount"
+              mainValue={`Rs. ${stats.todayDiscount?.toLocaleString() || 0}`}
+              subLines={[
+                'Given today',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
+
+            <StatCard
+              gradient="from-sky-400 to-sky-500"
+              icon={FiGift}
+              title="This Week's Discount"
+              mainValue={`Rs. ${stats.weekDiscount?.toLocaleString() || 0}`}
+              subLines={[
+                'Given this week',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
+
+            <StatCard
+              gradient="from-sky-400 to-sky-500"
+              icon={FiGift}
+              title="This Month's Discount"
+              mainValue={`Rs. ${stats.monthDiscount?.toLocaleString() || 0}`}
+              subLines={[
+                'Given this month',
+                '(Battery sales excluded)'
+              ]}
+              expanded={true}
+            />
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Monthly Breakdown - ✅ Battery Excluded */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

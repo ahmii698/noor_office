@@ -20,6 +20,11 @@ import BatteryCharts from './components/BatteryCharts';
 // ✅ NEW IMPORT - Old Batteries
 import OldBatteries from './components/OldBatteries';
 
+// ✅ NEW IMPORTS - Car Pages
+import CarPurchase from './components/CarPurchase';
+import CarSell from './components/CarSell';
+import CarRecords from './components/CarRecords';
+
 function App() {
   const getDarkMode = () => {
     const saved = localStorage.getItem('darkMode');
@@ -345,9 +350,48 @@ function App() {
           }
         />
 
-        {/* ✅ NEW: Old Batteries History */}
+        {/* Old Batteries History */}
         <Route
           path="/old-batteries"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NEW: Car Purchase */}
+        <Route
+          path="/car-purchase"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NEW: Car Sell */}
+        <Route
+          path="/car-sell"
+          element={
+            <ProtectedRoute>
+              <Dashboard
+                darkMode={darkMode}
+                toggleDarkMode={toggleDarkMode}
+              />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ NEW: Car Records */}
+        <Route
+          path="/car-records"
           element={
             <ProtectedRoute>
               <Dashboard

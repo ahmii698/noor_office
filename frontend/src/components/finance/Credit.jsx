@@ -95,6 +95,9 @@ const Credit = ({ darkMode }) => {
   const paySubmitRef = useRef(null);
 
   // ✅ FIXED: Group vendors by name with proper payments merging & SORTING (NEWEST FIRST)
+  // ✅ ALSO FIXED: "products" / "invoiceNumber" / "id" shown in the outer table now always
+  //    reflect the MOST RECENT record for that vendor, not just the first one encountered
+  //    from the API (which was making the table show the oldest purchase's product).
   const groupVendorsByName = (vendorsList) => {
     const grouped = {};
     
@@ -116,6 +119,14 @@ const Credit = ({ darkMode }) => {
           payments: [],
           productsList: []
         };
+      } else if (new Date(vendor.created_at) > new Date(grouped[key].createdAt)) {
+        // ✅ This record is newer than the current "latest" for this vendor —
+        // update the fields that should reflect the most recent purchase.
+        grouped[key].id = vendor.id;
+        grouped[key].products = vendor.products;
+        grouped[key].invoiceNumber = vendor.invoice_number;
+        grouped[key].createdAt = vendor.created_at;
+        grouped[key].createdBy = vendor.created_by;
       }
       
       grouped[key].totalAmount += parseFloat(vendor.total_amount) || 0;
@@ -246,11 +257,24 @@ const Credit = ({ darkMode }) => {
     fetchAllProducts();
   }, [fetchVendors, fetchAllProducts]);
 
-  const filteredVendors = vendors.filter(vendor =>
-    vendor?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    vendor?.products?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    vendor?.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ✅ FIXED: Search now also looks inside ALL past records (products + invoice numbers)
+  // for a vendor, not just the latest one. Previously only vendor.products / vendor.invoiceNumber
+  // (the most recent record) were checked, so a product bought earlier (but not in the latest
+  // order) wouldn't match the search even though it appears in that vendor's history.
+  const filteredVendors = vendors.filter(vendor => {
+    const term = searchTerm.toLowerCase();
+
+    const nameMatch = vendor?.name?.toLowerCase().includes(term);
+    const latestProductsMatch = vendor?.products?.toLowerCase().includes(term);
+    const latestInvoiceMatch = vendor?.invoiceNumber?.toLowerCase().includes(term);
+
+    const recordsMatch = vendor?.records?.some(record =>
+      record?.products?.toLowerCase().includes(term) ||
+      record?.invoiceNumber?.toLowerCase().includes(term)
+    );
+
+    return nameMatch || latestProductsMatch || latestInvoiceMatch || recordsMatch;
+  });
 
   const totalPages = Math.ceil(filteredVendors.length / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;

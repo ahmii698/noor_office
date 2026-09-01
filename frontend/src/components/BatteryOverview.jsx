@@ -97,6 +97,25 @@ const BatteryOverview = ({ darkMode }) => {
     return items.filter(item => isBatteryItem(item));
   };
 
+  // ✅ NEW: Calculate the FINAL invoice total for battery items — subtracts
+  // any trade-in discount that was applied on the Battery Sale page.
+  // Example: Battery Rs. 8500 - Trade-in Rs. 5789 = Final Rs. 2711
+  // Without this, the report showed the raw pre-trade-in price (Rs. 8500).
+  const calculateInvoiceBatteryTotal = (inv, batteryItems, rawItemsTotal) => {
+    const invDiscount = parseFloat(inv.discount) || 0;
+    // Only subtract discount when it actually applies to this invoice's battery
+    // items (i.e. not an "Old Battery Sale" / "Trade-in Only" invoice, where the
+    // discount field is used differently and shouldn't reduce the total again).
+    const isOldBatterySale = batteryItems.some(item => item.service_category === 'Old Battery Sale');
+    const isTradeInOnlyInvoice = batteryItems.some(item => item.service_category === 'Trade-in');
+
+    if (isOldBatterySale || isTradeInOnlyInvoice || invDiscount <= 0) {
+      return rawItemsTotal;
+    }
+
+    return Math.max(0, rawItemsTotal - invDiscount);
+  };
+
   // ✅ Get date range for custom filter - WITH KARACHI TIMEZONE
   const getDateRange = (filter, customDateValue = null) => {
     const now = getTodayKarachi();
@@ -218,12 +237,12 @@ const BatteryOverview = ({ darkMode }) => {
         const batteryItems = getBatteryItems(inv.items);
         if (batteryItems.length === 0) return;
 
-        let invTotal = 0, invProfit = 0, invItems = 0;
+        let rawTotal = 0, invProfit = 0, invItems = 0;
         
         batteryItems.forEach(item => {
           const qty = parseInt(item.quantity) || 0;
           const price = parseFloat(item.price) || 0;
-          invTotal += price * qty;
+          rawTotal += price * qty;
           invItems += qty;
           
           const product = productsMap.get(item.service_name);
@@ -236,6 +255,10 @@ const BatteryOverview = ({ darkMode }) => {
           }
           invProfit += profit;
         });
+
+        // ✅ FIXED: Deduct trade-in discount so this matches the final amount
+        // shown on the Battery Sale page (e.g. Rs. 2711, not Rs. 8500)
+        const invTotal = calculateInvoiceBatteryTotal(inv, batteryItems, rawTotal);
 
         const detail = {
           invoiceNo: inv.invoice_no,
@@ -320,12 +343,12 @@ const BatteryOverview = ({ darkMode }) => {
         const batteryItems = getBatteryItems(inv.items);
         if (batteryItems.length === 0) return;
         
-        let invTotal = 0, invProfit = 0, invItems = 0;
+        let rawTotal = 0, invProfit = 0, invItems = 0;
         
         batteryItems.forEach(item => {
           const qty = parseInt(item.quantity) || 0;
           const price = parseFloat(item.price) || 0;
-          invTotal += price * qty;
+          rawTotal += price * qty;
           invItems += qty;
           
           const product = productsMap.get(item.service_name);
@@ -338,6 +361,10 @@ const BatteryOverview = ({ darkMode }) => {
           }
           invProfit += profit;
         });
+
+        // ✅ FIXED: Deduct trade-in discount so yearly report/export also
+        // matches the final amount (e.g. Rs. 2711, not Rs. 8500)
+        const invTotal = calculateInvoiceBatteryTotal(inv, batteryItems, rawTotal);
         
         yearlyTotal += invTotal;
         yearlyItems += invItems;
@@ -420,7 +447,7 @@ const BatteryOverview = ({ darkMode }) => {
     setShowCustomDate(false);
   };
 
-  // ✅ Export to Excel
+  // ✅ Export to Excel — now includes the final (trade-in adjusted) invoice total
   const exportToExcel = () => {
     if (yearlyData.details.length === 0) {
       toast.error('No battery sales data available for export');
@@ -437,7 +464,7 @@ const BatteryOverview = ({ darkMode }) => {
           'Battery': item.service_name,
           'Quantity': item.quantity,
           'Price': `Rs. ${item.price.toLocaleString()}`,
-          'Total': `Rs. ${(item.price * (parseInt(item.quantity) || 0)).toLocaleString()}`
+          'Final Total (after trade-in)': `Rs. ${inv.total.toLocaleString()}`
         });
       });
     });
@@ -449,7 +476,7 @@ const BatteryOverview = ({ darkMode }) => {
     toast.success('Exported to Excel successfully!');
   };
 
-  // ✅ Export to PDF
+  // ✅ Export to PDF — now includes the final (trade-in adjusted) invoice total
   const exportToPDF = () => {
     if (yearlyData.details.length === 0) {
       toast.error('No battery sales data available for export');
@@ -469,13 +496,13 @@ const BatteryOverview = ({ darkMode }) => {
           item.service_name,
           item.quantity,
           `Rs. ${item.price.toLocaleString()}`,
-          `Rs. ${(item.price * (parseInt(item.quantity) || 0)).toLocaleString()}`
+          `Rs. ${inv.total.toLocaleString()}`
         ]);
       });
     });
     
     doc.autoTable({
-      head: [['Invoice', 'Customer', 'Date', 'Battery', 'Qty', 'Price', 'Total']],
+      head: [['Invoice', 'Customer', 'Date', 'Battery', 'Qty', 'Price', 'Final Total']],
       body: tableData,
       startY: 20,
     });
@@ -725,7 +752,7 @@ const BatteryOverview = ({ darkMode }) => {
                   <th className="px-4 py-3 text-left">Battery</th>
                   <th className="px-4 py-3 text-center">Qty</th>
                   <th className="px-4 py-3 text-right">Price</th>
-                  <th className="px-4 py-3 text-right">Total</th>
+                  <th className="px-4 py-3 text-right">Final Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -743,7 +770,8 @@ const BatteryOverview = ({ darkMode }) => {
                         <td className="px-4 py-3">{item.service_name}</td>
                         <td className="px-4 py-3 text-center">{item.quantity}</td>
                         <td className="px-4 py-3 text-right">Rs. {item.price.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right font-semibold">Rs. {(item.price * (parseInt(item.quantity) || 0)).toLocaleString()}</td>
+                        {/* ✅ FIXED: shows final invoice total (after trade-in), not raw price × qty */}
+                        <td className="px-4 py-3 text-right font-semibold">Rs. {inv.total.toLocaleString()}</td>
                       </tr>
                     ))
                   ))

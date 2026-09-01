@@ -8,7 +8,7 @@ import {
   FiBell, FiTrendingUp, FiShoppingCart, FiCheckCircle, 
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
   FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp, FiFile,
-  FiBattery, FiArchive
+  FiBattery, FiArchive, FiTruck, FiBookOpen
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -35,12 +35,17 @@ const EstimatedBill = lazy(() => import('./EstimatedBill'));
 const BatteryPage = lazy(() => import('./BatteryPage'));
 const EstimateRecords = lazy(() => import('./EstimateRecords'));
 
-// ✅ Battery Overview & Charts
+// Battery Overview & Charts
 const BatteryOverview = lazy(() => import('./BatteryOverview'));
 const BatteryCharts = lazy(() => import('./BatteryCharts'));
 
-// ✅ NEW: Old Batteries
+// Old Batteries
 const OldBatteries = lazy(() => import('./OldBatteries'));
+
+// ✅ NEW: Car Pages
+const CarPurchase = lazy(() => import('./CarPurchase'));
+const CarSell = lazy(() => import('./CarSell'));
+const CarRecords = lazy(() => import('./CarRecords'));
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -482,7 +487,10 @@ const Dashboard = () => {
       battery: 'Battery Sale',
       'battery-overview': 'Battery Sales Overview',
       'battery-charts': 'Battery Sales Charts',
-      'old-batteries': 'Old Batteries History', // ✅ NEW
+      'old-batteries': 'Old Batteries History',
+      'car-purchase': 'Car Purchase', // ✅ NEW
+      'car-sell': 'Car Sell', // ✅ NEW
+      'car-records': 'Car Records', // ✅ NEW
       record: 'Records Archive',
       reminders: 'Reminders',
       users: 'User Management',
@@ -507,7 +515,10 @@ const Dashboard = () => {
       battery: 'Sell batteries with trade-in option',
       'battery-overview': 'View battery sales statistics and reports',
       'battery-charts': 'Visualize battery sales with interactive charts',
-      'old-batteries': 'View all purchased old batteries history with stats', // ✅ NEW
+      'old-batteries': 'View all purchased old batteries history with stats',
+      'car-purchase': 'Record car purchase details', // ✅ NEW
+      'car-sell': 'Record car sale details', // ✅ NEW
+      'car-records': 'View complete history of car purchases and sales', // ✅ NEW
       record: 'View all transaction history',
       reminders: 'Birthday, Tuning & Oil Change reminders',
       users: 'Manage system users and employees',
@@ -532,7 +543,10 @@ const Dashboard = () => {
       battery: <FiBattery className="text-2xl" />,
       'battery-overview': <FiTrendingUp className="text-2xl" />,
       'battery-charts': <FiBarChart2 className="text-2xl" />,
-      'old-batteries': <FiBattery className="text-2xl" />, // ✅ NEW
+      'old-batteries': <FiBattery className="text-2xl" />,
+      'car-purchase': <FiShoppingCart className="text-2xl" />, // ✅ NEW
+      'car-sell': <FiTruck className="text-2xl" />, // ✅ NEW
+      'car-records': <FiBookOpen className="text-2xl" />, // ✅ NEW
       record: <FiBarChart2 className="text-2xl" />,
       reminders: <FiBell className="text-2xl" />,
       users: <FiUsers className="text-2xl" />,
@@ -1180,9 +1194,24 @@ const Dashboard = () => {
                 <BatteryCharts darkMode={darkMode} />
               )}
 
-              {/* ✅ NEW: Old Batteries */}
+              {/* Old Batteries */}
               {activeMenu === 'old-batteries' && (
                 <OldBatteries darkMode={darkMode} />
+              )}
+
+              {/* ✅ NEW: Car Purchase */}
+              {activeMenu === 'car-purchase' && (
+                <CarPurchase darkMode={darkMode} />
+              )}
+
+              {/* ✅ NEW: Car Sell */}
+              {activeMenu === 'car-sell' && (
+                <CarSell darkMode={darkMode} />
+              )}
+
+              {/* ✅ NEW: Car Records */}
+              {activeMenu === 'car-records' && (
+                <CarRecords darkMode={darkMode} />
               )}
               
               {activeMenu === 'record' && userRole !== 'employee' && (

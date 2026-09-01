@@ -332,4 +332,66 @@ class OldBatteryController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * ✅ NEW: Sell an old battery (remove from old_batteries inventory)
+     * POST /api/old-batteries/{id}/sell
+     */
+    public function sellOldBattery($id, Request $request)
+    {
+        try {
+            // ✅ Find the old battery record
+            $oldBattery = OldBattery::find($id);
+
+            if (!$oldBattery) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Old battery record not found'
+                ], 404);
+            }
+
+            // ✅ Validation for sell
+            $validator = Validator::make($request->all(), [
+                'customer_name' => 'nullable|string|max:255',
+                'customer_phone' => 'nullable|string|max:20',
+                'note' => 'nullable|string'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // ✅ Store the data before deleting
+            $batteryData = [
+                'id' => $oldBattery->id,
+                'battery_name' => $oldBattery->battery_name,
+                'trade_in_amount' => $oldBattery->trade_in_amount,
+                'customer_name' => $oldBattery->customer_name,
+                'customer_phone' => $oldBattery->customer_phone,
+                'note' => $oldBattery->note,
+                'purchase_date' => $oldBattery->purchase_date
+            ];
+
+            // ✅ Delete the old battery record (it's been sold)
+            $oldBattery->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Old battery sold successfully!',
+                'data' => $batteryData,
+                'sold_at' => now()->toISOString()
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to sell old battery',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

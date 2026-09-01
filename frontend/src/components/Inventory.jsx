@@ -84,6 +84,10 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
   // ✅ Use product's own threshold, default to 5
   const threshold = product.low_stock_threshold ?? 5;
 
+  // ✅ Vendor / Invoice info (from credit_vendor relation returned by backend)
+  const invoiceNo = product.credit_vendor?.invoice_number || '-';
+  const vendorName = product.credit_vendor?.name || product.vendor_name || '-';
+
   return (
     <tr className={`${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} ${isHidden ? 'opacity-50 bg-gray-100 dark:bg-gray-800' : ''}`}>
       <td className="px-6 py-4">
@@ -217,14 +221,14 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
         </td>
       )}
 
-      {/* Invoice No - Placeholder */}
+      {/* ✅ Invoice No - real value from credit_vendor relation */}
       <td className="px-6 py-4 text-sm text-gray-400">
-        -
+        {invoiceNo}
       </td>
 
-      {/* Vendor - Placeholder */}
+      {/* ✅ Vendor - real value from credit_vendor relation */}
       <td className="px-6 py-4 text-sm text-gray-400">
-        -
+        {vendorName}
       </td>
       
       <td className="px-6 py-4">
@@ -266,6 +270,19 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
   );
 });
 
+// ✅ Empty form state - shared shape for reset points
+const emptyFormData = {
+  name: '',
+  purchasePrice: '',
+  sellingPrice: '',
+  quantity: '',
+  lowStockThreshold: 5,
+  isCreditPurchase: false,
+  vendorName: '',
+  invoiceNumber: '',
+  paidAmount: ''
+};
+
 const Inventory = ({ darkMode }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -286,15 +303,19 @@ const Inventory = ({ darkMode }) => {
     totalProfit: 0
   });
   
-  const [formData, setFormData] = useState({
-    name: '',
-    purchasePrice: '',
-    sellingPrice: '',
-    quantity: '',
-    lowStockThreshold: 5
-  });
+  const [formData, setFormData] = useState({ ...emptyFormData });
   const [viewMode, setViewMode] = useState('active');
   const [editingCell, setEditingCell] = useState({ productId: null, field: null, value: '' });
+
+  // ✅ NEW: Vendor names list (for autocomplete dropdown/datalist)
+  const [vendorsList, setVendorsList] = useState([]);
+
+  // ✅ NEW: Prevents duplicate submissions + drives the loading UI on the Add/Update button
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ✅ NEW: Controls the custom-styled vendor suggestion dropdown
+  // (replaces the native <datalist> which can't be styled and looked broken)
+  const [showVendorDropdown, setShowVendorDropdown] = useState(false);
 
   useEffect(() => {
     const user = localStorage.getItem('user');
@@ -344,6 +365,14 @@ const Inventory = ({ darkMode }) => {
     
     return filtered;
   }, [products, searchTerm, viewMode, timeFilter, customDate, sortOption]);
+
+  // ✅ NEW: Vendor names filtered by what's currently typed in the Vendor Name field,
+  // used to render the custom dropdown list instead of the native <datalist>
+  const filteredVendorSuggestions = useMemo(() => {
+    const query = (formData.vendorName || '').toLowerCase().trim();
+    if (!query) return vendorsList;
+    return vendorsList.filter(name => name.toLowerCase().includes(query));
+  }, [vendorsList, formData.vendorName]);
 
   const summaryTotals = useMemo(() => {
     let data = filteredProducts;
@@ -468,6 +497,30 @@ const Inventory = ({ darkMode }) => {
     return () => abortController.abort();
   }, [calculateFilteredStats, timeFilter, customDate]);
 
+  // ✅ NEW: Fetch unique vendor names for the autocomplete datalist
+  const fetchVendorsList = useCallback(async () => {
+    try {
+      const response = await api.get('/credit/vendors');
+      const rawData = response.data?.success && Array.isArray(response.data.data)
+        ? response.data.data
+        : (Array.isArray(response.data) ? response.data : []);
+
+      // Unique vendor names (case-insensitive), keeping original casing
+      const uniqueNames = [
+        ...new Map(
+          rawData
+            .map(v => v.vendor_name)
+            .filter(Boolean)
+            .map(name => [name.toLowerCase().trim(), name])
+        ).values()
+      ];
+
+      setVendorsList(uniqueNames);
+    } catch (error) {
+      console.error('Error fetching vendors list:', error);
+    }
+  }, []);
+
   const debouncedSearch = useMemo(
     () => debounce((value) => {
       setSearchTerm(value);
@@ -486,25 +539,6 @@ const Inventory = ({ darkMode }) => {
       setTimeFilter('custom');
     }
   };
-
-  const handleAddProduct = useCallback(async (productData) => {
-    if (!isAdmin) {
-      toast.error('Only admin can add products');
-      return false;
-    }
-    try {
-      const response = await api.post('/products', productData);
-      if (response.data) {
-        toast.success('Product added successfully!');
-        await fetchProducts();
-        return true;
-      }
-    } catch (error) {
-      console.error('Error adding product:', error);
-      toast.error(error.response?.data?.message || 'Failed to add product');
-      return false;
-    }
-  }, [fetchProducts, isAdmin]);
 
   const handleUpdateProduct = useCallback(async (id, productData) => {
     try {
@@ -561,7 +595,8 @@ const Inventory = ({ darkMode }) => {
 
   useEffect(() => {
     fetchProducts();
-  }, [fetchProducts]);
+    fetchVendorsList();
+  }, [fetchProducts, fetchVendorsList]);
 
   const exportToExcel = useCallback((data, filename) => {
     const exportData = data.map(p => ({
@@ -570,8 +605,8 @@ const Inventory = ({ darkMode }) => {
       ...(isAdmin && { 'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}` }),
       'Stock': p.quantity || 0,
       ...(isAdmin && { 'Low Stock At': p.low_stock_threshold ?? 5 }),
-      'Invoice No': '-',
-      'Vendor': '-',
+      'Invoice No': p.credit_vendor?.invoice_number || '-',
+      'Vendor': p.credit_vendor?.name || p.vendor_name || '-',
       'Status': p.is_hidden === true ? 'Hidden' : 'Active'
     }));
     
@@ -610,7 +645,7 @@ const Inventory = ({ darkMode }) => {
       if (isAdmin) row.push(`Rs. ${(p.purchase_price || 0).toLocaleString()}`, `Rs. ${(p.selling_price || 0).toLocaleString()}`);
       row.push(p.quantity || 0);
       if (isAdmin) row.push(p.low_stock_threshold ?? 5);
-      row.push('-', '-');
+      row.push(p.credit_vendor?.invoice_number || '-', p.credit_vendor?.name || p.vendor_name || '-');
       row.push(p.is_hidden === true ? 'Hidden' : 'Active');
       return row;
     });
@@ -636,14 +671,20 @@ const Inventory = ({ darkMode }) => {
   }, [isAdmin, summaryTotals]);
 
   const handleInputChange = useCallback((e) => {
+    const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [name]: value
     }));
   }, []);
 
+  // ✅ Add Product - now supports Vendor / Credit purchase linking
+  // ✅ UPDATED: wrapped with isSubmitting guard so double-clicking the
+  // "Add Product" button can't fire multiple requests / duplicate products.
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+
+    if (isSubmitting) return; // ✅ ignore extra clicks while a request is in flight
     
     if (!isAdmin) {
       toast.error('Only admin can add products');
@@ -670,23 +711,83 @@ const Inventory = ({ darkMode }) => {
       return;
     }
 
-    const success = await handleAddProduct({
-      name: formData.name,
-      purchase_price: purchasePriceNum,
-      selling_price: sellingPriceNum,
-      quantity: quantityNum,
-      low_stock_threshold: thresholdNum
-    });
-
-    if (success) {
-      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 });
-      setIsModalOpen(false);
+    if (formData.isCreditPurchase && (!formData.vendorName || !formData.invoiceNumber)) {
+      toast.error('Vendor name aur invoice number zaroori hai credit purchase ke liye');
+      return;
     }
-  }, [formData, handleAddProduct, isAdmin]);
+
+    setIsSubmitting(true); // ✅ start loading
+    try {
+      // Step 1: create product.
+      // If credit purchase, start quantity at 0 — the vendor link (Step 2)
+      // adds the real quantity, so stock is never double-counted.
+      const productRes = await api.post('/products', {
+        name: formData.name,
+        purchase_price: purchasePriceNum,
+        selling_price: sellingPriceNum,
+        quantity: formData.isCreditPurchase ? 0 : quantityNum,
+        low_stock_threshold: thresholdNum
+      });
+
+      const newProduct = productRes.data?.data;
+
+      if (!newProduct?.id) {
+        toast.error('Product ban gaya lekin vendor link nahi ho saka. Inventory check karo.');
+        setFormData({ ...emptyFormData });
+        setIsModalOpen(false);
+        await fetchProducts();
+        return;
+      }
+
+      if (formData.isCreditPurchase) {
+        const paidAmountNum = parseFloat(formData.paidAmount) || 0;
+        const totalAmount = purchasePriceNum * quantityNum;
+
+        if (paidAmountNum > totalAmount) {
+          toast.error('Paid amount total amount se zyada nahi ho sakta. Product bin gaya, vendor link skip hui.');
+        } else {
+          try {
+            await api.post('/credit/vendors', {
+              vendor_name: formData.vendorName,
+              invoice_number: formData.invoiceNumber,
+              total_amount: totalAmount,
+              paid_amount: paidAmountNum,
+              stock_quantity: quantityNum,
+              product_ids: [{
+                product_id: newProduct.id,
+                product_name: formData.name,
+                quantity: quantityNum,
+                purchase_price: purchasePriceNum
+              }]
+            });
+            toast.success('Product add ho gaya aur vendor se link ho gaya!');
+            // ✅ refresh vendor list so the newly used/created vendor
+            // shows up in the dropdown next time
+            fetchVendorsList();
+          } catch (vendorError) {
+            console.error('Vendor link error:', vendorError);
+            toast.error(vendorError.response?.data?.message || 'Product ban gaya, lekin vendor link fail hua (invoice number unique honi chahiye)');
+          }
+        }
+      } else {
+        toast.success('Product added successfully!');
+      }
+
+      setFormData({ ...emptyFormData });
+      setIsModalOpen(false);
+      await fetchProducts();
+    } catch (error) {
+      console.error('Error adding product:', error);
+      toast.error(error.response?.data?.message || 'Failed to add product');
+    } finally {
+      setIsSubmitting(false); // ✅ stop loading whether it succeeded or failed
+    }
+  }, [formData, isAdmin, fetchProducts, fetchVendorsList, isSubmitting]);
 
   const handleEditProduct = useCallback((product) => {
     setEditingProduct(product);
     setFormData({
+      ...emptyFormData,
       name: product.name,
       purchasePrice: product.purchase_price,
       sellingPrice: product.selling_price,
@@ -696,8 +797,11 @@ const Inventory = ({ darkMode }) => {
     setIsModalOpen(true);
   }, []);
 
+  // ✅ UPDATED: same isSubmitting guard applied to the Update flow
   const handleUpdateSubmit = useCallback(async (e) => {
     e.preventDefault();
+
+    if (isSubmitting) return; // ✅ ignore extra clicks while a request is in flight
     
     if (!isAdmin) {
       if (!formData.quantity) {
@@ -710,14 +814,19 @@ const Inventory = ({ darkMode }) => {
         return;
       }
       
-      const success = await handleUpdateProduct(editingProduct.id, {
-        quantity: quantityNum
-      });
-      
-      if (success) {
-        setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 });
-        setEditingProduct(null);
-        setIsModalOpen(false);
+      setIsSubmitting(true);
+      try {
+        const success = await handleUpdateProduct(editingProduct.id, {
+          quantity: quantityNum
+        });
+        
+        if (success) {
+          setFormData({ ...emptyFormData });
+          setEditingProduct(null);
+          setIsModalOpen(false);
+        }
+      } finally {
+        setIsSubmitting(false);
       }
       return;
     }
@@ -742,20 +851,25 @@ const Inventory = ({ darkMode }) => {
       return;
     }
 
-    const success = await handleUpdateProduct(editingProduct.id, {
-      name: formData.name,
-      purchase_price: purchasePriceNum,
-      selling_price: sellingPriceNum,
-      quantity: quantityNum,
-      low_stock_threshold: thresholdNum
-    });
+    setIsSubmitting(true); // ✅ start loading
+    try {
+      const success = await handleUpdateProduct(editingProduct.id, {
+        name: formData.name,
+        purchase_price: purchasePriceNum,
+        selling_price: sellingPriceNum,
+        quantity: quantityNum,
+        low_stock_threshold: thresholdNum
+      });
 
-    if (success) {
-      setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 });
-      setEditingProduct(null);
-      setIsModalOpen(false);
+      if (success) {
+        setFormData({ ...emptyFormData });
+        setEditingProduct(null);
+        setIsModalOpen(false);
+      }
+    } finally {
+      setIsSubmitting(false); // ✅ stop loading whether it succeeded or failed
     }
-  }, [formData, editingProduct, handleUpdateProduct, isAdmin]);
+  }, [formData, editingProduct, handleUpdateProduct, isAdmin, isSubmitting]);
 
   const startInlineEdit = useCallback(({ productId, field, value }) => {
     setEditingCell({ productId, field, value });
@@ -855,6 +969,14 @@ const Inventory = ({ darkMode }) => {
     if (viewMode === 'active') return 'active';
     if (viewMode === 'hidden') return 'hidden';
     return 'all';
+  };
+
+  // ✅ UPDATED: also resets isSubmitting so the modal never reopens stuck in a loading state
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingProduct(null);
+    setFormData({ ...emptyFormData });
+    setIsSubmitting(false);
   };
 
   if (loading) {
@@ -1373,7 +1495,7 @@ const Inventory = ({ darkMode }) => {
               <h3 className="text-xl font-semibold">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
               </h3>
-              <button onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 }); }} className="text-gray-500 hover:text-gray-700 text-2xl">
+              <button onClick={closeModal} className="text-gray-500 hover:text-gray-700 text-2xl">
                 <FiX />
               </button>
             </div>
@@ -1389,6 +1511,7 @@ const Inventory = ({ darkMode }) => {
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} 
                   placeholder="Enter product name" 
                   required
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -1404,6 +1527,7 @@ const Inventory = ({ darkMode }) => {
                   min="0" 
                   step="0.01" 
                   required
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -1419,6 +1543,7 @@ const Inventory = ({ darkMode }) => {
                   min="0" 
                   step="0.01" 
                   required
+                  disabled={isSubmitting}
                 />
               </div>
               
@@ -1433,6 +1558,7 @@ const Inventory = ({ darkMode }) => {
                   placeholder="Enter stock quantity" 
                   min="0" 
                   required 
+                  disabled={isSubmitting}
                 />
               </div>
 
@@ -1450,26 +1576,146 @@ const Inventory = ({ darkMode }) => {
                   className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`} 
                   placeholder="Alert when stock below" 
                   min="0" 
+                  disabled={isSubmitting}
                 />
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   ⚠️ UI alert only - No email will be sent
                 </p>
               </div>
+
+              {/* ✅ Vendor / Credit Purchase Section - only for NEW products */}
+              {!editingProduct && (
+                <div className={`p-3 rounded-lg border ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.isCreditPurchase || false}
+                      onChange={(e) => setFormData(prev => ({ ...prev, isCreditPurchase: e.target.checked }))}
+                      className="w-4 h-4"
+                      disabled={isSubmitting}
+                    />
+                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                      Vendor se khareeda hai? (Credit Purchase)
+                    </span>
+                  </label>
+
+                  {formData.isCreditPurchase && (
+                    <div className="mt-3 space-y-3">
+                      <div className="relative">
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Vendor Name *</label>
+                        {/* ✅ CHANGED: replaced the native <datalist> (unstyleable,
+                            looked like a stray browser autofill popup) with a
+                            fully custom, theme-matched dropdown. Repeat vendors
+                            can still be picked, and a brand-new name still works. */}
+                        <input
+                          type="text"
+                          value={formData.vendorName || ''}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, vendorName: e.target.value }));
+                            setShowVendorDropdown(true);
+                          }}
+                          onFocus={() => setShowVendorDropdown(true)}
+                          onBlur={() => {
+                            // Small delay so a click on a dropdown item registers
+                            // before the dropdown unmounts on blur.
+                            setTimeout(() => setShowVendorDropdown(false), 150);
+                          }}
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                          placeholder="e.g. Ahmed Malik"
+                          autoComplete="off"
+                          disabled={isSubmitting}
+                        />
+
+                        {showVendorDropdown && filteredVendorSuggestions.length > 0 && (
+                          <ul
+                            className={`absolute z-20 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border shadow-lg ${
+                              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+                            }`}
+                          >
+                            {filteredVendorSuggestions.map((name, idx) => (
+                              <li
+                                key={idx}
+                                // onMouseDown fires before the input's onBlur, so the
+                                // selection registers before the dropdown closes.
+                                onMouseDown={() => {
+                                  setFormData(prev => ({ ...prev, vendorName: name }));
+                                  setShowVendorDropdown(false);
+                                }}
+                                className={`px-3 py-2 text-sm cursor-pointer transition ${
+                                  darkMode
+                                    ? 'text-gray-200 hover:bg-red-900/30'
+                                    : 'text-gray-700 hover:bg-red-50'
+                                }`}
+                              >
+                                {name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        {vendorsList.length > 0 && (
+                          <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            Purana vendor select karne ke liye type karo ya list se choose karo
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Invoice Number *</label>
+                        <input
+                          type="text"
+                          value={formData.invoiceNumber || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, invoiceNumber: e.target.value }))}
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                          placeholder="Unique invoice #"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Abhi Kitna Diya (Rs.)</label>
+                        <input
+                          type="number"
+                          value={formData.paidAmount || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, paidAmount: e.target.value }))}
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                          placeholder="0 = poora udhaar"
+                          min="0"
+                          step="0.01"
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Total bill: Rs. {((parseFloat(formData.purchasePrice) || 0) * (parseInt(formData.quantity) || 0)).toLocaleString()} — baqi Credit page par "Pay Now" se dete rehna.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
               
               <div className="flex gap-3 pt-4">
                 <button 
                   type="button" 
-                  onClick={() => { setIsModalOpen(false); setEditingProduct(null); setFormData({ name: '', purchasePrice: '', sellingPrice: '', quantity: '', lowStockThreshold: 5 }); }} 
-                  className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+                  onClick={closeModal} 
+                  disabled={isSubmitting}
+                  className={`flex-1 px-4 py-2 rounded-lg transition disabled:opacity-60 disabled:cursor-not-allowed ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center gap-2 shadow-md"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center justify-center gap-2 shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <FiCheckCircle className="text-sm" /> 
-                  {editingProduct ? 'Update Product' : 'Add Product'}
+                  {isSubmitting ? (
+                    <>
+                      <FiLoader className="text-sm animate-spin" />
+                      {editingProduct ? 'Updating...' : 'Adding...'}
+                    </>
+                  ) : (
+                    <>
+                      <FiCheckCircle className="text-sm" /> 
+                      {editingProduct ? 'Update Product' : 'Add Product'}
+                    </>
+                  )}
                 </button>
               </div>
             </form>

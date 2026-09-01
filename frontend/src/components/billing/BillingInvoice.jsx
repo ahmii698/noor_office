@@ -146,20 +146,11 @@ const loadImageAsBase64 = (src) => {
   });
 };
 
-// ✅ Bank Names List
-const BANK_NAMES = [
-  { value: 'allied', label: 'Allied Bank' },
-  { value: 'alfalah', label: 'Bank Alfalah' },
-  { value: 'hbl', label: 'HBL (Habib Bank Limited)' },
-  { value: 'meezan', label: 'Meezan Bank' },
-  { value: 'ubl', label: 'UBL (United Bank Limited)' },
-];
-
 const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredData }) => {
   const [cart, setCart] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [selectedBank, setSelectedBank] = useState('');
+  const [selectedBank, setSelectedBank] = useState(''); // ✅ Now used for both Bank and Wallet
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('grid');
   const [activeTab, setActiveTab] = useState('services');
@@ -261,15 +252,16 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     return remainingAmount <= 0.01;
   }, [remainingAmount]);
 
-  // ✅ Get payment method display name
+  // ✅ Get payment method display name - UPDATED
   const getPaymentMethodDisplay = () => {
     if (paymentMethod === 'cash') return 'Cash';
     if (paymentMethod === 'card') return 'Credit/Debit Card';
     if (paymentMethod === 'bank') {
-      const bank = BANK_NAMES.find(b => b.value === selectedBank);
-      return bank ? `Bank Transfer (${bank.label})` : 'Bank Transfer';
+      return selectedBank ? `Bank Transfer (${selectedBank})` : 'Bank Transfer';
     }
-    if (paymentMethod === 'online') return 'Mobile Wallet';
+    if (paymentMethod === 'online') {
+      return selectedBank ? `Mobile Wallet (${selectedBank})` : 'Mobile Wallet';
+    }
     return paymentMethod;
   };
 
@@ -1188,8 +1180,14 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
       return;
     }
     
+    // ✅ UPDATED: Validation for Bank and Wallet
     if (paymentMethod === 'bank' && !selectedBank) {
-      toast.error('Please select a bank for bank transfer');
+      toast.error('Please enter bank name');
+      return;
+    }
+    
+    if (paymentMethod === 'online' && !selectedBank) {
+      toast.error('Please enter wallet name');
       return;
     }
     
@@ -1376,29 +1374,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
           </div>
         </div>
 
-        {isAdmin && previousVisits.length > 0 && (
-          <div className="mt-6">
-            <h4 className={`font-semibold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}><FiClock className="text-red-500" /> Previous Visits ({previousVisits.length})</h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                  <tr><th className="px-4 py-2 text-left">Date</th><th className="px-4 py-2 text-left">Services</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-center">Status</th></tr>
-                </thead>
-                <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                  {previousVisits.map((visit, index) => (
-                    <tr key={index} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                      <td className="px-4 py-2">{visit.date}</td>
-                      <td className="px-4 py-2">{visit.services}</td>
-                      <td className="px-4 py-2 text-right font-semibold">Rs. {visit.total.toLocaleString()}</td>
-                      <td className="px-4 py-2 text-center"><span className="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">{visit.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Showing last {previousVisits.length} visits</p>
-          </div>
-        )}
+      
       </div>
 
       {/* Tab Buttons */}
@@ -1417,7 +1393,14 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                 <h3 className="text-lg font-semibold text-white">{activeTab === 'services' ? 'Available Services' : 'Parts & Accessories'}</h3>
               </div>
               <div className="flex gap-2">
-                <button onClick={activeTab === 'services' ? openAddServiceModal : openAddProductModal} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center gap-1 text-white text-sm"><FiPlus className="text-sm" /> Add</button>
+            {activeTab === 'services' && (
+  <button 
+    onClick={openAddServiceModal} 
+    className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center gap-1 text-white text-sm"
+  >
+    <FiPlus className="text-sm" /> Add
+  </button>
+)}
                 <button onClick={() => setViewMode('grid')} className={`p-2 rounded-lg transition ${viewMode === 'grid' ? 'bg-white/20' : 'hover:bg-white/10'}`}><FiGrid className="text-white" /></button>
                 <button onClick={() => setViewMode('list')} className={`p-2 rounded-lg transition ${viewMode === 'list' ? 'bg-white/20' : 'hover:bg-white/10'}`}><FiListIcon className="text-white" /></button>
               </div>
@@ -1652,7 +1635,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                     <span className="text-3xl font-bold text-red-500">Rs. {roundToTwo(billTotal).toLocaleString()}</span>
                   </div>
 
-                  {/* Payment Details with Bank Dropdown */}
+                  {/* ✅ Payment Details with Manual Input for Bank and Wallet */}
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} mt-4`}>
                     <h4 className={`font-semibold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                       <FiCreditCard className="text-red-500" /> Payment Details
@@ -1679,7 +1662,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                           value={paymentMethod} 
                           onChange={(e) => {
                             setPaymentMethod(e.target.value);
-                            if (e.target.value !== 'bank') {
+                            if (e.target.value !== 'bank' && e.target.value !== 'online') {
                               setSelectedBank('');
                             }
                           }} 
@@ -1694,30 +1677,51 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                       </div>
                     </div>
 
+                    {/* ✅ Bank Transfer - Manual Input */}
                     {paymentMethod === 'bank' && (
                       <div className="mt-3">
-                        <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Select Bank</label>
-                        <select
+                        <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Bank Name</label>
+                        <input
+                          type="text"
                           value={selectedBank}
                           onChange={(e) => setSelectedBank(e.target.value)}
-                          className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white' : 'bg-white border-gray-300'}`}
+                          placeholder="e.g., Allied Bank, HBL, Meezan Bank"
+                          className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
                           disabled={isProcessing}
-                        >
-                          <option value="">-- Select Bank --</option>
-                          {BANK_NAMES.map((bank) => (
-                            <option key={bank.value} value={bank.value}>
-                              {bank.label}
-                            </option>
-                          ))}
-                        </select>
+                        />
                         {!selectedBank && (
                           <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
-                            ⚠️ Please select a bank
+                            ⚠️ Please enter bank name
                           </p>
                         )}
                         {selectedBank && (
                           <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                            ✅ Selected: {BANK_NAMES.find(b => b.value === selectedBank)?.label}
+                            ✅ Bank: {selectedBank}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ✅ Mobile Wallet - Manual Input */}
+                    {paymentMethod === 'online' && (
+                      <div className="mt-3">
+                        <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Wallet Name</label>
+                        <input
+                          type="text"
+                          value={selectedBank}
+                          onChange={(e) => setSelectedBank(e.target.value)}
+                          placeholder="e.g., Sadapay, Easypaisa, JazzCash, Nayapay"
+                          className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-600 border-gray-500 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
+                          disabled={isProcessing}
+                        />
+                        {!selectedBank && (
+                          <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+                            ⚠️ Please enter wallet name
+                          </p>
+                        )}
+                        {selectedBank && (
+                          <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                            ✅ Wallet: {selectedBank}
                           </p>
                         )}
                       </div>
@@ -1753,9 +1757,9 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                   <div className="grid grid-cols-2 gap-2 pt-2">
                     <button 
                       onClick={handlePayment} 
-                      disabled={isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank)} 
+                      disabled={isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank) || (paymentMethod === 'online' && !selectedBank)} 
                       className={`px-3 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 text-sm ${
-                        isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank)
+                        isProcessing || cart.length === 0 || (paymentMethod === 'bank' && !selectedBank) || (paymentMethod === 'online' && !selectedBank)
                           ? 'bg-gray-400 cursor-not-allowed' 
                           : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'
                       }`}

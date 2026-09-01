@@ -25,7 +25,7 @@ class EstimateController extends Controller
                 $search = $request->search;
                 $query->where(function($q) use ($search) {
                     $q->where('estimate_no', 'LIKE', "%{$search}%")
-                      ->orWhere('company_name', 'LIKE', "%{$search}%")
+                      ->orWhere('name', 'LIKE', "%{$search}%")
                       ->orWhere('vehicle', 'LIKE', "%{$search}%")
                       ->orWhere('policy_number', 'LIKE', "%{$search}%")
                       ->orWhere('reg_no', 'LIKE', "%{$search}%")
@@ -43,9 +43,9 @@ class EstimateController extends Controller
                 }
             }
 
-            // Filter by company
+            // Filter by name
             if ($request->has('company') && !empty($request->company)) {
-                $query->where('company_name', 'LIKE', "%{$request->company}%");
+                $query->where('name', 'LIKE', "%{$request->company}%");
             }
 
             // Filter by vehicle
@@ -76,7 +76,7 @@ class EstimateController extends Controller
                     return [
                         'id' => $estimate->id,
                         'estimate_no' => $estimate->estimate_no,
-                        'company_name' => $estimate->company_name,
+                        'name' => $estimate->name,
                         'vehicle' => $estimate->vehicle,
                         'policy_number' => $estimate->policy_number,
                         'color' => $estimate->color,
@@ -141,7 +141,7 @@ class EstimateController extends Controller
                 'data' => [
                     'id' => $estimate->id,
                     'estimate_no' => $estimate->estimate_no,
-                    'company_name' => $estimate->company_name,
+                    'name' => $estimate->name,
                     'vehicle' => $estimate->vehicle,
                     'policy_number' => $estimate->policy_number,
                     'color' => $estimate->color,
@@ -211,7 +211,7 @@ class EstimateController extends Controller
                 'data' => [
                     'id' => $estimate->id,
                     'estimate_no' => $estimate->estimate_no,
-                    'company_name' => $estimate->company_name,
+                    'name' => $estimate->name,
                     'vehicle' => $estimate->vehicle,
                     'policy_number' => $estimate->policy_number,
                     'color' => $estimate->color,
@@ -269,7 +269,7 @@ class EstimateController extends Controller
 
             $validated = $request->validate([
                 'estimate_no' => 'nullable|string|max:50|unique:estimates,estimate_no',
-                'company_name' => 'nullable|string|max:255',
+                'name' => 'nullable|string|max:255',
                 'vehicle' => 'nullable|string|max:255',
                 'policy_number' => 'nullable|string|max:100',
                 'color' => 'nullable|string|max:50',
@@ -303,7 +303,7 @@ class EstimateController extends Controller
             // Create estimate
             $estimate = Estimate::create([
                 'estimate_no' => $validated['estimate_no'],
-                'company_name' => $validated['company_name'] ?? null,
+                'name' => $validated['name'] ?? null,
                 'vehicle' => $validated['vehicle'] ?? null,
                 'policy_number' => $validated['policy_number'] ?? null,
                 'color' => $validated['color'] ?? null,
@@ -369,7 +369,7 @@ class EstimateController extends Controller
 
             $validated = $request->validate([
                 'estimate_no' => 'sometimes|string|max:50|unique:estimates,estimate_no,' . $id,
-                'company_name' => 'nullable|string|max:255',
+                'name' => 'nullable|string|max:255',
                 'vehicle' => 'nullable|string|max:255',
                 'policy_number' => 'nullable|string|max:100',
                 'color' => 'nullable|string|max:50',
@@ -392,7 +392,7 @@ class EstimateController extends Controller
             // Update estimate
             $estimate->update([
                 'estimate_no' => $validated['estimate_no'] ?? $estimate->estimate_no,
-                'company_name' => $validated['company_name'] ?? $estimate->company_name,
+                'name' => $validated['name'] ?? $estimate->name,
                 'vehicle' => $validated['vehicle'] ?? $estimate->vehicle,
                 'policy_number' => $validated['policy_number'] ?? $estimate->policy_number,
                 'color' => $validated['color'] ?? $estimate->color,
@@ -658,14 +658,14 @@ class EstimateController extends Controller
     }
 
     /**
-     * Get estimates by company
+     * Get estimates by name
      * GET /api/estimates/company/{company}
      */
     public function getByCompany($company)
     {
         try {
             $estimates = Estimate::with(['items', 'creator'])
-                ->where('company_name', 'LIKE', "%{$company}%")
+                ->where('name', 'LIKE', "%{$company}%")
                 ->orderBy('created_at', 'desc')
                 ->get();
 
@@ -677,7 +677,7 @@ class EstimateController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error fetching estimates by company: ' . $e->getMessage());
+            Log::error('Error fetching estimates by name: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch estimates',

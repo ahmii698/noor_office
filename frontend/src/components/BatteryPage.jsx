@@ -4,7 +4,8 @@ import toast from 'react-hot-toast';
 import { 
   FiSave, FiPrinter, FiSearch, FiCreditCard,
   FiPackage, FiDollarSign, FiUser, FiPhone,
-  FiPlus, FiEdit2, FiTrash2, FiX, FiRefreshCw
+  FiPlus, FiEdit2, FiTrash2, FiX, FiRefreshCw,
+  FiBattery
 } from 'react-icons/fi';
 import api from '../services/api';
 import logo from '/logo.jpg';
@@ -54,36 +55,38 @@ const getTodayKarachiStr = () => {
   return karachiDate.toDateString();
 };
 
-// ✅ Bank Names List
-const BANK_NAMES = [
-  { value: 'allied', label: 'Allied Bank' },
-  { value: 'alfalah', label: 'Bank Alfalah' },
-  { value: 'hbl', label: 'HBL (Habib Bank Limited)' },
-  { value: 'meezan', label: 'Meezan Bank' },
-  { value: 'ubl', label: 'UBL (United Bank Limited)' },
-];
-
 const BatteryPage = ({ darkMode }) => {
   const [batteries, setBatteries] = useState([]);
+  const [oldBatteries, setOldBatteries] = useState([]);
   const [selectedBattery, setSelectedBattery] = useState(null);
+  const [selectedOldBattery, setSelectedOldBattery] = useState(null);
+
+  // ✅ NEW: Quantity for new battery sale (+/- support)
+  const [quantity, setQuantity] = useState(1);
+
+  // ✅ NEW: Old Battery Selling Price
+  const [oldBatterySellPrice, setOldBatterySellPrice] = useState('');
+  
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [tradeInAmount, setTradeInAmount] = useState('');
   const [tradeInNote, setTradeInNote] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [selectedBank, setSelectedBank] = useState('');
+  
+  // ✅ NEW: For Bank and Wallet manual input
+  const [bankOrWalletName, setBankOrWalletName] = useState('');
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // ✅ NEW: Trade-in Only Mode
   const [isTradeInOnly, setIsTradeInOnly] = useState(false);
+  const [activeTab, setActiveTab] = useState('new');
 
-  // ✅ Admin check
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // ✅ Add/Edit Modal states
+  // Add/Edit Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBattery, setEditingBattery] = useState(null);
   const [batteryFormData, setBatteryFormData] = useState({
@@ -95,10 +98,8 @@ const BatteryPage = ({ darkMode }) => {
     category: 'Battery'
   });
 
-  // ✅ Prevents double-submit
   const isSubmittingRef = useRef(false);
 
-  // ✅ Check user role on mount
   useEffect(() => {
     try {
       const user = localStorage.getItem('user');
@@ -112,22 +113,23 @@ const BatteryPage = ({ darkMode }) => {
     }
   }, []);
 
-  // ✅ Get payment method display name
+  // ✅ Get payment method display name - UPDATED with manual input
   const getPaymentMethodDisplay = () => {
     if (isTradeInOnly) return 'Trade-in Only';
     if (paymentMethod === 'cash') return 'Cash';
     if (paymentMethod === 'card') return 'Credit/Debit Card';
     if (paymentMethod === 'bank') {
-      const bank = BANK_NAMES.find(b => b.value === selectedBank);
-      return bank ? `Bank Transfer (${bank.label})` : 'Bank Transfer';
+      return bankOrWalletName ? `Bank Transfer (${bankOrWalletName})` : 'Bank Transfer';
     }
-    if (paymentMethod === 'online') return 'Mobile Wallet';
+    if (paymentMethod === 'online') {
+      return bankOrWalletName ? `Mobile Wallet (${bankOrWalletName})` : 'Mobile Wallet';
+    }
     return paymentMethod;
   };
 
-  // Fetch battery products from inventory
   useEffect(() => {
     fetchBatteries();
+    fetchOldBatteries();
   }, []);
 
   const fetchBatteries = async () => {
@@ -160,7 +162,21 @@ const BatteryPage = ({ darkMode }) => {
     }
   };
 
-  // ✅ Add Battery
+  const fetchOldBatteries = async () => {
+    try {
+      const response = await api.get('/old-batteries');
+      let data = [];
+      if (Array.isArray(response.data)) {
+        data = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        data = response.data.data;
+      }
+      setOldBatteries(data);
+    } catch (error) {
+      console.error('Error fetching old batteries:', error);
+    }
+  };
+
   const handleAddBattery = async () => {
     if (!batteryFormData.name || !batteryFormData.purchase_price || !batteryFormData.selling_price || !batteryFormData.quantity) {
       toast.error('Please fill all fields');
@@ -189,7 +205,6 @@ const BatteryPage = ({ darkMode }) => {
     }
   };
 
-  // ✅ Update Battery
   const handleUpdateBattery = async () => {
     if (!batteryFormData.name || !batteryFormData.purchase_price || !batteryFormData.selling_price || !batteryFormData.quantity) {
       toast.error('Please fill all fields');
@@ -218,7 +233,6 @@ const BatteryPage = ({ darkMode }) => {
     }
   };
 
-  // ✅ Delete Battery
   const handleDeleteBattery = async (id, name) => {
     if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
     
@@ -232,7 +246,6 @@ const BatteryPage = ({ darkMode }) => {
     }
   };
 
-  // ✅ Open Add Modal
   const openAddModal = () => {
     setEditingBattery(null);
     setBatteryFormData({ 
@@ -246,7 +259,6 @@ const BatteryPage = ({ darkMode }) => {
     setIsModalOpen(true);
   };
 
-  // ✅ Open Edit Modal
   const openEditModal = (battery) => {
     setEditingBattery(battery);
     setBatteryFormData({
@@ -260,7 +272,6 @@ const BatteryPage = ({ darkMode }) => {
     setIsModalOpen(true);
   };
 
-  // Search customer by phone
   const searchCustomer = async () => {
     if (!customerPhone || customerPhone.length < 4) {
       toast.error('Enter at least 4 digits');
@@ -284,16 +295,50 @@ const BatteryPage = ({ darkMode }) => {
     }
   };
 
-  // Handle battery selection
   const selectBattery = (battery) => {
     if (selectedBattery?.id === battery.id) {
       setSelectedBattery(null);
+      setQuantity(1);
     } else {
       setSelectedBattery(battery);
+      setSelectedOldBattery(null);
+      setOldBatterySellPrice('');
+      setQuantity(1); // ✅ reset quantity on new selection
     }
   };
 
-  // ✅ Submit battery sale - WITH TRADE-IN ONLY SUPPORT
+  // ✅ NEW: Handle old battery selection
+  const selectOldBattery = (oldBattery) => {
+    if (selectedOldBattery?.id === oldBattery.id) {
+      setSelectedOldBattery(null);
+      setOldBatterySellPrice('');
+    } else {
+      setSelectedOldBattery(oldBattery);
+      setSelectedBattery(null);
+      setQuantity(1); // old battery sale is always qty 1
+      // ✅ Auto-fill sell price with trade_in_amount
+      setOldBatterySellPrice(oldBattery.trade_in_amount || '');
+      setTradeInNote(`Old Battery: ${oldBattery.battery_name}`);
+      // ✅ Clear trade-in amount (no trade-in for old battery sale)
+      setTradeInAmount('');
+    }
+  };
+
+  // ✅ Sell old battery directly (Green $ button)
+  const sellOldBattery = async (id) => {
+    if (!window.confirm('Are you sure you want to sell this old battery?')) return;
+    try {
+      await api.delete(`/old-batteries/${id}`);
+      toast.success('Old battery sold successfully!');
+      fetchOldBatteries();
+      setSelectedOldBattery(null);
+    } catch (error) {
+      console.error('Error selling old battery:', error);
+      toast.error('Failed to sell old battery');
+    }
+  };
+
+  // ✅ Submit battery sale - UPDATED for Bank/Wallet manual input + Quantity
   const handleSubmit = async () => {
     if (isSubmittingRef.current) {
       return;
@@ -308,28 +353,73 @@ const BatteryPage = ({ darkMode }) => {
       }
     } else {
       // ✅ Normal mode validation
-      if (!selectedBattery) {
-        toast.error('Please select a battery');
+      if (!selectedBattery && !selectedOldBattery) {
+        toast.error('Please select a battery (New or Old)');
         return;
       }
 
-      const currentStock = selectedBattery.quantity || 0;
-      if (currentStock <= 0) {
-        toast.error('Selected battery is out of stock!');
-        return;
+      // ✅ If old battery selected, validate sell price
+      if (selectedOldBattery) {
+        const sellPrice = parseFloat(oldBatterySellPrice);
+        if (!sellPrice || sellPrice <= 0) {
+          toast.error('Please enter a valid selling price for old battery');
+          return;
+        }
       }
 
-      if (paymentMethod === 'bank' && !selectedBank) {
-        toast.error('Please select a bank for bank transfer');
+      if (selectedBattery) {
+        const currentStock = selectedBattery.quantity || 0;
+        if (currentStock <= 0) {
+          toast.error('Selected battery is out of stock!');
+          return;
+        }
+        // ✅ NEW: Quantity validation against stock
+        if (quantity > currentStock) {
+          toast.error(`Only ${currentStock} units available in stock!`);
+          return;
+        }
+        if (quantity < 1) {
+          toast.error('Quantity must be at least 1');
+          return;
+        }
+      }
+
+      // ✅ Bank and Wallet validation - manual input
+      if (paymentMethod === 'bank' && !bankOrWalletName) {
+        toast.error('Please enter bank name');
+        return;
+      }
+      
+      if (paymentMethod === 'online' && !bankOrWalletName) {
+        toast.error('Please enter wallet name');
         return;
       }
     }
 
-    const batteryPrice = isTradeInOnly ? 0 : (selectedBattery?.selling_price || selectedBattery?.price || 0);
-    const tradeIn = parseFloat(tradeInAmount) || 0;
-    
-    // ✅ Trade-in only: total = trade-in value (customer ko dena hai)
-    // ✅ Normal: total = battery price - trade-in
+    // ✅ Get price from selected battery
+    let batteryPrice = 0;       // total price (unit price × quantity for new battery)
+    let unitPrice = 0;          // unit price only (used for invoice items)
+    let batteryName = '';
+    let isOldBattery = false;
+    let oldBatteryId = null;
+
+    if (selectedBattery) {
+      unitPrice = selectedBattery.selling_price || selectedBattery.price || 0;
+      batteryPrice = unitPrice * quantity; // ✅ multiply by quantity
+      batteryName = quantity > 1 ? `${selectedBattery.name} x${quantity}` : selectedBattery.name;
+    } else if (selectedOldBattery) {
+      // ✅ Use custom sell price OR default
+      unitPrice = parseFloat(oldBatterySellPrice) || selectedOldBattery.trade_in_amount || 0;
+      batteryPrice = unitPrice; // old battery always qty 1
+      batteryName = selectedOldBattery.battery_name;
+      isOldBattery = true;
+      oldBatteryId = selectedOldBattery.id;
+    }
+
+    // ✅ Trade-in only applies when buying new battery (NOT for old battery sale)
+    const tradeIn = (isOldBattery || isTradeInOnly) ? 0 : (parseFloat(tradeInAmount) || 0);
+
+    // ✅ Total = batteryPrice - tradeIn (tradeIn is 0 for old battery sale)
     const totalAmount = isTradeInOnly ? tradeIn : (batteryPrice - tradeIn);
     
     const paid = (paymentAmount && paymentAmount !== '' && !isTradeInOnly) ? parseFloat(paymentAmount) : 0;
@@ -347,38 +437,80 @@ const BatteryPage = ({ darkMode }) => {
     try {
       const invoiceNo = `INV-${Date.now()}`;
       
-      // ✅ Trade-in only: remaining = 0 (customer ko paisa dena hai, payment nahi lena)
-      // ✅ Normal: remaining = total - paid
       const remaining = isTradeInOnly ? 0 : (totalAmount - paid);
       const status = isTradeInOnly ? 'Trade-in' : (remaining <= 0 ? 'Paid' : (paid > 0 ? 'Partial' : 'Pending'));
 
-      // ✅ Update stock only in normal mode
-      if (!isTradeInOnly) {
+      // ✅ Update stock only for new battery - deduct by quantity
+      if (!isTradeInOnly && selectedBattery) {
         const currentStock = selectedBattery.quantity || 0;
-        const newStock = currentStock - 1;
+        const newStock = currentStock - quantity; // ✅ deduct full quantity
         await api.put(`/products/${selectedBattery.id}`, { quantity: newStock });
       }
 
-      // ✅ Save trade-in record in old_batteries table
-      if (tradeIn > 0) {
+      // ✅ If selling old battery, delete it from old_batteries
+      if (isOldBattery && oldBatteryId) {
+        await api.delete(`/old-batteries/${oldBatteryId}`);
+        toast.success('✅ Old battery removed from inventory!');
+      }
+
+      // ✅ FIX: Save trade-in record for BOTH cases:
+      //   (1) buying a new battery WITH a trade-in, OR
+      //   (2) "Trade-in Only" mode (sirf old battery khareedna, nayi nahi bechni)
+      // Purani condition mein "!isTradeInOnly" tha jo Trade-in Only mode ko
+      // hamesha skip kar deta tha - isi wajah se record save nahi ho raha tha.
+      const tradeInOnlyValue = parseFloat(tradeInAmount) || 0;
+      const shouldSaveOldBattery = isTradeInOnly
+        ? tradeInOnlyValue > 0
+        : (tradeIn > 0 && !isOldBattery);
+
+      if (shouldSaveOldBattery) {
         try {
           await api.post('/old-batteries', {
-            battery_name: isTradeInOnly ? (tradeInNote || 'Unknown Old Battery') : selectedBattery?.name || 'Trade-in',
-            trade_in_amount: tradeIn,
+            battery_name: tradeInNote || selectedBattery?.name || 'Trade-in',
+            trade_in_amount: isTradeInOnly ? tradeInOnlyValue : tradeIn,
             customer_name: finalCustomerName,
             customer_phone: finalCustomerPhone,
-            note: isTradeInOnly ? `Trade-in Only: ${tradeInNote || 'Old battery sold'}` : `Trade-in with purchase: ${tradeInNote || 'Old battery'}`,
+            note: isTradeInOnly
+              ? `Trade-in Only: ${tradeInNote || 'Old battery'}`
+              : `Trade-in with purchase: ${tradeInNote || 'Old battery'}`,
             purchase_date: new Date().toISOString()
           });
           console.log('✅ Old battery record saved successfully');
         } catch (err) {
           console.error('Error saving old battery record:', err);
-          // Don't stop the flow, just log error
+          toast.error('⚠️ Battery record failed to save in Old Batteries list!');
         }
       }
 
-      // ✅ Store UTC time directly
       const invoiceDate = new Date().toISOString();
+
+      // ✅ Items array - price is UNIT price, quantity is separate (backend multiplies)
+      let items = [];
+      if (isTradeInOnly) {
+        items = [{
+          service_name: 'Old Battery Trade-in',
+          service_category: 'Trade-in',
+          price: tradeIn,
+          quantity: 1,
+          mileage: null
+        }];
+      } else if (isOldBattery) {
+        items = [{
+          service_name: `Old Battery: ${batteryName}`,
+          service_category: 'Old Battery Sale',
+          price: unitPrice,
+          quantity: 1,
+          mileage: null
+        }];
+      } else {
+        items = [{
+          service_name: selectedBattery.name,
+          service_category: 'Battery',
+          price: unitPrice,      // ✅ unit price only
+          quantity: quantity,    // ✅ actual quantity selected
+          mileage: null
+        }];
+      }
 
       const payload = {
         invoice_no: invoiceNo,
@@ -396,19 +528,7 @@ const BatteryPage = ({ darkMode }) => {
         payment_method: getPaymentMethodDisplay(),
         status: status,
         invoice_date: invoiceDate,
-        items: isTradeInOnly ? [{
-          service_name: 'Old Battery Trade-in',
-          service_category: 'Trade-in',
-          price: tradeIn,
-          quantity: 1,
-          mileage: null
-        }] : [{
-          service_name: selectedBattery.name,
-          service_category: 'Battery',
-          price: batteryPrice,
-          quantity: 1,
-          mileage: null
-        }]
+        items: items
       };
 
       console.log('📤 Battery sale payload:', JSON.stringify(payload, null, 2));
@@ -417,22 +537,29 @@ const BatteryPage = ({ darkMode }) => {
       console.log('✅ Battery sale response:', response.data);
 
       await fetchBatteries();
+      await fetchOldBatteries();
       
       toast.success(isTradeInOnly ? 
         `✅ Old battery trade-in completed! Record saved.` : 
+        isOldBattery ?
+        `✅ Old battery sold for Rs. ${batteryPrice.toLocaleString()}!` :
         `✅ Battery sale completed! Stock updated.`
       );
       
       // Reset form
       setSelectedBattery(null);
+      setSelectedOldBattery(null);
+      setOldBatterySellPrice('');
+      setQuantity(1); // ✅ reset quantity
       setCustomerPhone('');
       setCustomerName('');
       setTradeInAmount('');
       setTradeInNote('');
       setPaymentAmount('');
       setPaymentMethod('cash');
-      setSelectedBank('');
+      setBankOrWalletName('');
       setIsTradeInOnly(false);
+      setActiveTab('new');
 
       window.dispatchEvent(new Event('cart-updated'));
 
@@ -445,15 +572,30 @@ const BatteryPage = ({ darkMode }) => {
     }
   };
 
-  // ✅ Print receipt - WITH TRADE-IN ONLY SUPPORT
+  // ✅ Print receipt - UPDATED with quantity
   const printReceipt = () => {
-    if (!isTradeInOnly && !selectedBattery) {
+    if (!isTradeInOnly && !selectedBattery && !selectedOldBattery) {
       toast.error('No battery selected');
       return;
     }
 
-    const batteryPrice = isTradeInOnly ? 0 : (selectedBattery?.selling_price || selectedBattery?.price || 0);
-    const tradeIn = parseFloat(tradeInAmount) || 0;
+    let batteryPrice = 0;
+    let unitPrice = 0;
+    let batteryName = '';
+    let isOldBattery = false;
+
+    if (selectedBattery) {
+      unitPrice = selectedBattery.selling_price || selectedBattery.price || 0;
+      batteryPrice = unitPrice * quantity; // ✅ multiply by quantity
+      batteryName = quantity > 1 ? `${selectedBattery.name} x${quantity}` : selectedBattery.name;
+    } else if (selectedOldBattery) {
+      unitPrice = parseFloat(oldBatterySellPrice) || selectedOldBattery.trade_in_amount || 0;
+      batteryPrice = unitPrice;
+      batteryName = selectedOldBattery.battery_name;
+      isOldBattery = true;
+    }
+
+    const tradeIn = isOldBattery ? 0 : (parseFloat(tradeInAmount) || 0);
     const totalAmount = isTradeInOnly ? tradeIn : (batteryPrice - tradeIn);
     const paid = (paymentAmount && paymentAmount !== '' && !isTradeInOnly) ? parseFloat(paymentAmount) : 0;
     const finalCustomerName = customerName?.trim() || 'Walk-in';
@@ -478,7 +620,7 @@ const BatteryPage = ({ darkMode }) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>${isTradeInOnly ? 'Trade-in Receipt' : 'Battery Receipt'}</title>
+          <title>${isTradeInOnly ? 'Trade-in Receipt' : isOldBattery ? 'Old Battery Sale Receipt' : 'Battery Receipt'}</title>
           <style>
             body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; }
             .header { text-align: center; border-bottom: 2px solid #dc2626; padding-bottom: 15px; }
@@ -510,6 +652,15 @@ const BatteryPage = ({ darkMode }) => {
               display: inline-block;
               margin-top: 5px;
             }
+            .old-battery-badge {
+              background: #8b5cf6;
+              color: white;
+              padding: 4px 12px;
+              border-radius: 20px;
+              font-size: 14px;
+              display: inline-block;
+              margin-top: 5px;
+            }
           </style>
         </head>
         <body>
@@ -523,17 +674,19 @@ const BatteryPage = ({ darkMode }) => {
             <div class="row"><strong>Invoice #:</strong> ${invoiceNo}</div>
             <div class="row"><strong>Date:</strong> ${karachiDateStr} (Karachi Time)</div>
             ${isTradeInOnly ? `<div class="row" style="justify-content:center;margin-top:5px;"><span class="trade-in-badge">🔄 TRADE-IN ONLY</span></div>` : ''}
+            ${isOldBattery ? `<div class="row" style="justify-content:center;margin-top:5px;"><span class="old-battery-badge">🔋 OLD BATTERY SALE</span></div>` : ''}
             <div class="row"><strong>Customer:</strong> ${finalCustomerName}</div>
             <div class="row"><strong>Phone:</strong> ${finalCustomerPhone}</div>
             <div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
-              <strong>${isTradeInOnly ? 'Old Battery:' : 'Battery:'}</strong> 
-              <span class="battery-name">${isTradeInOnly ? (tradeInNote || 'Unknown Old Battery') : selectedBattery?.name}</span>
+              <strong>${isTradeInOnly ? 'Old Battery:' : isOldBattery ? 'Old Battery Sold:' : 'Battery:'}</strong> 
+              <span class="battery-name">${isTradeInOnly ? (tradeInNote || 'Unknown Old Battery') : batteryName}</span>
             </div>
+            ${!isTradeInOnly && !isOldBattery && quantity > 1 ? `<div class="row"><strong>Unit Price:</strong> Rs. ${unitPrice.toLocaleString()} × ${quantity}</div>` : ''}
             ${isTradeInOnly ? 
               `<div class="row"><strong>Trade-in Value:</strong> <span style="color:#16a34a;">+ Rs. ${tradeIn.toLocaleString()}</span></div>` :
-              `<div class="row"><strong>Price:</strong> Rs. ${batteryPrice.toLocaleString()}</div>`
+              `<div class="row"><strong>Selling Price:</strong> Rs. ${batteryPrice.toLocaleString()}</div>`
             }
-            ${!isTradeInOnly && tradeIn > 0 ? `<div class="row"><strong>Trade-in:</strong> <span style="color:#dc2626;">- Rs. ${tradeIn.toLocaleString()}</span></div>` : ''}
+            ${!isTradeInOnly && !isOldBattery && tradeIn > 0 ? `<div class="row"><strong>Trade-in:</strong> <span style="color:#dc2626;">- Rs. ${tradeIn.toLocaleString()}</span></div>` : ''}
             ${tradeInNote ? `<div class="row"><strong>Note:</strong> ${tradeInNote}</div>` : ''}
             <div class="row"><strong>Payment Method:</strong> ${getPaymentMethodDisplay()}</div>
           </div>
@@ -567,6 +720,11 @@ const BatteryPage = ({ darkMode }) => {
 
   const filteredBatteries = batteries.filter(b => 
     b.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredOldBatteries = oldBatteries.filter(b => 
+    b.battery_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    b.customer_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -609,89 +767,174 @@ const BatteryPage = ({ darkMode }) => {
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="flex justify-between items-center mb-4">
               <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Select Battery</h3>
-              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{batteries.length} available</span>
+              <button
+                onClick={() => {
+                  setActiveTab(activeTab === 'new' ? 'old' : 'new');
+                  setSelectedBattery(null);
+                  setSelectedOldBattery(null);
+                  setOldBatterySellPrice('');
+                  setQuantity(1);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1 ${
+                  darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <FiBattery className="text-sm" />
+                {activeTab === 'new' ? 'Show Old Batteries' : 'Show New Batteries'}
+              </button>
             </div>
 
             <div className="relative mb-4">
               <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search batteries..."
+                placeholder={`Search ${activeTab === 'new' ? 'batteries' : 'old batteries'}...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className={`w-full pl-10 pr-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
               />
             </div>
 
-            <div className="max-h-[400px] overflow-y-auto space-y-2">
-              {filteredBatteries.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <FiPackage className="text-4xl mx-auto mb-2" />
-                  {searchTerm ? 'No matching batteries' : 'No batteries available'}
-                </div>
-              ) : (
-                filteredBatteries.map(battery => {
-                  const isSelected = selectedBattery?.id === battery.id;
-                  const stock = battery.quantity || 0;
-                  const isOutOfStock = stock <= 0;
+            {/* Tab Indicator */}
+            <div className="flex gap-2 mb-4">
+              <span className={`text-xs px-2 py-1 rounded ${activeTab === 'new' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}>
+                New Batteries ({batteries.length})
+              </span>
+              <span className={`text-xs px-2 py-1 rounded ${activeTab === 'old' ? 'bg-purple-500 text-white' : darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-200 text-gray-500'}`}>
+                Old Batteries ({oldBatteries.length})
+              </span>
+            </div>
 
-                  return (
-                    <div
-                      key={battery.id}
-                      onClick={() => !isOutOfStock && !isTradeInOnly && selectBattery(battery)}
-                      className={`relative group p-4 rounded-xl border-2 cursor-pointer transition ${
-                        isTradeInOnly ? 'opacity-50 cursor-not-allowed' :
-                        isSelected 
-                          ? 'border-red-500 bg-red-50 dark:bg-red-900/20' 
-                          : isOutOfStock 
-                            ? 'border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed' 
-                            : 'border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-700'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {battery.name}
-                          </p>
-                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            Stock: {stock} units
-                          </p>
-                          <p className="text-red-500 font-bold text-lg mt-1">
-                            Rs. {(battery.selling_price || battery.price || 0).toLocaleString()}
-                          </p>
-                          {isOutOfStock && <span className="text-xs text-red-500">Out of stock!</span>}
-                          {isSelected && <span className="text-xs text-green-500">✓ Selected</span>}
-                          {isTradeInOnly && <span className="text-xs text-yellow-500">⏳ Trade-in mode active</span>}
+            <div className="max-h-[400px] overflow-y-auto space-y-2">
+              {activeTab === 'new' ? (
+                // New Batteries List
+                filteredBatteries.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <FiPackage className="text-4xl mx-auto mb-2" />
+                    {searchTerm ? 'No matching batteries' : 'No batteries available'}
+                  </div>
+                ) : (
+                  filteredBatteries.map(battery => {
+                    const isSelected = selectedBattery?.id === battery.id;
+                    const stock = battery.quantity || 0;
+                    const isOutOfStock = stock <= 0;
+
+                    return (
+                      <div
+                        key={battery.id}
+                        onClick={() => !isOutOfStock && !isTradeInOnly && selectBattery(battery)}
+                        className={`relative group p-4 rounded-xl border-2 cursor-pointer transition ${
+                          isTradeInOnly ? 'opacity-50 cursor-not-allowed' :
+                          isSelected 
+                            ? 'border-red-500 bg-red-50 dark:bg-red-900/20' 
+                            : isOutOfStock 
+                              ? 'border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed' 
+                              : 'border-gray-200 dark:border-gray-700 hover:border-red-300 dark:hover:border-red-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {battery.name}
+                            </p>
+                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Stock: {stock} units
+                            </p>
+                            <p className="text-red-500 font-bold text-lg mt-1">
+                              Rs. {(battery.selling_price || battery.price || 0).toLocaleString()}
+                            </p>
+                            {isOutOfStock && <span className="text-xs text-red-500">Out of stock!</span>}
+                            {isSelected && <span className="text-xs text-green-500">✓ Selected</span>}
+                            {isTradeInOnly && <span className="text-xs text-yellow-500">⏳ Trade-in mode active</span>}
+                          </div>
+                          
+                          {isAdmin && !isTradeInOnly && (
+                            <div className="flex gap-1 flex-shrink-0 ml-4">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); openEditModal(battery); }} 
+                                className="p-1.5 rounded bg-blue-500 text-white hover:bg-blue-600 transition text-xs shadow-md"
+                                title="Edit Battery"
+                              >
+                                <FiEdit2 size={14} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDeleteBattery(battery.id, battery.name); }} 
+                                className="p-1.5 rounded bg-red-600 text-white hover:bg-red-700 transition text-xs shadow-md"
+                                title="Delete Battery"
+                              >
+                                <FiTrash2 size={14} />
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        
-                        {isAdmin && !isTradeInOnly && (
+                      </div>
+                    );
+                  })
+                )
+              ) : (
+                // Old Batteries List
+                filteredOldBatteries.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <FiBattery className="text-4xl mx-auto mb-2" />
+                    {searchTerm ? 'No matching old batteries' : 'No old batteries available'}
+                  </div>
+                ) : (
+                  filteredOldBatteries.map(oldBattery => {
+                    const isSelected = selectedOldBattery?.id === oldBattery.id;
+
+                    return (
+                      <div
+                        key={oldBattery.id}
+                        onClick={() => !isTradeInOnly && selectOldBattery(oldBattery)}
+                        className={`relative group p-4 rounded-xl border-2 cursor-pointer transition ${
+                          isTradeInOnly ? 'opacity-50 cursor-not-allowed' :
+                          isSelected 
+                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' 
+                            : 'border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                              {oldBattery.battery_name || 'Unknown Battery'}
+                            </p>
+                            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              Customer: {oldBattery.customer_name || 'Walk-in'}
+                            </p>
+                            <p className="text-purple-500 font-bold text-lg mt-1">
+                              Rs. {(oldBattery.trade_in_amount || 0).toLocaleString()}
+                            </p>
+                            <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                              Date: {formatDateKarachi(oldBattery.purchase_date || oldBattery.created_at)}
+                            </p>
+                            {isSelected && <span className="text-xs text-purple-500">✓ Selected</span>}
+                            {isTradeInOnly && <span className="text-xs text-yellow-500">⏳ Trade-in mode active</span>}
+                          </div>
                           <div className="flex gap-1 flex-shrink-0 ml-4">
                             <button 
-                              onClick={(e) => { e.stopPropagation(); openEditModal(battery); }} 
-                              className="p-1.5 rounded bg-blue-500 text-white hover:bg-blue-600 transition text-xs shadow-md"
-                              title="Edit Battery"
+                              onClick={(e) => { e.stopPropagation(); sellOldBattery(oldBattery.id); }} 
+                              className="p-1.5 rounded bg-green-500 text-white hover:bg-green-600 transition text-xs shadow-md"
+                              title="Sell Old Battery"
                             >
-                              <FiEdit2 size={14} />
-                            </button>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleDeleteBattery(battery.id, battery.name); }} 
-                              className="p-1.5 rounded bg-red-600 text-white hover:bg-red-700 transition text-xs shadow-md"
-                              title="Delete Battery"
-                            >
-                              <FiTrash2 size={14} />
+                              <FiDollarSign size={14} />
                             </button>
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })
+                )
               )}
             </div>
 
-            {batteries.length > 0 && !isTradeInOnly && (
+            {batteries.length > 0 && !isTradeInOnly && activeTab === 'new' && (
               <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
                 <p>💡 Click on a battery to select it</p>
+              </div>
+            )}
+            {oldBatteries.length > 0 && !isTradeInOnly && activeTab === 'old' && (
+              <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
+                <p>💡 Select old battery → Enter sell price → Sell!</p>
               </div>
             )}
             {isTradeInOnly && (
@@ -738,62 +981,151 @@ const BatteryPage = ({ darkMode }) => {
             <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Sale Details</h3>
 
-              {/* ✅ Trade-in Only Toggle */}
-              <div className="mb-4 p-3 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700">
-                <label className={`flex items-center gap-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'} cursor-pointer`}>
-                  <input
-                    type="checkbox"
-                    checked={isTradeInOnly}
-                    onChange={(e) => {
-                      setIsTradeInOnly(e.target.checked);
-                      if (e.target.checked) {
-                        setSelectedBattery(null);
-                        setPaymentMethod('cash');
-                        setPaymentAmount('');
-                      }
-                    }}
-                    className="w-5 h-5 rounded border-gray-300 text-red-500 focus:ring-red-500 cursor-pointer"
-                  />
-                  <span className="font-medium flex items-center gap-2">
-                    <FiRefreshCw className="text-yellow-600" />
-                    🔄 Trade-in Only (Sirf Old Battery Bechna Hai)
-                  </span>
-                </label>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
-                  Check this if customer only wants to sell old battery without buying new
-                </p>
-              </div>
+              {/* ✅ Trade-in Only Toggle - Hide when Old Battery selected */}
+              {!selectedOldBattery && (
+                <div className="mb-4 p-3 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700">
+                  <label className={`flex items-center gap-3 ${darkMode ? 'text-gray-200' : 'text-gray-700'} cursor-pointer`}>
+                    <input
+                      type="checkbox"
+                      checked={isTradeInOnly}
+                      onChange={(e) => {
+                        setIsTradeInOnly(e.target.checked);
+                        if (e.target.checked) {
+                          setSelectedBattery(null);
+                          setSelectedOldBattery(null);
+                          setQuantity(1);
+                          setPaymentMethod('cash');
+                          setPaymentAmount('');
+                          setBankOrWalletName('');
+                        }
+                      }}
+                      className="w-5 h-5 rounded border-gray-300 text-red-500 focus:ring-red-500 cursor-pointer"
+                    />
+                    <span className="font-medium flex items-center gap-2">
+                      <FiRefreshCw className="text-yellow-600" />
+                       Sirf Old Battery Bechna Hai  (Trade-in Only)
+                    </span>
+                  </label>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                    Check this if customer only wants to sell old battery without buying new
+                  </p>
+                </div>
+              )}
 
-              {!isTradeInOnly && selectedBattery ? (
-                <>
-                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} mb-4`}>
-                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedBattery.name}</p>
-                    <p className="text-red-500 font-bold text-lg">Rs. {(selectedBattery.selling_price || selectedBattery.price || 0).toLocaleString()}</p>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Stock: {selectedBattery.quantity || 0} units available</p>
-                  </div>
-                </>
+              {!isTradeInOnly && (selectedBattery || selectedOldBattery) ? (
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} mb-4`}>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {selectedBattery ? selectedBattery.name : selectedOldBattery?.battery_name || 'Old Battery'}
+                  </p>
+                  {selectedBattery && (
+                    <>
+                      <p className="text-red-500 font-bold text-lg">
+                        Rs. {(selectedBattery.selling_price || selectedBattery.price || 0).toLocaleString()}
+                        {quantity > 1 && (
+                          <span className="text-sm font-normal ml-2">× {quantity} = Rs. {((selectedBattery.selling_price || selectedBattery.price || 0) * quantity).toLocaleString()}</span>
+                        )}
+                      </p>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Stock: {selectedBattery.quantity || 0} units available</p>
+                    </>
+                  )}
+                  {selectedOldBattery && (
+                    <>
+                      <p className="text-red-500 font-bold text-lg">
+                        Rs. {(parseFloat(oldBatterySellPrice) || selectedOldBattery.trade_in_amount || 0).toLocaleString()}
+                      </p>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Old Battery: {selectedOldBattery.battery_name}</p>
+                    </>
+                  )}
+                </div>
+              ) : !isTradeInOnly ? (
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} mb-4 text-center text-gray-400`}>
+                  Select a battery from the left panel
+                </div>
               ) : null}
 
-              <div className="mb-4">
-                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  {isTradeInOnly ? 'Old Battery Trade-in Value *' : 'Trade-in Value (Old Battery)'}
-                </label>
-                <input 
-                  type="number" 
-                  placeholder={isTradeInOnly ? "Enter old battery value" : "e.g. 2500"} 
-                  value={tradeInAmount} 
-                  onChange={(e) => setTradeInAmount(e.target.value)} 
-                  className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`} 
-                  min="0" 
-                />
-                <input 
-                  type="text" 
-                  placeholder={isTradeInOnly ? "Battery name / details" : "Trade-in note (e.g., Osaka old battery)"} 
-                  value={tradeInNote} 
-                  onChange={(e) => setTradeInNote(e.target.value)} 
-                  className={`w-full mt-2 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`} 
-                />
-              </div>
+              {/* ✅ NEW: Quantity +/- Selector - Only for New Battery */}
+              {selectedBattery && !isTradeInOnly && (
+                <div className="mb-4">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Quantity
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                      disabled={quantity <= 1}
+                      className="w-10 h-10 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-xl font-bold transition"
+                    >
+                      −
+                    </button>
+                    <span className={`text-lg font-semibold w-10 text-center ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {quantity}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setQuantity(q => Math.min(selectedBattery.quantity || 1, q + 1))}
+                      disabled={quantity >= (selectedBattery.quantity || 0)}
+                      className="w-10 h-10 rounded-xl bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-xl font-bold transition"
+                    >
+                      +
+                    </button>
+                    <span className="text-xs text-gray-400 ml-1">Max: {selectedBattery.quantity || 0} in stock</span>
+                  </div>
+                </div>
+              )}
+
+              {/* ✅ Old Battery Sell Price - Only show when Old Battery selected */}
+              {selectedOldBattery && !isTradeInOnly && (
+                <div className="mb-4">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Selling Price (Rs.) *
+                  </label>
+                  <input 
+                    type="number" 
+                    placeholder="Enter selling price" 
+                    value={oldBatterySellPrice} 
+                    onChange={(e) => setOldBatterySellPrice(e.target.value)} 
+                    className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`} 
+                    min="0" 
+                    step="0.01"
+                    required
+                  />
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    💰 Enter the price at which you are selling this old battery
+                  </p>
+                  <input 
+                    type="text" 
+                    placeholder="Note (e.g., Customer sold old battery)" 
+                    value={tradeInNote} 
+                    onChange={(e) => setTradeInNote(e.target.value)} 
+                    className={`w-full mt-2 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`} 
+                  />
+                </div>
+              )}
+
+              {/* ✅ Trade-in field - Only show when New Battery selected OR Trade-in Only */}
+              {!selectedOldBattery && (
+                <div className="mb-4">
+                  <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {isTradeInOnly ? 'Old Battery Trade-in Value *' : 'Trade-in Value (Old Battery)'}
+                  </label>
+                  <input 
+                    type="number" 
+                    placeholder={isTradeInOnly ? "Enter old battery value" : "e.g. 2500"} 
+                    value={tradeInAmount} 
+                    onChange={(e) => setTradeInAmount(e.target.value)} 
+                    className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`} 
+                    min="0" 
+                  />
+                  <input 
+                    type="text" 
+                    placeholder={isTradeInOnly ? "Battery name / details" : "Trade-in note (e.g., Osaka old battery)"} 
+                    value={tradeInNote} 
+                    onChange={(e) => setTradeInNote(e.target.value)} 
+                    className={`w-full mt-2 px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`} 
+                  />
+                </div>
+              )}
 
               {!isTradeInOnly && (
                 <>
@@ -801,7 +1133,12 @@ const BatteryPage = ({ darkMode }) => {
                     <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Payment Method</label>
                     <select 
                       value={paymentMethod} 
-                      onChange={(e) => { setPaymentMethod(e.target.value); if (e.target.value !== 'bank') { setSelectedBank(''); } }} 
+                      onChange={(e) => {
+                        setPaymentMethod(e.target.value);
+                        if (e.target.value !== 'bank' && e.target.value !== 'online') {
+                          setBankOrWalletName('');
+                        }
+                      }} 
                       className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`} 
                       disabled={isProcessing}
                     >
@@ -812,22 +1149,53 @@ const BatteryPage = ({ darkMode }) => {
                     </select>
                   </div>
 
+                  {/* ✅ Bank Transfer - Manual Input */}
                   {paymentMethod === 'bank' && (
                     <div className="mb-4">
-                      <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Select Bank</label>
-                      <select 
-                        value={selectedBank} 
-                        onChange={(e) => setSelectedBank(e.target.value)} 
-                        className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`} 
+                      <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Bank Name</label>
+                      <input
+                        type="text"
+                        value={bankOrWalletName}
+                        onChange={(e) => setBankOrWalletName(e.target.value)}
+                        placeholder="e.g., Allied Bank, HBL, Meezan Bank"
+                        className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
                         disabled={isProcessing}
-                      >
-                        <option value="">-- Select Bank --</option>
-                        {BANK_NAMES.map((bank) => (
-                          <option key={bank.value} value={bank.value}>{bank.label}</option>
-                        ))}
-                      </select>
-                      {!selectedBank && <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>⚠️ Please select a bank</p>}
-                      {selectedBank && <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>✅ Selected: {BANK_NAMES.find(b => b.value === selectedBank)?.label}</p>}
+                      />
+                      {!bankOrWalletName && (
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+                          ⚠️ Please enter bank name
+                        </p>
+                      )}
+                      {bankOrWalletName && (
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                          ✅ Bank: {bankOrWalletName}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ✅ Mobile Wallet - Manual Input */}
+                  {paymentMethod === 'online' && (
+                    <div className="mb-4">
+                      <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>Wallet Name</label>
+                      <input
+                        type="text"
+                        value={bankOrWalletName}
+                        onChange={(e) => setBankOrWalletName(e.target.value)}
+                        placeholder="e.g., Sadapay, Easypaisa, JazzCash, Nayapay"
+                        className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                        disabled={isProcessing}
+                      />
+                      {!bankOrWalletName && (
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+                          ⚠️ Please enter wallet name
+                        </p>
+                      )}
+                      {bankOrWalletName && (
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                          ✅ Wallet: {bankOrWalletName}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -846,20 +1214,28 @@ const BatteryPage = ({ darkMode }) => {
               )}
 
               <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                {!isTradeInOnly && selectedBattery && (
+                {!isTradeInOnly && (selectedBattery || selectedOldBattery) && (
                   <div className="flex justify-between py-1">
-                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Battery Price</span>
-                    <span className="font-semibold">Rs. {(selectedBattery.selling_price || selectedBattery.price || 0).toLocaleString()}</span>
+                    <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                      {selectedBattery ? `Battery Price${quantity > 1 ? ` (× ${quantity})` : ''}` : 'Selling Price'}
+                    </span>
+                    <span className="font-semibold">
+                      Rs. {selectedBattery
+                        ? ((selectedBattery.selling_price || selectedBattery.price || 0) * quantity).toLocaleString()
+                        : (parseFloat(oldBatterySellPrice) || selectedOldBattery?.trade_in_amount || 0).toLocaleString()}
+                    </span>
                   </div>
                 )}
-                {tradeInAmount && parseFloat(tradeInAmount) > 0 && (
+                {!isTradeInOnly && tradeInAmount && parseFloat(tradeInAmount) > 0 && !selectedOldBattery && (
                   <div className="flex justify-between py-1">
-                    <span className={`${isTradeInOnly ? 'text-green-500' : 'text-red-500'}`}>
-                      {isTradeInOnly ? 'Trade-in Value (Customer gets)' : 'Trade-in'}
-                    </span>
-                    <span className={`${isTradeInOnly ? 'text-green-500' : 'text-red-500'} font-semibold`}>
-                      {isTradeInOnly ? '+ Rs. ' : '- Rs. '}{parseFloat(tradeInAmount).toLocaleString()}
-                    </span>
+                    <span className="text-red-500">Trade-in</span>
+                    <span className="text-red-500 font-semibold">- Rs. {parseFloat(tradeInAmount).toLocaleString()}</span>
+                  </div>
+                )}
+                {isTradeInOnly && tradeInAmount && parseFloat(tradeInAmount) > 0 && (
+                  <div className="flex justify-between py-1">
+                    <span className="text-green-500">Trade-in Value (Customer gets)</span>
+                    <span className="text-green-500 font-semibold">+ Rs. {parseFloat(tradeInAmount).toLocaleString()}</span>
                   </div>
                 )}
                 <div className="flex justify-between py-2 border-t dark:border-gray-600 mt-2">
@@ -867,11 +1243,11 @@ const BatteryPage = ({ darkMode }) => {
                     {isTradeInOnly ? 'Trade-in Value' : 'Total'}
                   </span>
                   <span className={`font-bold text-lg ${isTradeInOnly ? 'text-green-500' : 'text-red-500'}`}>
-                    {isTradeInOnly ? 'Rs. ' : 'Rs. '}
-                    {isTradeInOnly ? 
-                      (parseFloat(tradeInAmount) || 0).toLocaleString() :
-                      ((selectedBattery?.selling_price || selectedBattery?.price || 0) - (parseFloat(tradeInAmount) || 0)).toLocaleString()
-                    }
+                    Rs. {isTradeInOnly ? (parseFloat(tradeInAmount) || 0).toLocaleString() : 
+                      ((selectedBattery ? (selectedBattery.selling_price || selectedBattery.price || 0) * quantity : 
+                        (parseFloat(oldBatterySellPrice) || selectedOldBattery?.trade_in_amount || 0)) - 
+                        (selectedOldBattery ? 0 : (parseFloat(tradeInAmount) || 0))
+                      ).toLocaleString()}
                   </span>
                 </div>
                 {!isTradeInOnly && paymentAmount && parseFloat(paymentAmount) > 0 && (
@@ -880,7 +1256,7 @@ const BatteryPage = ({ darkMode }) => {
                     <span className="text-green-500 font-semibold">Rs. {parseFloat(paymentAmount).toLocaleString()}</span>
                   </div>
                 )}
-                {!isTradeInOnly && (!paymentAmount || parseFloat(paymentAmount) === 0) && selectedBattery && (
+                {!isTradeInOnly && (!paymentAmount || parseFloat(paymentAmount) === 0) && (selectedBattery || selectedOldBattery) && (
                   <div className="flex justify-between py-1">
                     <span className="text-orange-500">Status</span>
                     <span className="text-orange-500 font-semibold">Pending</span>
@@ -888,7 +1264,9 @@ const BatteryPage = ({ darkMode }) => {
                 )}
                 <div className="flex justify-between py-1">
                   <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Type</span>
-                  <span className="font-semibold">{isTradeInOnly ? '🔄 Trade-in Only' : 'Battery Sale'}</span>
+                  <span className="font-semibold">
+                    {isTradeInOnly ? '🔄 Trade-in Only' : selectedOldBattery ? '🔋 Old Battery Sale' : 'Battery Sale'}
+                  </span>
                 </div>
                 {!isTradeInOnly && (
                   <div className="flex justify-between py-1">
@@ -901,9 +1279,9 @@ const BatteryPage = ({ darkMode }) => {
               <div className="grid grid-cols-2 gap-3 mt-4">
                 <button 
                   onClick={handleSubmit} 
-                  disabled={isProcessing || (isTradeInOnly ? false : (paymentMethod === 'bank' && !selectedBank) || !selectedBattery)} 
+                  disabled={isProcessing || (isTradeInOnly ? false : (paymentMethod === 'bank' && !bankOrWalletName) || (paymentMethod === 'online' && !bankOrWalletName) || (!selectedBattery && !selectedOldBattery) || (selectedOldBattery && !oldBatterySellPrice))} 
                   className={`py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2 shadow-lg ${
-                    isProcessing || (isTradeInOnly ? false : (paymentMethod === 'bank' && !selectedBank) || !selectedBattery)
+                    isProcessing || (isTradeInOnly ? false : (paymentMethod === 'bank' && !bankOrWalletName) || (paymentMethod === 'online' && !bankOrWalletName) || (!selectedBattery && !selectedOldBattery) || (selectedOldBattery && !oldBatterySellPrice))
                       ? 'bg-gray-400 cursor-not-allowed' 
                       : isTradeInOnly
                         ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
@@ -915,9 +1293,9 @@ const BatteryPage = ({ darkMode }) => {
                 </button>
                 <button 
                   onClick={printReceipt} 
-                  disabled={!isTradeInOnly && !selectedBattery} 
+                  disabled={!isTradeInOnly && !selectedBattery && !selectedOldBattery} 
                   className={`py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2 shadow-lg ${
-                    !isTradeInOnly && !selectedBattery ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-white'
+                    !isTradeInOnly && !selectedBattery && !selectedOldBattery ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-800 hover:bg-gray-700 text-white'
                   }`}
                 >
                   <FiPrinter /> Print
@@ -1003,7 +1381,6 @@ const BatteryPage = ({ darkMode }) => {
                 />
               </div>
               
-              {/* Category - LOCKED */}
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category</label>
                 <input 

@@ -117,6 +117,127 @@ export const getErrorMessage = (error) => {
     }
 };
 
+// ==================== CAR PURCHASES ====================
+export const getCarPurchases = async () => {
+    const response = await api.get('/car-purchases');
+    return response.data;
+};
+
+export const createCarPurchase = async (data) => {
+    const response = await api.post('/car-purchases', data);
+    return response.data;
+};
+
+export const getCarPurchase = async (id) => {
+    const response = await api.get(`/car-purchases/${id}`);
+    return response.data;
+};
+
+export const updateCarPurchase = async (id, data) => {
+    const response = await api.put(`/car-purchases/${id}`, data);
+    return response.data;
+};
+
+export const deleteCarPurchase = async (id) => {
+    const response = await api.delete(`/car-purchases/${id}`);
+    return response.data;
+};
+
+// ==================== CAR SELLS ====================
+export const getCarSells = async () => {
+    const response = await api.get('/car-sells');
+    return response.data;
+};
+
+export const createCarSell = async (data) => {
+    const response = await api.post('/car-sells', data);
+    return response.data;
+};
+
+export const getCarSell = async (id) => {
+    const response = await api.get(`/car-sells/${id}`);
+    return response.data;
+};
+
+export const updateCarSell = async (id, data) => {
+    const response = await api.put(`/car-sells/${id}`, data);
+    return response.data;
+};
+
+export const deleteCarSell = async (id) => {
+    const response = await api.delete(`/car-sells/${id}`);
+    return response.data;
+};
+
+// ==================== CAR RECORDS (Combined) ====================
+export const getCarRecords = async () => {
+    try {
+        // Fetch both purchases and sells
+        const [purchasesRes, sellsRes] = await Promise.all([
+            api.get('/car-purchases'),
+            api.get('/car-sells')
+        ]);
+        
+        const purchases = purchasesRes.data?.data || [];
+        const sells = sellsRes.data?.data || [];
+        
+        // Combine and format
+        const allRecords = [
+            ...purchases.map(p => ({
+                id: p.id,
+                type: 'purchase',
+                date: p.purchase_date || p.created_at,
+                name: p.customer_name,
+                phone: p.phone_no,
+                carMake: p.make,
+                carModel: p.model,
+                carYear: p.year || 'N/A',
+                regNo: p.reg_no,
+                color: p.color,
+                mileage: p.running,
+                price: parseFloat(p.purchase_price) || 0,
+                sellingPrice: parseFloat(p.selling_price) || 0,
+                engineNo: p.engine_no,
+                vin: p.vin,
+                notes: p.dent || p.notes
+            })),
+            ...sells.map(s => ({
+                id: s.id,
+                type: 'sell',
+                date: s.sell_date || s.created_at,
+                name: s.customer_name,
+                phone: s.phone_no,
+                carMake: s.make,
+                carModel: s.model,
+                carYear: s.year || 'N/A',
+                regNo: s.reg_no,
+                color: s.color,
+                mileage: s.running,
+                price: parseFloat(s.selling_price) || 0,
+                purchasePrice: parseFloat(s.purchase_price) || 0,
+                engineNo: s.engine_no,
+                vin: s.vin,
+                notes: s.dent || s.notes
+            }))
+        ];
+        
+        // Sort by date (newest first)
+        allRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        return {
+            success: true,
+            data: allRecords
+        };
+    } catch (error) {
+        console.error('Error fetching car records:', error);
+        return {
+            success: false,
+            data: [],
+            error: error.message
+        };
+    }
+};
+
 // ==================== SAVED CARTS / DISCARDED BILLS ====================
 export const saveCart = async (cartData) => {
     const response = await api.post('/saved-carts', cartData);
@@ -329,7 +450,7 @@ export const getBatteryStats = async () => {
     return { ...response, data: batterySales };
 };
 
-// API methods for common operations
+// ==================== API METHODS ====================
 export const apiService = {
     // Auth
     login: (credentials) => api.post('/login', credentials),
@@ -408,6 +529,23 @@ export const apiService = {
     searchEstimates: searchEstimates,
     duplicateEstimate: duplicateEstimate,
     updateEstimateStatus: updateEstimateStatus,
+    
+    // ✅ Car Purchase
+    getCarPurchases: getCarPurchases,
+    createCarPurchase: createCarPurchase,
+    getCarPurchase: getCarPurchase,
+    updateCarPurchase: updateCarPurchase,
+    deleteCarPurchase: deleteCarPurchase,
+    
+    // ✅ Car Sell
+    getCarSells: getCarSells,
+    createCarSell: createCarSell,
+    getCarSell: getCarSell,
+    updateCarSell: updateCarSell,
+    deleteCarSell: deleteCarSell,
+    
+    // ✅ Car Records (Combined)
+    getCarRecords: getCarRecords,
 };
 
 export default api;

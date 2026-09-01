@@ -14,7 +14,7 @@ class Estimate extends Model
 
     protected $fillable = [
         'estimate_no',
-        'company_name',
+        'name',
         'vehicle',
         'policy_number',
         'color',
@@ -71,9 +71,9 @@ class Estimate extends Model
         return $query->where('valid_until', '<', now());
     }
 
-    public function scopeByCompany($query, $company)
+    public function scopeByCompany($query, $name)
     {
-        return $query->where('company_name', 'LIKE', "%{$company}%");
+        return $query->where('name', 'LIKE', "%{$name}%");
     }
 
     public function scopeByVehicle($query, $vehicle)
@@ -279,7 +279,7 @@ class Estimate extends Model
             'status' => $this->status,
             'items_count' => $this->items_count,
             'total_items' => $this->total_items_count,
-            'company_name' => $this->company_name ?? 'N/A',
+            'name' => $this->name ?? 'N/A',
             'vehicle' => $this->vehicle ?? 'N/A',
             'policy_number' => $this->policy_number ?? 'N/A',
             'color' => $this->color ?? 'N/A',
@@ -302,7 +302,7 @@ class Estimate extends Model
     public static function search($query)
     {
         return self::where('estimate_no', 'LIKE', "%{$query}%")
-            ->orWhere('company_name', 'LIKE', "%{$query}%")
+            ->orWhere('name', 'LIKE', "%{$query}%")
             ->orWhere('vehicle', 'LIKE', "%{$query}%")
             ->orWhere('policy_number', 'LIKE', "%{$query}%")
             ->orWhere('reg_no', 'LIKE', "%{$query}%")
@@ -347,7 +347,7 @@ class Estimate extends Model
             \Log::info('Estimate created', [
                 'estimate_id' => $estimate->id,
                 'estimate_no' => $estimate->estimate_no,
-                'company' => $estimate->company_name,
+                'name' => $estimate->name,
                 'total' => $estimate->total_amount,
                 'created_by' => $estimate->created_by
             ]);

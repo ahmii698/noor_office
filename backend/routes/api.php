@@ -17,6 +17,8 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\SavedCartController;
 use App\Http\Controllers\EstimateController;
 use App\Http\Controllers\OldBatteryController; // ✅ NEW
+use App\Http\Controllers\CarPurchaseController; // ✅ NEW
+use App\Http\Controllers\CarSellController; // ✅ NEW
 
 /*
 |--------------------------------------------------------------------------
@@ -168,16 +170,35 @@ Route::prefix('estimates')->group(function () {
     Route::delete('/{id}', [EstimateController::class, 'destroy']);
 });
 
-// ✅ ==================== OLD BATTERIES ROUTES (Complete CRUD) ====================
+// ✅ ==================== OLD BATTERIES ROUTES (Complete CRUD + Sell) ====================
 Route::prefix('old-batteries')->group(function () {
-    Route::get('/', [OldBatteryController::class, 'index']);              // GET all
-    Route::get('/stats', [OldBatteryController::class, 'stats']);         // GET stats
+    Route::get('/', [OldBatteryController::class, 'index']);                    // GET all
+    Route::get('/stats', [OldBatteryController::class, 'stats']);               // GET stats
     Route::get('/date-range', [OldBatteryController::class, 'getByDateRange']); // GET by date
-    Route::get('/{id}', [OldBatteryController::class, 'show']);           // GET single
-    Route::post('/', [OldBatteryController::class, 'store']);             // POST create
-    Route::put('/{id}', [OldBatteryController::class, 'update']);         // PUT update
-    Route::delete('/{id}', [OldBatteryController::class, 'destroy']);     // DELETE single
+    Route::get('/{id}', [OldBatteryController::class, 'show']);                 // GET single
+    Route::post('/', [OldBatteryController::class, 'store']);                   // POST create
+    Route::put('/{id}', [OldBatteryController::class, 'update']);               // PUT update
+    Route::delete('/{id}', [OldBatteryController::class, 'destroy']);           // DELETE single
     Route::delete('/bulk-delete', [OldBatteryController::class, 'bulkDelete']); // DELETE bulk
+    Route::post('/{id}/sell', [OldBatteryController::class, 'sellOldBattery']); // ✅ NEW: Sell Old Battery
+});
+
+// ✅ ==================== CAR PURCHASE ROUTES (Complete CRUD) ====================
+Route::prefix('car-purchases')->group(function () {
+    Route::get('/', [CarPurchaseController::class, 'index']);
+    Route::post('/', [CarPurchaseController::class, 'store']);
+    Route::get('/{id}', [CarPurchaseController::class, 'show']);
+    Route::put('/{id}', [CarPurchaseController::class, 'update']);
+    Route::delete('/{id}', [CarPurchaseController::class, 'destroy']);
+});
+
+// ✅ ==================== CAR SELL ROUTES (Complete CRUD) ====================
+Route::prefix('car-sells')->group(function () {
+    Route::get('/', [CarSellController::class, 'index']);
+    Route::post('/', [CarSellController::class, 'store']);
+    Route::get('/{id}', [CarSellController::class, 'show']);
+    Route::put('/{id}', [CarSellController::class, 'update']);
+    Route::delete('/{id}', [CarSellController::class, 'destroy']);
 });
 
 // ==================== PROTECTED ROUTES (Authentication Required) ====================

@@ -1,13 +1,16 @@
 // src/components/CarPurchase.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FiSave, FiUser, FiPhone, FiDollarSign, FiCalendar, 
   FiTruck, FiFileText, FiPrinter, FiRefreshCw, 
-  FiMapPin, FiHash, FiTag
+  FiMapPin, FiHash, FiTag, FiDownload, FiFileText as FiFileIcon
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import logo from '/logo.jpg';
-import api from '../services/api';  // ✅ API service import
+import api from '../services/api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const CarPurchase = ({ darkMode }) => {
   const [formData, setFormData] = useState({
@@ -27,6 +30,30 @@ const CarPurchase = ({ darkMode }) => {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [savedPurchases, setSavedPurchases] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch saved purchases on mount
+  useEffect(() => {
+    fetchPurchases();
+  }, []);
+
+  const fetchPurchases = async () => {
+    setIsLoading(true);
+    try {
+      const response = await api.get('/car-purchases');
+      if (response.data.success) {
+        setSavedPurchases(response.data.data || []);
+      } else {
+        setSavedPurchases([]);
+      }
+    } catch (error) {
+      console.error('Error fetching purchases:', error);
+      setSavedPurchases([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -50,11 +77,11 @@ const CarPurchase = ({ darkMode }) => {
         running: parseFloat(formData.running) || 0,
       };
 
-      // ✅ API service use karo
       const response = await api.post('/car-purchases', payload);
 
       if (response.data.success) {
         toast.success('✅ Car purchase saved to database!');
+        await fetchPurchases(); // Refresh the list
 
         setFormData({
           purchaseDate: new Date().toISOString().split('T')[0],
@@ -152,19 +179,146 @@ const CarPurchase = ({ darkMode }) => {
     setTimeout(() => printWindow.print(), 500);
   };
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    if (savedPurchases.length === 0) {
+      toast.error('No saved purchases to export');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(savedPurchases.map(p => ({
+      'Date': p.purchase_date ? new Date(p.purchase_date).toLocaleDateString() : 'N/A',
+      'Customer Name': p.customer_name || 'N/A',
+      'Phone': p.phone_no || 'N/A',
+      'Make': p.make || 'N/A',
+      'Model': p.model || 'N/A',
+      'VIN': p.vin || 'N/A',
+      'Engine No': p.engine_no || 'N/A',
+      'Color': p.color || 'N/A',
+      'Reg No': p.reg_no || 'N/A',
+      'Running (km)': p.running || 'N/A',
+      'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}`,
+      'Purchase Price': `Rs. ${(p.purchase_price || 0).toLocaleString()}`,
+      'Dent': p.dent || 'None'
+    })));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Car Purchases');
+    XLSX.writeFile(wb, `Car_Purchases_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    if (savedPurchases.length === 0) {
+      toast.error('No saved purchases to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.text('Car Purchases Report', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    
+    const tableData = savedPurchases.map(p => [
+      p.purchase_date ? new Date(p.purchase_date).toLocaleDateString() : 'N/A',
+      p.customer_name || 'N/A',
+      p.phone_no || 'N/A',
+      p.make || 'N/A',
+      p.model || 'N/A',
+      p.reg_no || 'N/A',
+      p.color || 'N/A',
+      p.running || 'N/A',
+      `Rs. ${(p.selling_price || 0).toLocaleString()}`,
+      `Rs. ${(p.purchase_price || 0).toLocaleString()}`
+    ]);
+
+    doc.autoTable({
+      head: [['Date', 'Customer', 'Phone', 'Make', 'Model', 'Reg No', 'Color', 'Running', 'Selling', 'Purchase']],
+      body: tableData,
+      startY: 28,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 22 },
+        8: { cellWidth: 22 },
+        9: { cellWidth: 22 }
+      }
+    });
+
+    doc.save(`Car_Purchases_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   return (
     <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-100'} min-h-screen p-6`}>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
-          <div className="flex items-center gap-4">
-            <img src={logo} className="w-16 h-16 rounded-full object-cover border-2 border-red-500 shadow-lg" />
-            <div>
-              <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🚗 Car Info</h1>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Record car purchase details</p>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-4">
+              <img src={logo} className="w-16 h-16 rounded-full object-cover border-2 border-red-500 shadow-lg" />
+              <div>
+                <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>🚗 Car Info</h1>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Record car purchase details</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* ✅ Excel & PDF Buttons */}
+              <button
+                onClick={exportToExcel}
+                disabled={savedPurchases.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                } ${savedPurchases.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiFileIcon size={14} /> Excel
+              </button>
+              <button
+                onClick={exportToPDF}
+                disabled={savedPurchases.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                } ${savedPurchases.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiDownload size={14} /> PDF
+              </button>
+              <button
+                onClick={fetchPurchases}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                }`}
+              >
+                <FiRefreshCw className={isLoading ? 'animate-spin' : ''} size={14} /> 
+                {isLoading ? 'Loading...' : 'Refresh'}
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Saved Purchases Count */}
+        {savedPurchases.length > 0 && (
+          <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
+            <div className="flex justify-between items-center">
+              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                📋 Total Purchases: <strong className={darkMode ? 'text-white' : 'text-gray-900'}>{savedPurchases.length}</strong>
+              </span>
+              <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                Click Excel or PDF to export all
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

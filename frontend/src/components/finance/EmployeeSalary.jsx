@@ -5,11 +5,14 @@ import {
   FiUser, FiTrash2, FiLoader,
   FiChevronLeft, FiChevronRight, FiInbox,
   FiCreditCard, FiList, FiDollarSign, FiCalendar,
-  FiRefreshCw, FiGift   // ✅ NEW
+  FiRefreshCw, FiGift, FiDownload, FiFileText
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import './EmployeeSalary.css';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // ✅ Helper function to format date in Pakistan Time (Karachi)
 const formatPakistanTime = (dateString) => {
@@ -240,6 +243,121 @@ const EmployeeSalary = ({ darkMode }) => {
     paid: employees.filter(e => e.status === 'Paid').length || 0,
   };
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    if (employees.length === 0) {
+      toast.error('No employees to export');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(employees.map(emp => ({
+      'Employee Name': emp.name || 'N/A',
+      'Monthly Salary (Rs.)': parseFloat(emp.monthly_salary).toLocaleString(),
+      'Paid Amount (Rs.)': parseFloat(emp.paid_amount).toLocaleString(),
+      'Balance (Rs.)': parseFloat(emp.balance_amount).toLocaleString(),
+      'Salary Date': emp.salary_date ? `${emp.salary_date}${getDaySuffix(emp.salary_date)}` : 'N/A',
+      'Join Date': formatJoinDate(emp.join_date),
+      'Status': emp.status || 'Pending',
+      'Total Payments': emp.payments?.length || 0
+    })));
+
+    // Add summary row
+    const summaryRow = {
+      'Employee Name': '📊 TOTAL',
+      'Monthly Salary (Rs.)': statistics.totalSalary.toLocaleString(),
+      'Paid Amount (Rs.)': statistics.totalPaid.toLocaleString(),
+      'Balance (Rs.)': statistics.totalBalance.toLocaleString(),
+      'Salary Date': '',
+      'Join Date': '',
+      'Status': '',
+      'Total Payments': employees.reduce((sum, e) => sum + (e.payments?.length || 0), 0)
+    };
+    
+    const data = XLSX.utils.sheet_to_json(ws);
+    data.push(summaryRow);
+    const ws2 = XLSX.utils.json_to_sheet(data);
+    
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws2, 'Employees');
+    
+    // Summary sheet
+    const summaryData = [{
+      'Metric': 'Total Employees',
+      'Value': statistics.totalEmployees
+    }, {
+      'Metric': 'Total Salary',
+      'Value': `Rs. ${statistics.totalSalary.toLocaleString()}`
+    }, {
+      'Metric': 'Total Paid',
+      'Value': `Rs. ${statistics.totalPaid.toLocaleString()}`
+    }, {
+      'Metric': 'Total Balance',
+      'Value': `Rs. ${statistics.totalBalance.toLocaleString()}`
+    }, {
+      'Metric': 'Pending',
+      'Value': statistics.pending
+    }, {
+      'Metric': 'Partial',
+      'Value': statistics.partial
+    }, {
+      'Metric': 'Paid',
+      'Value': statistics.paid
+    }];
+    const ws3 = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Summary');
+
+    XLSX.writeFile(wb, `Employee_Salary_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    if (employees.length === 0) {
+      toast.error('No employees to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.setTextColor(220, 38, 38);
+    doc.text('Employee Salary Report', 14, 15);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    doc.text(`Total Employees: ${statistics.totalEmployees}  |  Total Salary: Rs. ${statistics.totalSalary.toLocaleString()}  |  Total Paid: Rs. ${statistics.totalPaid.toLocaleString()}  |  Total Balance: Rs. ${statistics.totalBalance.toLocaleString()}`, 14, 28);
+    
+    const tableData = employees.map(emp => [
+      emp.name || 'N/A',
+      `Rs. ${parseFloat(emp.monthly_salary).toLocaleString()}`,
+      `Rs. ${parseFloat(emp.paid_amount).toLocaleString()}`,
+      `Rs. ${parseFloat(emp.balance_amount).toLocaleString()}`,
+      emp.salary_date ? `${emp.salary_date}${getDaySuffix(emp.salary_date)}` : 'N/A',
+      formatJoinDate(emp.join_date),
+      emp.status || 'Pending'
+    ]);
+
+    doc.autoTable({
+      head: [['Employee', 'Monthly Salary', 'Paid', 'Balance', 'Salary Date', 'Join Date', 'Status']],
+      body: tableData,
+      startY: 34,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 18 }
+      }
+    });
+
+    doc.save(`Employee_Salary_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   // Add Employee
   const handleAddEmployee = async (e) => {
     e.preventDefault();
@@ -281,13 +399,12 @@ const EmployeeSalary = ({ darkMode }) => {
 
     const months = await fetchUnpaidMonths(employee.id);
     setUnpaidMonths(months);
-    // ✅ Default to the oldest unpaid month so Ahmii pays in order
     if (months.length > 0) {
       setPaymentData(prev => ({ ...prev, for_month: months[0].month }));
     }
   };
 
-  // ✅ UPDATED: Make Payment — now requires for_month, validates against that month's balance
+  // ✅ UPDATED: Make Payment — now requires for_month
   const handleMakePayment = async (e) => {
     e.preventDefault();
     if (isPaying) return;
@@ -320,11 +437,8 @@ const EmployeeSalary = ({ darkMode }) => {
       
       if (response.data.success) {
         toast.success(response.data.message || `✅ Payment of Rs. ${formatCurrency(amount)} recorded successfully!`);
-        
-        // ✅ Refresh employees list
         await fetchEmployees();
         
-        // ✅ If view modal is open, refresh selected employee + history data
         if (isViewModalOpen && selectedEmployee) {
           const updatedEmployee = await fetchSingleEmployee(selectedEmployee.id);
           if (updatedEmployee) {
@@ -548,9 +662,34 @@ const EmployeeSalary = ({ darkMode }) => {
               </p>
             </div>
           </div>
-          <button onClick={() => setIsAddModalOpen(true)} className="employee-salary-btn-add">
-            <FiPlus className="employee-salary-btn-icon" /> Add Employee
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* ✅ Excel & PDF Buttons */}
+            <button
+              onClick={exportToExcel}
+              disabled={employees.length === 0}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              } ${employees.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiFileText size={14} /> Excel
+            </button>
+            <button
+              onClick={exportToPDF}
+              disabled={employees.length === 0}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-red-600 hover:bg-red-700 text-white' 
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              } ${employees.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiDownload size={14} /> PDF
+            </button>
+            <button onClick={() => setIsAddModalOpen(true)} className="employee-salary-btn-add">
+              <FiPlus className="employee-salary-btn-icon" /> Add Employee
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -676,7 +815,7 @@ const EmployeeSalary = ({ darkMode }) => {
                             <FiTrash2 />
                           </button>
                           
-                          {/* ✅ Pay Now — opens modal + loads unpaid months */}
+                          {/* ✅ Pay Now */}
                           {canPay && (
                             <button 
                               onClick={() => openPayModal(employee)} 
@@ -686,7 +825,7 @@ const EmployeeSalary = ({ darkMode }) => {
                             </button>
                           )}
 
-                          {/* ✅ NEW: Restart Month */}
+                          {/* ✅ Restart Month */}
                           <button 
                             onClick={() => handleRestartMonth(employee)} 
                             className="px-2 py-1 rounded text-white bg-purple-500 hover:bg-purple-600 text-xs flex items-center gap-1"
@@ -696,7 +835,7 @@ const EmployeeSalary = ({ darkMode }) => {
                             <FiRefreshCw className={isRestarting ? 'animate-spin' : ''} /> Restart
                           </button>
 
-                          {/* ✅ NEW: Give Advance */}
+                          {/* ✅ Give Advance */}
                           <button 
                             onClick={() => openAdvanceModal(employee)} 
                             className="px-2 py-1 rounded text-white bg-pink-500 hover:bg-pink-600 text-xs flex items-center gap-1"
@@ -704,10 +843,6 @@ const EmployeeSalary = ({ darkMode }) => {
                           >
                             <FiGift /> Advance
                           </button>
-                          
-                          {/* ❌ Reset button removed — no longer needed.
-                              Every month now tracks its own Paid/Partial/Pending
-                              status automatically based on join_date. */}
                         </div>
                       </td>
                     </tr>
@@ -902,7 +1037,7 @@ const EmployeeSalary = ({ darkMode }) => {
                 )}
               </div>
 
-              {/* ✅ Monthly History — now shows EVERY month since join_date, paid or not */}
+              {/* Monthly History */}
               <div className="mt-4">
                 <h3 className="employee-salary-history-title">
                   <FiCalendar className="employee-salary-history-icon text-blue-500" /> Monthly History
@@ -1056,7 +1191,7 @@ const EmployeeSalary = ({ darkMode }) => {
                   className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
                 />
                 <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Every month from this date to now will count toward the balance (e.g. joining 3 months ago means 3 months owed).
+                  Every month from this date to now will count toward the balance
                 </p>
               </div>
               <div className="employee-salary-form-actions">
@@ -1141,7 +1276,7 @@ const EmployeeSalary = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Pay Now Modal — now has a "which month" dropdown */}
+      {/* Pay Now Modal */}
       {isPayModalOpen && selectedEmployee && (
         <div className="employee-salary-modal-overlay">
           <div className={`employee-salary-modal ${darkMode ? 'dark' : ''}`}>
@@ -1163,7 +1298,7 @@ const EmployeeSalary = ({ darkMode }) => {
                 <p className="employee-salary-payment-balance" style={{color: '#dc2626', fontWeight: 'bold'}}>Rs.{formatCurrency(selectedEmployee.balance_amount)}</p>
               </div>
 
-              {/* ✅ NEW: Month selector */}
+              {/* Month selector */}
               <div className="employee-salary-form-group">
                 <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Which Month Are You Paying? *</label>
                 {loadingUnpaidMonths ? (
@@ -1229,7 +1364,7 @@ const EmployeeSalary = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ NEW: Advance Payment Modal */}
+      {/* Advance Payment Modal */}
       {isAdvanceModalOpen && selectedEmployee && (
         <div className="employee-salary-modal-overlay">
           <div className={`employee-salary-modal ${darkMode ? 'dark' : ''}`}>

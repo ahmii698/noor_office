@@ -1,9 +1,12 @@
 // src/components/finance/FinanceCharts.jsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import FinancialCharts from './FinancialCharts';
-import { FiLoader } from 'react-icons/fi';
+import { FiLoader, FiDownload, FiFileText } from 'react-icons/fi';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const FinanceCharts = ({ darkMode }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -244,6 +247,132 @@ const FinanceCharts = ({ darkMode }) => {
     return Array.from(years).sort((a, b) => b - a);
   }, [invoices, expenses]);
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    const hasData = monthlyData.some(m => m.revenue > 0 || m.expenses > 0);
+    
+    if (!hasData) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Monthly Financial Data
+    const monthlySheetData = monthlyData.map(m => ({
+      'Month': m.month,
+      'Revenue (Rs.)': m.revenue,
+      'Expenses (Rs.)': m.expenses,
+      'Gross Profit (Rs.)': m.profit,
+      'Net Profit (Rs.)': m.netProfit,
+      'Purchase Cost (Rs.)': m.purchase,
+      'Items Sold': m.itemsSold,
+      'Invoices Count': m.invoiceCount
+    }));
+    const ws1 = XLSX.utils.json_to_sheet(monthlySheetData);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Data');
+
+    // Sheet 2: Summary
+    const summaryData = [{
+      'Metric': 'Total Revenue',
+      'Value': `Rs. ${yearlyOverview.totalRevenue.toLocaleString()}`
+    }, {
+      'Metric': 'Total Expenses',
+      'Value': `Rs. ${yearlyOverview.totalExpenses.toLocaleString()}`
+    }, {
+      'Metric': 'Gross Profit',
+      'Value': `Rs. ${yearlyOverview.totalProfit.toLocaleString()}`
+    }, {
+      'Metric': 'Net Profit',
+      'Value': `Rs. ${yearlyOverview.totalNetProfit.toLocaleString()}`
+    }, {
+      'Metric': 'Profit Margin',
+      'Value': `${yearlyOverview.profitMargin.toFixed(1)}%`
+    }, {
+      'Metric': 'Year',
+      'Value': selectedYear
+    }];
+    const ws2 = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+
+    // Sheet 3: Inventory Stats
+    const inventoryData = [{
+      'Metric': 'Total Purchase Value',
+      'Value': `Rs. ${inventoryStats.totalPurchase.toLocaleString()}`
+    }, {
+      'Metric': 'Total Selling Value',
+      'Value': `Rs. ${inventoryStats.totalSelling.toLocaleString()}`
+    }, {
+      'Metric': 'Total Inventory Profit',
+      'Value': `Rs. ${inventoryStats.totalProfit.toLocaleString()}`
+    }];
+    const ws3 = XLSX.utils.json_to_sheet(inventoryData);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Inventory Stats');
+
+    XLSX.writeFile(wb, `Financial_Report_${selectedYear}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    const hasData = monthlyData.some(m => m.revenue > 0 || m.expenses > 0);
+    
+    if (!hasData) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`Financial Report - ${selectedYear}`, 14, 15);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+
+    // Summary Stats
+    doc.setFontSize(10);
+    doc.text(`Total Revenue: Rs. ${yearlyOverview.totalRevenue.toLocaleString()}`, 14, 30);
+    doc.text(`Total Expenses: Rs. ${yearlyOverview.totalExpenses.toLocaleString()}`, 14, 36);
+    doc.text(`Gross Profit: Rs. ${yearlyOverview.totalProfit.toLocaleString()}`, 14, 42);
+    doc.text(`Net Profit: Rs. ${yearlyOverview.totalNetProfit.toLocaleString()}`, 14, 48);
+    doc.text(`Profit Margin: ${yearlyOverview.profitMargin.toFixed(1)}%`, 14, 54);
+    doc.text(`Inventory Value: Rs. ${inventoryStats.totalPurchase.toLocaleString()}`, 14, 60);
+
+    // Monthly Data Table
+    const tableData = monthlyData.map(m => [
+      m.month,
+      `Rs. ${m.revenue.toLocaleString()}`,
+      `Rs. ${m.expenses.toLocaleString()}`,
+      `Rs. ${m.profit.toLocaleString()}`,
+      `Rs. ${m.netProfit.toLocaleString()}`,
+      m.itemsSold,
+      m.invoiceCount
+    ]);
+
+    doc.autoTable({
+      head: [['Month', 'Revenue', 'Expenses', 'Gross Profit', 'Net Profit', 'Items Sold', 'Invoices']],
+      body: tableData,
+      startY: 68,
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 15 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 15 },
+        6: { cellWidth: 15 }
+      }
+    });
+
+    doc.save(`Financial_Report_${selectedYear}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   if (loading) {
     return (
       <div className={`min-h-[400px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -255,8 +384,56 @@ const FinanceCharts = ({ darkMode }) => {
     );
   }
 
+  const hasData = monthlyData.some(m => m.revenue > 0 || m.expenses > 0);
+
   return (
     <div className="space-y-6">
+      {/* Header with Export Buttons */}
+      <div className={`flex flex-wrap justify-between items-center p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-bold">Financial Dashboard</h2>
+          <span className={`text-xs px-2 py-1 rounded-full ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+            Year {selectedYear}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* ✅ Excel & PDF Buttons */}
+          <button
+            onClick={exportToExcel}
+            disabled={!hasData}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+              darkMode 
+                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                : 'bg-green-500 hover:bg-green-600 text-white'
+            } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <FiFileText size={14} /> Excel
+          </button>
+          <button
+            onClick={exportToPDF}
+            disabled={!hasData}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+              darkMode 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-red-500 hover:bg-red-600 text-white'
+            } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <FiDownload size={14} /> PDF
+          </button>
+          <button
+            onClick={loadChartData}
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+              darkMode 
+                ? 'bg-gray-700 hover:bg-gray-600 text-white' 
+                : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+            }`}
+          >
+            <FiLoader className={loading ? 'animate-spin' : ''} size={14} /> 
+            Refresh
+          </button>
+        </div>
+      </div>
+
       {/* Yearly Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

@@ -4,10 +4,14 @@ import toast from 'react-hot-toast';
 import { 
   FiPrinter, FiPlus, FiTrash2, FiSave, FiRefreshCw, 
   FiList, FiEdit2, FiX, FiFileText, FiClock, FiMapPin,
-  FiShield, FiUser, FiChevronDown, FiChevronUp
+  FiShield, FiUser, FiChevronDown, FiChevronUp,
+  FiDownload
 } from 'react-icons/fi';
 import api from '../services/api';
 import logo from '/logo.jpg';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const EstimatedBill = ({ darkMode }) => {
   const [estimateType, setEstimateType] = useState('customer');
@@ -15,7 +19,7 @@ const EstimatedBill = ({ darkMode }) => {
 
   const [estimateData, setEstimateData] = useState({
     estimateNo: `EST-${Date.now().toString().slice(-8)}`,
-    name: '', // ✅ Name field - Customer aur Insurance dono ke liye
+    name: '',
     policyNumber: '',
     color: '',
     make: '',
@@ -98,7 +102,7 @@ const EstimatedBill = ({ darkMode }) => {
       const payload = {
         estimate_no: estimateData.estimateNo,
         estimate_type: estimateType,
-        name: estimateData.name || 'N/A', // ✅ Name field
+        name: estimateData.name || 'N/A',
         policy_number: estimateData.policyNumber || null,
         color: estimateData.color || null,
         make: estimateData.make || null,
@@ -250,7 +254,85 @@ const EstimatedBill = ({ darkMode }) => {
     return (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
   };
 
-  // ✅ PRINT ESTIMATE - WITH NAME FIELD
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    if (savedEstimates.length === 0) {
+      toast.error('No saved estimates to export');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(savedEstimates.map(est => ({
+      'Estimate #': est.estimate_no,
+      'Type': est.estimate_type === 'insurance' ? 'Insurance' : 'Customer',
+      'Name': est.name || 'N/A',
+      'Policy Number': est.policy_number || 'N/A',
+      'Color': est.color || 'N/A',
+      'Make': est.make || 'N/A',
+      'VIN': est.vin || 'N/A',
+      'Model': est.model || 'N/A',
+      'Engine No': est.engine_no || 'N/A',
+      'Reg No': est.reg_no || 'N/A',
+      'Address': est.address || 'N/A',
+      'Items Count': est.items?.length || 0,
+      'Total Amount': `Rs. ${(est.total_amount || 0).toLocaleString()}`,
+      'Date': est.date ? new Date(est.date).toLocaleDateString() : 'N/A',
+      'Valid Until': est.valid_until ? new Date(est.valid_until).toLocaleDateString() : 'N/A',
+      'Notes': est.notes || ''
+    })));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Estimates');
+    XLSX.writeFile(wb, `Estimates_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    if (savedEstimates.length === 0) {
+      toast.error('No saved estimates to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.text('Estimates Report', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    
+    const tableData = savedEstimates.map(est => [
+      est.estimate_no,
+      est.estimate_type === 'insurance' ? 'Insurance' : 'Customer',
+      est.name || 'N/A',
+      est.color || 'N/A',
+      est.make || 'N/A',
+      est.model || 'N/A',
+      est.reg_no || 'N/A',
+      est.items?.length || 0,
+      `Rs. ${(est.total_amount || 0).toLocaleString()}`,
+      est.date ? new Date(est.date).toLocaleDateString() : 'N/A'
+    ]);
+
+    doc.autoTable({
+      head: [['Estimate #', 'Type', 'Name', 'Color', 'Make', 'Model', 'Reg No', 'Items', 'Total', 'Date']],
+      body: tableData,
+      startY: 28,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 18 },
+        2: { cellWidth: 25 },
+        8: { cellWidth: 25 },
+        9: { cellWidth: 22 }
+      }
+    });
+
+    doc.save(`Estimates_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
+  // ✅ PRINT ESTIMATE
   const printEstimate = () => {
     if (estimateData.items.length === 0) {
       toast.error('No items to print');
@@ -332,7 +414,6 @@ const EstimatedBill = ({ darkMode }) => {
                 background: transparent;
               }
               
-              /* ✅ DATE & TIME - SAB SE UPPAR */
               .date-time-bar {
                 display: flex;
                 justify-content: space-between;
@@ -353,7 +434,6 @@ const EstimatedBill = ({ darkMode }) => {
                 color: #1f2937;
               }
               
-              /* ✅ INFO GRID - NAME + 6 FIELDS */
               .info-grid { 
                 display: grid; 
                 grid-template-columns: 1fr 1fr; 
@@ -473,13 +553,11 @@ const EstimatedBill = ({ darkMode }) => {
                 </div>
               </div>
               <div class="content">
-                <!-- ✅ DATE & TIME - SAB SE UPPAR -->
                 <div class="date-time-bar">
                   <span><span class="label"> DATE</span> <span class="value">${formattedDate}</span></span>
                   <span><span class="label"> TIME</span> <span class="value">${currentTime}</span></span>
                 </div>
 
-                <!-- ✅ NAME + 6 FIELDS -->
                 <div class="info-grid">
                   <div class="info-item">
                     <span class="label">Name</span>
@@ -616,6 +694,31 @@ const EstimatedBill = ({ darkMode }) => {
                 <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{estimateData.estimateNo}</div>
                 {editingEstimateId && <span className="text-xs text-yellow-500">✏️ Editing</span>}
               </div>
+              
+              {/* ✅ Excel & PDF Buttons for Saved Estimates */}
+              <button
+                onClick={exportToExcel}
+                disabled={savedEstimates.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                } ${savedEstimates.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiFileText size={14} /> Excel
+              </button>
+              <button
+                onClick={exportToPDF}
+                disabled={savedEstimates.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                } ${savedEstimates.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiDownload size={14} /> PDF
+              </button>
+
               <button
                 onClick={() => setShowEstimatesList(!showEstimatesList)}
                 className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-1 text-sm shadow-md"
@@ -773,7 +876,6 @@ const EstimatedBill = ({ darkMode }) => {
                 </span>
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* ✅ Name field - Common for both */}
                 <input
                   type="text"
                   placeholder="Name"
@@ -782,7 +884,6 @@ const EstimatedBill = ({ darkMode }) => {
                   className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
                 />
 
-                {/* ✅ Policy Number - Only for Insurance */}
                 {estimateType === 'insurance' && (
                   <input
                     type="text"
@@ -836,7 +937,6 @@ const EstimatedBill = ({ darkMode }) => {
                   className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
                 />
 
-                {/* ✅ Address - Only for Insurance */}
                 {estimateType === 'insurance' && (
                   <input
                     type="text"

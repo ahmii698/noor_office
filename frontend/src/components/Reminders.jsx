@@ -7,9 +7,12 @@ import {
   FiDroplet, FiEdit2, FiSend, FiMessageSquare, 
   FiClock, FiAlertTriangle, FiMessageCircle, FiTrash2,
   FiStar, FiHeart, FiDollarSign, FiEdit,
-  FiEye
+  FiEye, FiFileText, FiDownload
 } from 'react-icons/fi';
 import api from '../services/api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const Reminders = ({ darkMode }) => {
   const [activeTab, setActiveTab] = useState('birthday');
@@ -350,6 +353,129 @@ const Reminders = ({ darkMode }) => {
     }
   };
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    const data = getCurrentData();
+    if (data.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const isBirthday = activeTab === 'birthday';
+    const isPending = activeTab === 'pending_payments';
+
+    const ws = XLSX.utils.json_to_sheet(data.map((item, index) => {
+      if (isBirthday) {
+        return {
+          '#': index + 1,
+          'Customer Name': item.name || 'N/A',
+          'Phone': item.phone || 'N/A',
+          'Car Number': item.car_number || 'N/A',
+          'Birthday': formatDate(item.birthday)
+        };
+      } else if (isPending) {
+        return {
+          '#': index + 1,
+          'Customer Name': item.customer_name || 'N/A',
+          'Phone': item.customer_phone || 'N/A',
+          'Car Number': item.car_number || 'N/A',
+          'Invoice #': item.invoice_no || 'N/A',
+          'Total Amount': `Rs. ${(item.total_amount || 0).toLocaleString()}`,
+          'Paid Amount': `Rs. ${(item.paid_amount || 0).toLocaleString()}`,
+          'Pending Amount': `Rs. ${(item.remaining_amount || 0).toLocaleString()}`
+        };
+      } else {
+        return {
+          '#': index + 1,
+          'Customer Name': item.customer_name || 'N/A',
+          'Phone': item.customer_phone || 'N/A',
+          'Car Number': item.car_number || 'N/A',
+          'Service': item.service_name || 'N/A',
+          'Service Date': formatDate(item.service_date),
+          'Days Ago': getDaysAgo(item.service_date)
+        };
+      }
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const tabLabel = activeTab === 'birthday' ? 'Birthday' : 
+                     activeTab === 'tuning' ? 'Tuning' : 
+                     activeTab === 'oil_change' ? 'Oil Change' : 'Pending Payments';
+    XLSX.utils.book_append_sheet(wb, ws, tabLabel);
+    XLSX.writeFile(wb, `${tabLabel}_Reminders_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success(`Exported ${tabLabel} to Excel!`);
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    const data = getCurrentData();
+    if (data.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const isBirthday = activeTab === 'birthday';
+    const isPending = activeTab === 'pending_payments';
+    const tabLabel = activeTab === 'birthday' ? 'Birthday' : 
+                     activeTab === 'tuning' ? 'Tuning' : 
+                     activeTab === 'oil_change' ? 'Oil Change' : 'Pending Payments';
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.text(`${tabLabel} Reminders Report`, 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    
+    let tableData;
+    let headers;
+
+    if (isBirthday) {
+      headers = ['#', 'Customer Name', 'Phone', 'Car Number', 'Birthday'];
+      tableData = data.map((item, index) => [
+        index + 1,
+        item.name || 'N/A',
+        item.phone || 'N/A',
+        item.car_number || 'N/A',
+        formatDate(item.birthday)
+      ]);
+    } else if (isPending) {
+      headers = ['#', 'Customer Name', 'Phone', 'Car Number', 'Invoice #', 'Total', 'Paid', 'Pending'];
+      tableData = data.map((item, index) => [
+        index + 1,
+        item.customer_name || 'N/A',
+        item.customer_phone || 'N/A',
+        item.car_number || 'N/A',
+        item.invoice_no || 'N/A',
+        `Rs. ${(item.total_amount || 0).toLocaleString()}`,
+        `Rs. ${(item.paid_amount || 0).toLocaleString()}`,
+        `Rs. ${(item.remaining_amount || 0).toLocaleString()}`
+      ]);
+    } else {
+      headers = ['#', 'Customer Name', 'Phone', 'Car Number', 'Service', 'Service Date', 'Days Ago'];
+      tableData = data.map((item, index) => [
+        index + 1,
+        item.customer_name || 'N/A',
+        item.customer_phone || 'N/A',
+        item.car_number || 'N/A',
+        item.service_name || 'N/A',
+        formatDate(item.service_date),
+        `${getDaysAgo(item.service_date)} days`
+      ]);
+    }
+
+    doc.autoTable({
+      head: [headers],
+      body: tableData,
+      startY: 28,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [220, 38, 38] }
+    });
+
+    doc.save(`${tabLabel}_Reminders_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success(`Exported ${tabLabel} to PDF!`);
+  };
+
   if (loading) {
     return (
       <div className={`min-h-[400px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -381,16 +507,41 @@ const Reminders = ({ darkMode }) => {
               </p>
             </div>
           </div>
-          <button
-            onClick={fetchAllData}
-            disabled={refreshing}
-            className={`px-4 py-2 rounded-xl font-semibold transition flex items-center gap-2 ${
-              refreshing ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-500 hover:bg-red-600 text-white'
-            }`}
-          >
-            <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* ✅ Excel & PDF Buttons */}
+            <button
+              onClick={exportToExcel}
+              disabled={currentData.length === 0}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              } ${currentData.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiFileText size={14} /> Excel
+            </button>
+            <button
+              onClick={exportToPDF}
+              disabled={currentData.length === 0}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-red-600 hover:bg-red-700 text-white' 
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              } ${currentData.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiDownload size={14} /> PDF
+            </button>
+            <button
+              onClick={fetchAllData}
+              disabled={refreshing}
+              className={`px-4 py-2 rounded-xl font-semibold transition flex items-center gap-2 ${
+                refreshing ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-500 hover:bg-red-600 text-white'
+              }`}
+            >
+              <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -704,7 +855,7 @@ const Reminders = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Payment Modal - WITH MANUAL INPUT for Bank and Wallet */}
+      {/* ✅ Payment Modal */}
       {showPaymentModal && selectedPayment && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -742,7 +893,6 @@ const Reminders = ({ darkMode }) => {
                 </div>
               </div>
 
-              {/* Amount Input */}
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Payment Amount (Rs.)
@@ -763,7 +913,6 @@ const Reminders = ({ darkMode }) => {
                 />
               </div>
 
-              {/* Payment Method Dropdown */}
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Payment Method
@@ -787,7 +936,6 @@ const Reminders = ({ darkMode }) => {
                 </select>
               </div>
 
-              {/* ✅ Bank Transfer - Manual Input */}
               {paymentMethod === 'bank' && (
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -815,7 +963,6 @@ const Reminders = ({ darkMode }) => {
                 </div>
               )}
 
-              {/* ✅ Mobile Wallet - Manual Input */}
               {paymentMethod === 'online' && (
                 <div>
                   <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>

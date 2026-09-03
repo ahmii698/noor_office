@@ -8,7 +8,8 @@ import {
   FiBell, FiTrendingUp, FiShoppingCart, FiCheckCircle, 
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
   FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp, FiFile,
-  FiBattery, FiArchive, FiTruck, FiBookOpen
+  FiBattery, FiArchive, FiTruck, FiBookOpen, FiDownload, 
+  FiFileText as FiFileIcon
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -17,6 +18,9 @@ import {
 } from 'recharts';
 import Sidebar from './Sidebar';
 import api from '../services/api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // Lazy load heavy components
 const Inventory = lazy(() => import('./Inventory'));
@@ -342,6 +346,207 @@ const Dashboard = () => {
 
   const COLORS = useMemo(() => ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'], []);
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    const hasData = filteredInvoices.length > 0 || filteredExpenses.length > 0 || activeProducts.length > 0;
+    
+    if (!hasData) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Monthly Summary
+    const monthlyDataSheet = monthlyData.map(m => ({
+      'Month': m.month,
+      'Sales (Rs.)': m.sales,
+      'Profit (Rs.)': m.profit,
+      'Expenses (Rs.)': m.expenses,
+      'Discount (Rs.)': m.discount
+    }));
+    const ws1 = XLSX.utils.json_to_sheet(monthlyDataSheet);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Summary');
+
+    // Sheet 2: Product Sales Distribution
+    const productData = productSalesData.map(p => ({
+      'Product': p.name,
+      'Total Value (Rs.)': p.value
+    }));
+    const ws2 = XLSX.utils.json_to_sheet(productData);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Product Sales');
+
+    // Sheet 3: Recent Invoices
+    const invoiceData = recentInvoices.map(inv => ({
+      'Invoice #': inv.invoice_no || inv.invoiceNo,
+      'Customer': inv.customer_name || inv.customer?.name || 'Walk-in',
+      'Amount (Rs.)': inv.total_amount || inv.total || 0,
+      'Status': inv.status || 'Pending'
+    }));
+    const ws3 = XLSX.utils.json_to_sheet(invoiceData);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Recent Invoices');
+
+    // Sheet 4: Summary Stats
+    const summaryData = [{
+      'Metric': 'Total Sales',
+      'Value': `Rs. ${totalSales.toLocaleString()}`
+    }, {
+      'Metric': 'Total Profit',
+      'Value': `Rs. ${totalProfitCalc.toLocaleString()}`
+    }, {
+      'Metric': 'Profit Margin',
+      'Value': `${profitMargin.toFixed(1)}%`
+    }, {
+      'Metric': 'Total Expenses',
+      'Value': `Rs. ${totalExpensesSum.toLocaleString()}`
+    }, {
+      'Metric': 'Total Discount',
+      'Value': `Rs. ${totalDiscount.toLocaleString()}`
+    }, {
+      'Metric': 'Active Products',
+      'Value': totalProductsCount
+    }, {
+      'Metric': 'Total Stock Units',
+      'Value': totalStock
+    }, {
+      'Metric': 'Total Invoices',
+      'Value': filteredInvoices.length
+    }, {
+      'Metric': 'Filter',
+      'Value': getFilterLabel()
+    }];
+    const ws4 = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws4, 'Summary');
+
+    XLSX.writeFile(wb, `Dashboard_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    const hasData = filteredInvoices.length > 0 || filteredExpenses.length > 0 || activeProducts.length > 0;
+    
+    if (!hasData) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(220, 38, 38);
+    doc.text('Dashboard Report', 14, 15);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    doc.text(`Filter: ${getFilterLabel()}`, 14, 28);
+
+    // Summary Stats
+    doc.setFontSize(10);
+    doc.text(`Total Sales: Rs. ${totalSales.toLocaleString()}`, 14, 36);
+    doc.text(`Total Profit: Rs. ${totalProfitCalc.toLocaleString()} (${profitMargin.toFixed(1)}% margin)`, 14, 42);
+    doc.text(`Total Expenses: Rs. ${totalExpensesSum.toLocaleString()}`, 14, 48);
+    doc.text(`Total Discount: Rs. ${totalDiscount.toLocaleString()}`, 14, 54);
+    doc.text(`Active Products: ${totalProductsCount} | Total Stock: ${totalStock} units`, 14, 60);
+    doc.text(`Total Invoices: ${filteredInvoices.length}`, 14, 66);
+
+    let startY = 74;
+
+    // Monthly Summary Table
+    doc.setFontSize(12);
+    doc.setTextColor(59, 130, 246);
+    doc.text('Monthly Summary', 14, startY);
+    doc.setTextColor(0, 0, 0);
+    startY += 6;
+
+    const monthlyTableData = monthlyData.map(m => [
+      m.month,
+      `Rs. ${m.sales.toLocaleString()}`,
+      `Rs. ${m.profit.toLocaleString()}`,
+      `Rs. ${m.expenses.toLocaleString()}`,
+      `Rs. ${m.discount.toLocaleString()}`
+    ]);
+
+    doc.autoTable({
+      head: [['Month', 'Sales', 'Profit', 'Expenses', 'Discount']],
+      body: monthlyTableData,
+      startY: startY,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [59, 130, 246] },
+      columnStyles: {
+        0: { cellWidth: 15 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 30 }
+      }
+    });
+
+    startY = doc.lastAutoTable.finalY + 10;
+
+    // Product Sales Table
+    if (productSalesData.length > 0) {
+      doc.setFontSize(12);
+      doc.setTextColor(34, 197, 94);
+      doc.text('Product Sales Distribution', 14, startY);
+      doc.setTextColor(0, 0, 0);
+      startY += 6;
+
+      const productTableData = productSalesData.map(p => [
+        p.name,
+        `Rs. ${p.value.toLocaleString()}`
+      ]);
+
+      doc.autoTable({
+        head: [['Product', 'Total Value']],
+        body: productTableData,
+        startY: startY,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [34, 197, 94] },
+        columnStyles: {
+          0: { cellWidth: 60 },
+          1: { cellWidth: 30 }
+        }
+      });
+
+      startY = doc.lastAutoTable.finalY + 10;
+    }
+
+    // Recent Invoices Table
+    if (recentInvoices.length > 0) {
+      doc.setFontSize(12);
+      doc.setTextColor(220, 38, 38);
+      doc.text('Recent Invoices', 14, startY);
+      doc.setTextColor(0, 0, 0);
+      startY += 6;
+
+      const invoiceTableData = recentInvoices.map(inv => [
+        inv.invoice_no || inv.invoiceNo,
+        inv.customer_name || inv.customer?.name || 'Walk-in',
+        `Rs. ${(inv.total_amount || inv.total || 0).toLocaleString()}`,
+        inv.status || 'Pending'
+      ]);
+
+      doc.autoTable({
+        head: [['Invoice #', 'Customer', 'Amount', 'Status']],
+        body: invoiceTableData,
+        startY: startY,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [220, 38, 38] },
+        columnStyles: {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 20 }
+        }
+      });
+    }
+
+    doc.save(`Dashboard_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   const fetchAllData = useCallback(async () => {
     const abortController = new AbortController();
     setLoading(true);
@@ -488,9 +693,9 @@ const Dashboard = () => {
       'battery-overview': 'Battery Sales Overview',
       'battery-charts': 'Battery Sales Charts',
       'old-batteries': 'Old Batteries History',
-      'car-purchase': 'Car Purchase', // ✅ NEW
-      'car-sell': 'Car Sell', // ✅ NEW
-      'car-records': 'Car Records', // ✅ NEW
+      'car-purchase': 'Car Purchase',
+      'car-sell': 'Car Sell',
+      'car-records': 'Car Records',
       record: 'Records Archive',
       reminders: 'Reminders',
       users: 'User Management',
@@ -516,9 +721,9 @@ const Dashboard = () => {
       'battery-overview': 'View battery sales statistics and reports',
       'battery-charts': 'Visualize battery sales with interactive charts',
       'old-batteries': 'View all purchased old batteries history with stats',
-      'car-purchase': 'Record car purchase details', // ✅ NEW
-      'car-sell': 'Record car sale details', // ✅ NEW
-      'car-records': 'View complete history of car purchases and sales', // ✅ NEW
+      'car-purchase': 'Record car purchase details',
+      'car-sell': 'Record car sale details',
+      'car-records': 'View complete history of car purchases and sales',
       record: 'View all transaction history',
       reminders: 'Birthday, Tuning & Oil Change reminders',
       users: 'Manage system users and employees',
@@ -544,9 +749,9 @@ const Dashboard = () => {
       'battery-overview': <FiTrendingUp className="text-2xl" />,
       'battery-charts': <FiBarChart2 className="text-2xl" />,
       'old-batteries': <FiBattery className="text-2xl" />,
-      'car-purchase': <FiShoppingCart className="text-2xl" />, // ✅ NEW
-      'car-sell': <FiTruck className="text-2xl" />, // ✅ NEW
-      'car-records': <FiBookOpen className="text-2xl" />, // ✅ NEW
+      'car-purchase': <FiShoppingCart className="text-2xl" />,
+      'car-sell': <FiTruck className="text-2xl" />,
+      'car-records': <FiBookOpen className="text-2xl" />,
       record: <FiBarChart2 className="text-2xl" />,
       reminders: <FiBell className="text-2xl" />,
       users: <FiUsers className="text-2xl" />,
@@ -662,6 +867,8 @@ const Dashboard = () => {
     }
   };
 
+  const hasData = filteredInvoices.length > 0 || filteredExpenses.length > 0 || activeProducts.length > 0;
+
   if (loading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -705,6 +912,29 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* ✅ Excel & PDF Buttons */}
+              <button
+                onClick={exportToExcel}
+                disabled={!hasData}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiFileIcon size={14} /> Excel
+              </button>
+              <button
+                onClick={exportToPDF}
+                disabled={!hasData}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiDownload size={14} /> PDF
+              </button>
               <button
                 onClick={() => setDarkMode(!darkMode)}
                 className={`p-2 rounded-full transition ${darkMode ? 'text-yellow-400 hover:text-yellow-300' : 'text-gray-600 hover:text-gray-800'}`}

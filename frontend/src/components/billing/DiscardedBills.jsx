@@ -9,11 +9,13 @@ import {
   FiUser, 
   FiPhone, 
   FiMail, 
-  FiTruck,  // ✅ FiCar ki jagah FiTruck
+  FiTruck,
   FiPackage,
   FiDollarSign,
   FiCalendar,
-  FiTool
+  FiTool,
+  FiFileText,
+  FiDownload
 } from 'react-icons/fi';
 import { 
   getDiscardedCarts, 
@@ -22,6 +24,9 @@ import {
   clearAllDiscarded 
 } from '../../services/api';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const DiscardedBills = ({ darkMode, onRestore, onClose }) => {
   const [discardedBills, setDiscardedBills] = useState([]);
@@ -133,6 +138,79 @@ const DiscardedBills = ({ darkMode, onRestore, onClose }) => {
     }
   };
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    if (discardedBills.length === 0) {
+      toast.error('No discarded bills to export');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(discardedBills.map(bill => ({
+      'ID': bill.id,
+      'Discarded Date': formatDate(bill.discarded_at),
+      'Customer Name': bill.customer_name || 'N/A',
+      'Customer Phone': bill.customer_phone || 'N/A',
+      'Car Number': bill.customer_car_number || 'N/A',
+      'Car Model': bill.customer_car_model || 'N/A',
+      'Services Count': getItemCount(bill.cart_items),
+      'Total Items Qty': getTotalItems(bill.cart_items),
+      'Subtotal': `Rs. ${(bill.cart_summary?.subtotal || 0).toLocaleString()}`,
+      'Discount': `Rs. ${(bill.cart_summary?.discount || 0).toLocaleString()}`,
+      'Total Amount': `Rs. ${(bill.cart_summary?.total_amount || 0).toLocaleString()}`,
+      'Services': bill.cart_items?.map(item => item.name).join(', ') || ''
+    })));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Discarded Bills');
+    XLSX.writeFile(wb, `Discarded_Bills_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    if (discardedBills.length === 0) {
+      toast.error('No discarded bills to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.text('Discarded Bills Report', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    
+    const tableData = discardedBills.map(bill => [
+      bill.id,
+      formatDate(bill.discarded_at),
+      bill.customer_name || 'N/A',
+      bill.customer_phone || 'N/A',
+      bill.customer_car_number || 'N/A',
+      getItemCount(bill.cart_items),
+      getTotalItems(bill.cart_items),
+      `Rs. ${(bill.cart_summary?.subtotal || 0).toLocaleString()}`,
+      `Rs. ${(bill.cart_summary?.discount || 0).toLocaleString()}`,
+      `Rs. ${(bill.cart_summary?.total_amount || 0).toLocaleString()}`
+    ]);
+
+    doc.autoTable({
+      head: [['ID', 'Discarded Date', 'Customer', 'Phone', 'Car No.', 'Services', 'Qty', 'Subtotal', 'Discount', 'Total']],
+      body: tableData,
+      startY: 28,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 15 },
+        1: { cellWidth: 30 },
+        8: { cellWidth: 20 },
+        9: { cellWidth: 25 }
+      }
+    });
+
+    doc.save(`Discarded_Bills_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border ${darkMode ? 'border-gray-700' : 'border-gray-200'} animate-fadeIn`}>
@@ -150,12 +228,38 @@ const DiscardedBills = ({ darkMode, onRestore, onClose }) => {
               Bills that were drafted and can be restored
             </p>
           </div>
-          <button 
-            onClick={onClose} 
-            className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
-          >
-            <FiX className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
-          </button>
+          
+          {/* ✅ Excel & PDF Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportToExcel}
+              disabled={discardedBills.length === 0}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              } ${discardedBills.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiFileText size={14} /> Excel
+            </button>
+            <button
+              onClick={exportToPDF}
+              disabled={discardedBills.length === 0}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-red-600 hover:bg-red-700 text-white' 
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              } ${discardedBills.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiDownload size={14} /> PDF
+            </button>
+            <button 
+              onClick={onClose} 
+              className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
+            >
+              <FiX className={`text-xl ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+            </button>
+          </div>
         </div>
 
         {/* Body */}

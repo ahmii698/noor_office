@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheckCircle, FiSearch, FiTrendingDown, FiDollarSign, FiHome, FiGrid, FiChevronDown, FiChevronUp, FiFilter, FiFolder, FiFolderPlus, FiCalendar } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiX, FiCheckCircle, FiSearch, FiTrendingDown, FiDollarSign, FiHome, FiGrid, FiChevronDown, FiChevronUp, FiFilter, FiFolder, FiFolderPlus, FiCalendar, FiFileText, FiDownload } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const getToday = () => {
   const today = new Date();
@@ -205,6 +208,116 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
   // ✅ Get count for base categories (General, Maintenance, etc.)
   const getCategoryCount = (category) => {
     return localExpenses.filter(exp => exp.category === category).length;
+  };
+
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    if (filteredExpenses.length === 0) {
+      toast.error('No expenses to export');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(filteredExpenses.map(exp => ({
+      'Description': exp.description || 'N/A',
+      'Category': exp.category || 'General',
+      'Amount (Rs.)': parseFloat(exp.amount).toLocaleString(),
+      'Date': exp.expense_date ? new Date(exp.expense_date).toLocaleDateString() : 
+              exp.date ? new Date(exp.date).toLocaleDateString() : 'N/A',
+      'Last Paid': exp.last_paid_date ? new Date(exp.last_paid_date).toLocaleDateString() : 'N/A',
+      'Next Due': exp.next_payment_date ? new Date(exp.next_payment_date).toLocaleDateString() : 'N/A',
+      'Recurring': exp.is_recurring === 1 ? 'Yes' : 'No',
+      'Recurring Type': exp.recurring_type || 'N/A',
+      'Filter': getDateFilterLabel()
+    })));
+
+    // Add summary row
+    const summaryRow = {
+      'Description': '📊 TOTAL',
+      'Category': '',
+      'Amount (Rs.)': totalExpenses.toLocaleString(),
+      'Date': '',
+      'Last Paid': '',
+      'Next Due': '',
+      'Recurring': '',
+      'Recurring Type': '',
+      'Filter': ''
+    };
+    
+    const data = XLSX.utils.sheet_to_json(ws);
+    data.push(summaryRow);
+    const ws2 = XLSX.utils.json_to_sheet(data);
+    
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws2, 'Expenses');
+    
+    // Summary sheet
+    const summaryData = [{
+      'Metric': 'Total Expenses',
+      'Value': `Rs. ${totalExpenses.toLocaleString()}`
+    }, {
+      'Metric': 'Total Records',
+      'Value': filteredExpenses.length
+    }, {
+      'Metric': 'Date Filter',
+      'Value': getDateFilterLabel()
+    }, {
+      'Metric': 'Tab',
+      'Value': activeTab === 'fixed' ? 'Fixed Monthly' : 'Other'
+    }];
+    const ws3 = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Summary');
+
+    XLSX.writeFile(wb, `Expenses_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    if (filteredExpenses.length === 0) {
+      toast.error('No expenses to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`Expenses Report - ${getDateFilterLabel()}`, 14, 15);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    doc.text(`Total Expenses: Rs. ${totalExpenses.toLocaleString()} | Records: ${filteredExpenses.length} | ${activeTab === 'fixed' ? 'Fixed Monthly' : 'Other'}`, 14, 28);
+    
+    const tableData = filteredExpenses.map(exp => [
+      exp.description || 'N/A',
+      exp.category || 'General',
+      `Rs. ${parseFloat(exp.amount).toLocaleString()}`,
+      exp.expense_date ? new Date(exp.expense_date).toLocaleDateString() : 
+      exp.date ? new Date(exp.date).toLocaleDateString() : 'N/A',
+      exp.is_recurring === 1 ? 'Yes' : 'No',
+      exp.last_paid_date ? new Date(exp.last_paid_date).toLocaleDateString() : 'N/A',
+      exp.next_payment_date ? new Date(exp.next_payment_date).toLocaleDateString() : 'N/A'
+    ]);
+
+    doc.autoTable({
+      head: [['Description', 'Category', 'Amount', 'Date', 'Recurring', 'Last Paid', 'Next Due']],
+      body: tableData,
+      startY: 34,
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 12 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 20 }
+      }
+    });
+
+    doc.save(`Expenses_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
   };
 
   const handleInputChange = useCallback((e) => {
@@ -461,6 +574,8 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     return category;
   };
 
+  const hasData = filteredExpenses.length > 0;
+
   return (
     <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
       <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'}`}>
@@ -488,6 +603,31 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                 </button>
               )}
             </div>
+            
+            {/* ✅ Excel & PDF Buttons */}
+            <button
+              onClick={exportToExcel}
+              disabled={!hasData}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiFileText size={14} /> Excel
+            </button>
+            <button
+              onClick={exportToPDF}
+              disabled={!hasData}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                darkMode 
+                  ? 'bg-red-600 hover:bg-red-700 text-white' 
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <FiDownload size={14} /> PDF
+            </button>
+            
             <button
               onClick={() => setIsModalOpen(true)}
               className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2 shadow-md whitespace-nowrap"
@@ -851,7 +991,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         </table>
       </div>
 
-      {/* ✅ Add/Edit Modal with Category Dropdown - CORRECT ORDER */}
+      {/* ✅ Add/Edit Modal with Category Dropdown */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -901,13 +1041,12 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                 />
               </div>
               
-              {/* ✅ Category Field with Dropdown - CORRECT ORDER */}
+              {/* ✅ Category Field with Dropdown */}
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Category *
                 </label>
                 
-                {/* Category Dropdown Button */}
                 <div className="relative">
                   <button
                     type="button"
@@ -924,7 +1063,6 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                   {showCategoryDropdown && (
                     <div className={`absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
                       <div className="p-2 space-y-1">
-                        {/* ✅ Other (New Sub-Category) - SAB SE PEHLE */}
                         <button
                           type="button"
                           onClick={() => {
@@ -939,7 +1077,6 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                           </span>
                         </button>
                         
-                        {/* ✅ Existing "Other" sub-categories from expenses */}
                         {otherSubCategories.length > 0 && (
                           <>
                             <div className="text-xs font-semibold text-purple-400 px-3 py-1 border-t dark:border-gray-700">📂 Your Sub-Categories</div>
@@ -965,7 +1102,6 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                           </>
                         )}
                         
-                        {/* ✅ Base Other Categories - General, Maintenance, etc. */}
                         <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Other Expenses</div>
                         {['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair'].map(cat => (
                           <button
@@ -978,7 +1114,6 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                           </button>
                         ))}
                         
-                        {/* ✅ Fixed categories - BAAD MEIN */}
                         <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Fixed Monthly</div>
                         {['Rent', 'Utilities', 'Salary', 'Office', 'Staff'].map(cat => (
                           <button
@@ -995,7 +1130,6 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                   )}
                 </div>
 
-                {/* ✅ Sub-category input for "Other" */}
                 {showOtherInput && (
                   <div className="mt-2">
                     <input

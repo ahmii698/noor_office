@@ -7,7 +7,7 @@ import {
   FiLogOut, FiCreditCard, FiClock, FiFile, FiBattery,
   FiArchive, FiTruck, FiShoppingCart, FiBookOpen
 } from 'react-icons/fi';
-import { FaCar } from 'react-icons/fa'; // ✅ Font Awesome se car icon
+import { FaCar } from 'react-icons/fa';
 import { HiMenu, HiX } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
@@ -25,16 +25,16 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
 
-  // ✅ Battery Submenu
+  // Battery Submenu
   const batterySubmenu = [
     { id: 'battery-overview', label: 'Overview', icon: FiTrendingUp, path: '/battery-overview' },
     { id: 'battery-charts', label: 'Charts', icon: FiPieChart, path: '/battery-charts' },
     { id: 'old-batteries', label: 'Old Batteries', icon: FiArchive, path: '/old-batteries' },
   ];
 
-  // ✅ Car Submenu
+  // Car Submenu
   const carSubmenu = [
-    { id: 'car-purchase', label: 'Car Info', icon:  FiTruck, path: '/car-purchase' },
+    { id: 'car-purchase', label: 'Car Info', icon: FiTruck, path: '/car-purchase' },
     { id: 'car-sell', label: 'Car Sell', icon: FiTruck, path: '/car-sell' },
     { id: 'car-records', label: 'Car Records', icon: FiBookOpen, path: '/car-records' },
   ];
@@ -75,22 +75,18 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'finance-credit', label: 'Credit', icon: FiCreditCard, path: '/finance-credit' },
   ];
 
-  // ✅ Check if Finance is active
   const isFinanceActive = () => {
     return financeSubmenu.some(item => item.id === activeMenu);
   };
 
-  // ✅ Check if Battery submenu is active
   const isBatteryActive = () => {
     return batterySubmenu.some(item => item.id === activeMenu);
   };
 
-  // ✅ Check if Car submenu is active
   const isCarActive = () => {
     return carSubmenu.some(item => item.id === activeMenu);
   };
 
-  // ✅ Open submenus if active
   useEffect(() => {
     if (isFinanceActive()) {
       setIsFinanceOpen(true);
@@ -103,7 +99,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   }, [activeMenu]);
 
-  // Fetch user data
   const fetchUserData = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -126,7 +121,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // Fetch reminder count
   const fetchReminderCount = async () => {
     try {
       const birthdayRes = await api.get('/birthday-reminders/today');
@@ -143,7 +137,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // Fetch discarded count
   const fetchDiscardedCount = async () => {
     try {
       const response = await api.get('/saved-carts/count');
@@ -155,12 +148,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
-  // Estimate count
   const fetchEstimateCount = async () => {
     setEstimateCount(0);
   };
 
-  // Logout
   const handleLogout = async () => {
     try {
       await api.post('/logout');
@@ -172,7 +163,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     navigate('/login');
   };
 
-  // Check window size for mobile detection
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 1024);
@@ -195,7 +185,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     img.onerror = () => setLogoExists(false);
   }, []);
 
-  // Fetch user data and counts on mount
   useEffect(() => {
     fetchUserData();
     fetchReminderCount();
@@ -223,19 +212,23 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     };
   }, []);
 
-  // ✅ Handle menu click
+  // ✅ Battery ka logic bilkul waisa hi hai jaisa pehle tha - koi change nahi
   const handleMenuClick = (item) => {
     if (item.hasSubmenu) {
       if (item.id === 'battery') {
-        setIsBatteryOpen(true);
-        setActiveMenu('battery-overview');
-        navigate('/battery-overview');
+        // ✅ Battery par click → BatteryPage khule
+        setIsBatteryOpen(!isBatteryOpen); // Submenu toggle (open/close)
+        setActiveMenu('battery'); // Active menu set
+        navigate('/battery'); // ✅ BatteryPage.jsx route
         if (isMobile) {
           setIsOpen(false);
         }
       } else if (item.id === 'car') {
-        setIsCarOpen(true);
-        setActiveMenu('car-purchase');
+        // ✅ FIX: Car par click → CarPurchasePage khule aur activeMenu bhi
+        // submenu ke id ('car-purchase') se match kare, taake highlighting
+        // aur isCarActive() dono sahi kaam karein
+        setIsCarOpen(!isCarOpen); // Submenu toggle
+        setActiveMenu('car-purchase'); // ✅ 'car' ki jagah 'car-purchase'
         navigate('/car-purchase');
         if (isMobile) {
           setIsOpen(false);
@@ -289,10 +282,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
             const isFinanceMenuItem = item.id === 'finance';
             const isBatteryMenuItem = item.id === 'battery';
             const isCarMenuItem = item.id === 'car';
+            // ✅ Active state - battery page active ho toh highlight ho
             const isActive = activeMenu === item.id || 
                            (isFinanceMenuItem && isFinanceActive()) ||
                            (isBatteryMenuItem && isBatteryActive()) ||
-                           (isCarMenuItem && isCarActive());
+                           (isCarMenuItem && isCarActive()) ||
+                           (isBatteryMenuItem && activeMenu === 'battery');
             const showBadge = item.badge > 0;
             
             return (
@@ -404,7 +399,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   </div>
                 )}
 
-                {/* ✅ Car Submenu */}
+                {/* Car Submenu */}
                 {isOpen && item.id === 'car' && isCarOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {carSubmenu.map((subItem) => {

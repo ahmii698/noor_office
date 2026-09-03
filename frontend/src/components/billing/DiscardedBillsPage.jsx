@@ -14,7 +14,9 @@ import {
   FiCalendar,
   FiTool,
   FiArrowLeft,
-  FiCheckCircle
+  FiCheckCircle,
+  FiFileText,
+  FiDownload
 } from 'react-icons/fi';
 import { 
   getDiscardedCarts, 
@@ -24,6 +26,9 @@ import {
 } from '../../services/api';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const DiscardedBillsPage = ({ darkMode, onRestore }) => {
   const [discardedBills, setDiscardedBills] = useState([]);
@@ -54,9 +59,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     fetchDiscardedBills();
   }, []);
 
-  // ✅ FIXED: List se hataya nahi jata, na hi "is_restored" wala fake state banaya jata.
-  // Backend se jo bhi data aata hai (including last_restored_at agar hai) wahi use hota hai.
-  // Isliye page change karne ya refresh karne par bhi entry maujood rahegi.
   const handleRestore = async (cartId) => {
     setRestoringId(cartId);
     try {
@@ -78,8 +80,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
         toast.success('✅ Bill restored! Draft still saved here — delete manually when done.');
         window.dispatchEvent(new Event('discarded-update'));
         
-        // ✅ Sirf list ko backend se refresh karo (last_restored_at wagera update ho jayega)
-        // list se remove NAHI karna, na hi fake "completed" state lagani
         await fetchDiscardedBills();
         
         setTimeout(() => {
@@ -163,6 +163,79 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     }
   };
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    if (discardedBills.length === 0) {
+      toast.error('No discarded bills to export');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(discardedBills.map(bill => ({
+      'ID': bill.id,
+      'Discarded Date': formatDate(bill.discarded_at || bill.created_at),
+      'Customer Name': bill.customer_name || 'N/A',
+      'Customer Phone': bill.customer_phone || 'N/A',
+      'Car Number': bill.customer_car_number || 'N/A',
+      'Car Model': bill.customer_car_model || 'N/A',
+      'Services Count': getItemCount(bill.cart_items),
+      'Total Items Qty': getTotalItems(bill.cart_items),
+      'Subtotal': `Rs. ${(bill.cart_summary?.subtotal || 0).toLocaleString()}`,
+      'Discount': `Rs. ${(bill.cart_summary?.discount || 0).toLocaleString()}`,
+      'Total Amount': `Rs. ${(bill.cart_summary?.total_amount || 0).toLocaleString()}`,
+      'Services': bill.cart_items?.map(item => item.name).join(', ') || ''
+    })));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Discarded Bills');
+    XLSX.writeFile(wb, `Discarded_Bills_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    if (discardedBills.length === 0) {
+      toast.error('No discarded bills to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.text('Discarded Bills Report', 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    
+    const tableData = discardedBills.map(bill => [
+      bill.id,
+      formatDate(bill.discarded_at || bill.created_at),
+      bill.customer_name || 'N/A',
+      bill.customer_phone || 'N/A',
+      bill.customer_car_number || 'N/A',
+      getItemCount(bill.cart_items),
+      getTotalItems(bill.cart_items),
+      `Rs. ${(bill.cart_summary?.subtotal || 0).toLocaleString()}`,
+      `Rs. ${(bill.cart_summary?.discount || 0).toLocaleString()}`,
+      `Rs. ${(bill.cart_summary?.total_amount || 0).toLocaleString()}`
+    ]);
+
+    doc.autoTable({
+      head: [['ID', 'Discarded Date', 'Customer', 'Phone', 'Car No.', 'Services', 'Qty', 'Subtotal', 'Discount', 'Total']],
+      body: tableData,
+      startY: 28,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 15 },
+        1: { cellWidth: 30 },
+        8: { cellWidth: 20 },
+        9: { cellWidth: 25 }
+      }
+    });
+
+    doc.save(`Discarded_Bills_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'} p-6`}>
       <div className="max-w-6xl mx-auto">
@@ -181,16 +254,41 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                 Bills that were discarded and can be restored anytime — they stay here until you delete them
               </p>
             </div>
-            <button
-              onClick={() => navigate('/billing')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                darkMode 
-                  ? 'bg-red-600 text-white hover:bg-red-700' 
-                  : 'bg-red-500 text-white hover:bg-red-600'
-              }`}
-            >
-              <FiArrowLeft /> Back to Billing
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* ✅ Excel & PDF Buttons */}
+              <button
+                onClick={exportToExcel}
+                disabled={discardedBills.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                } ${discardedBills.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiFileText size={14} /> Excel
+              </button>
+              <button
+                onClick={exportToPDF}
+                disabled={discardedBills.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                } ${discardedBills.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiDownload size={14} /> PDF
+              </button>
+              <button
+                onClick={() => navigate('/billing')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+                  darkMode 
+                    ? 'bg-gray-600 text-white hover:bg-gray-500' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                <FiArrowLeft /> Back to Billing
+              </button>
+            </div>
           </div>
         </div>
 
@@ -217,7 +315,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                 const totalAmount = getTotalAmount(bill.cart_summary);
                 const itemCount = getItemCount(bill.cart_items);
                 const hasCustomer = bill.customer_name || bill.customer_phone;
-                // ✅ Ab ye backend field se aata hai (agar column banaya hai), fake state nahi
                 const wasRestored = !!bill.last_restored_at;
                 const isRestoring = restoringId === bill.id;
 
@@ -300,7 +397,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
 
                         {/* Action Buttons */}
                         <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                          {/* ✅ Restore Button - Hamesha enabled, chahe pehle bhi restore ho chuka ho */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -325,7 +421,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                             )}
                           </button>
                           
-                          {/* Delete Button - Always available */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -341,7 +436,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                             <FiTrash2 size={16} />
                           </button>
                           
-                          {/* Expand Button */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

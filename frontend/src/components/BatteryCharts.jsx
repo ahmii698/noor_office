@@ -1,8 +1,15 @@
 // src/components/BatteryCharts.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiBarChart2, FiPieChart, FiTrendingUp, FiCalendar, FiBattery, FiDollarSign, FiPackage, FiClock } from 'react-icons/fi';
+import { 
+  FiBarChart2, FiPieChart, FiTrendingUp, FiCalendar, 
+  FiBattery, FiDollarSign, FiPackage, FiClock,
+  FiDownload, FiFileText
+} from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // ✅ CORRECT Karachi Timezone Helper Functions - NO MANUAL OFFSET
 const getKarachiDate = (dateString) => {
@@ -62,6 +69,11 @@ const formatDateKarachi = (dateString) => {
     year: 'numeric',
     timeZone: 'Asia/Karachi'
   });
+};
+
+// ✅ Format currency
+const formatCurrency = (amount) => {
+  return `Rs. ${(amount || 0).toLocaleString()}`;
 };
 
 const BatteryCharts = ({ darkMode }) => {
@@ -265,17 +277,192 @@ const BatteryCharts = ({ darkMode }) => {
     fetchChartData();
   }, [fetchChartData]);
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    const hasData = chartData.monthlySales.some(m => m.sales > 0) || 
+                     chartData.topBatteries.length > 0 || 
+                     chartData.dailyTrend.some(d => d.sales > 0);
+    
+    if (!hasData) {
+      toast.error('No data to export');
+      return;
+    }
+
+    // Create separate sheets for different data
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Monthly Sales
+    const monthlyData = chartData.monthlySales.map(m => ({
+      'Month': m.month,
+      'Sales (Rs.)': m.sales
+    }));
+    const ws1 = XLSX.utils.json_to_sheet(monthlyData);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Sales');
+
+    // Sheet 2: Top Batteries
+    const batteryData = chartData.topBatteries.map(b => ({
+      'Battery Name': b.name,
+      'Quantity Sold': b.count
+    }));
+    const ws2 = XLSX.utils.json_to_sheet(batteryData);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Top Batteries');
+
+    // Sheet 3: Daily Trend
+    const dailyData = chartData.dailyTrend.map(d => ({
+      'Date': d.date,
+      'Sales (Rs.)': d.sales
+    }));
+    const ws3 = XLSX.utils.json_to_sheet(dailyData);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Daily Trend');
+
+    // Sheet 4: Summary
+    const totalRevenue = chartData.monthlySales.reduce((sum, m) => sum + m.sales, 0);
+    const totalBatteries = chartData.topBatteries.reduce((sum, b) => sum + b.count, 0);
+    const summaryData = [{
+      'Metric': 'Total Revenue',
+      'Value': formatCurrency(totalRevenue)
+    }, {
+      'Metric': 'Total Batteries Sold',
+      'Value': totalBatteries
+    }, {
+      'Metric': 'Filter',
+      'Value': getFilterLabel()
+    }, {
+      'Metric': 'Top Battery',
+      'Value': chartData.topBatteries.length > 0 ? chartData.topBatteries[0].name : '-'
+    }];
+    const ws4 = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws4, 'Summary');
+
+    XLSX.writeFile(wb, `Battery_Sales_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    const hasData = chartData.monthlySales.some(m => m.sales > 0) || 
+                     chartData.topBatteries.length > 0 || 
+                     chartData.dailyTrend.some(d => d.sales > 0);
+    
+    if (!hasData) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(220, 38, 38);
+    doc.text('Battery Sales Report', 14, 15);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    doc.text(`Filter: ${getFilterLabel()}`, 14, 28);
+    doc.text('Timezone: Asia/Karachi (UTC+5)', 14, 34);
+
+    // Summary Stats
+    const totalRevenue = chartData.monthlySales.reduce((sum, m) => sum + m.sales, 0);
+    const totalBatteries = chartData.topBatteries.reduce((sum, b) => sum + b.count, 0);
+    const topBattery = chartData.topBatteries.length > 0 ? chartData.topBatteries[0].name : '-';
+    
+    doc.setFontSize(10);
+    doc.text(`Total Revenue: ${formatCurrency(totalRevenue)}`, 14, 42);
+    doc.text(`Total Batteries Sold: ${totalBatteries}`, 14, 48);
+    doc.text(`Top Battery: ${topBattery}`, 14, 54);
+
+    let startY = 60;
+
+    // Monthly Sales Table
+    doc.setFontSize(12);
+    doc.setTextColor(59, 130, 246);
+    doc.text('Monthly Sales', 14, startY);
+    doc.setTextColor(0, 0, 0);
+    startY += 6;
+
+    const monthlyTableData = chartData.monthlySales.map(m => [
+      m.month,
+      formatCurrency(m.sales)
+    ]);
+
+    doc.autoTable({
+      head: [['Month', 'Sales']],
+      body: monthlyTableData,
+      startY: startY,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [59, 130, 246] },
+      columnStyles: {
+        0: { cellWidth: 25 },
+        1: { cellWidth: 35 }
+      }
+    });
+
+    startY = doc.lastAutoTable.finalY + 10;
+
+    // Top Batteries Table
+    doc.setFontSize(12);
+    doc.setTextColor(34, 197, 94);
+    doc.text('Top Selling Batteries', 14, startY);
+    doc.setTextColor(0, 0, 0);
+    startY += 6;
+
+    const batteryTableData = chartData.topBatteries.map(b => [
+      b.name,
+      b.count
+    ]);
+
+    doc.autoTable({
+      head: [['Battery Name', 'Quantity Sold']],
+      body: batteryTableData,
+      startY: startY,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [34, 197, 94] },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 25 }
+      }
+    });
+
+    startY = doc.lastAutoTable.finalY + 10;
+
+    // Daily Trend Table (last 20 days)
+    if (chartData.dailyTrend.length > 0) {
+      doc.setFontSize(12);
+      doc.setTextColor(139, 92, 246);
+      doc.text('Daily Sales Trend (Last 30 Days)', 14, startY);
+      doc.setTextColor(0, 0, 0);
+      startY += 6;
+
+      const dailyData = chartData.dailyTrend.slice(-20).map(d => [
+        d.date,
+        formatCurrency(d.sales)
+      ]);
+
+      doc.autoTable({
+        head: [['Date', 'Sales']],
+        body: dailyData,
+        startY: startY,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [139, 92, 246] },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 35 }
+        }
+      });
+    }
+
+    doc.save(`Battery_Sales_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   // ✅ Simple bar chart component - FIXED: pixel-based height instead of %
-  // (percentage height silently collapses because the flex column parent
-  // has no explicit height, so bars must be sized in px against a known
-  // pixel budget derived from the h-64 container instead)
   const BarChart = ({ data, label, color = '#ef4444', maxValue = null }) => {
     if (!data || data.length === 0) {
       return <div className="text-center py-8 text-gray-400">No data available</div>;
     }
 
     const max = maxValue || Math.max(...data.map(d => d.value || d.sales || 0), 1);
-    const MAX_BAR_PX = 180; // usable pixel height for bars inside the 256px (h-64) container
+    const MAX_BAR_PX = 180;
 
     return (
       <div className="w-full">
@@ -388,11 +575,15 @@ const BatteryCharts = ({ darkMode }) => {
     );
   }
 
+  const hasData = chartData.monthlySales.some(m => m.sales > 0) || 
+                   chartData.topBatteries.length > 0 || 
+                   chartData.dailyTrend.some(d => d.sales > 0);
+
   return (
     <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
       {/* Header with Filters */}
       <div className={`flex flex-wrap justify-between items-center p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <FiBarChart2 className="text-red-500 text-2xl" />
           <h2 className="text-xl font-bold">Battery Sales Charts</h2>
           <span className={`text-xs px-2 py-1 rounded-full ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
@@ -401,6 +592,30 @@ const BatteryCharts = ({ darkMode }) => {
           <span className="text-xs text-green-500">(Karachi Time)</span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {/* ✅ Excel & PDF Buttons */}
+          <button
+            onClick={exportToExcel}
+            disabled={!hasData}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+              darkMode 
+                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                : 'bg-green-500 hover:bg-green-600 text-white'
+            } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <FiFileText size={12} /> Excel
+          </button>
+          <button
+            onClick={exportToPDF}
+            disabled={!hasData}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+              darkMode 
+                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                : 'bg-red-500 hover:bg-red-600 text-white'
+            } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <FiDownload size={12} /> PDF
+          </button>
+
           {/* Filter Buttons */}
           <button
             onClick={() => { setTimeFilter('year'); setShowCustomDate(false); }}

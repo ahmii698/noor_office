@@ -6,11 +6,14 @@ import {
   FiChevronLeft, FiChevronRight, FiInbox,
   FiList, FiCalendar, FiCheckCircle, FiAlertCircle,
   FiTrash2, FiLoader, FiShoppingCart, FiBox, FiUser,
-  FiPlusCircle, FiCreditCard
+  FiPlusCircle, FiCreditCard, FiDownload, FiFileText as FiFileIcon
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
 import './Credit.css';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 // ✅ Helper function to format date in Pakistan Time (UTC+5)
 const formatPakistanTime = (dateString) => {
@@ -95,9 +98,6 @@ const Credit = ({ darkMode }) => {
   const paySubmitRef = useRef(null);
 
   // ✅ FIXED: Group vendors by name with proper payments merging & SORTING (NEWEST FIRST)
-  // ✅ ALSO FIXED: "products" / "invoiceNumber" / "id" shown in the outer table now always
-  //    reflect the MOST RECENT record for that vendor, not just the first one encountered
-  //    from the API (which was making the table show the oldest purchase's product).
   const groupVendorsByName = (vendorsList) => {
     const grouped = {};
     
@@ -120,8 +120,6 @@ const Credit = ({ darkMode }) => {
           productsList: []
         };
       } else if (new Date(vendor.created_at) > new Date(grouped[key].createdAt)) {
-        // ✅ This record is newer than the current "latest" for this vendor —
-        // update the fields that should reflect the most recent purchase.
         grouped[key].id = vendor.id;
         grouped[key].products = vendor.products;
         grouped[key].invoiceNumber = vendor.invoice_number;
@@ -164,9 +162,7 @@ const Credit = ({ darkMode }) => {
       }
     });
     
-    // ✅ CRITICAL FIX: Sort vendors by their latest record date (NEWEST FIRST)
     return Object.values(grouped).sort((a, b) => {
-      // Get the latest record date from each vendor
       const getLatestDate = (vendor) => {
         if (!vendor.records || vendor.records.length === 0) return new Date(0);
         const latest = vendor.records.reduce((latest, r) => 
@@ -177,8 +173,6 @@ const Credit = ({ darkMode }) => {
       
       const dateA = getLatestDate(a);
       const dateB = getLatestDate(b);
-      
-      // Sort newest first (descending)
       return dateB - dateA;
     });
   };
@@ -257,10 +251,6 @@ const Credit = ({ darkMode }) => {
     fetchAllProducts();
   }, [fetchVendors, fetchAllProducts]);
 
-  // ✅ FIXED: Search now also looks inside ALL past records (products + invoice numbers)
-  // for a vendor, not just the latest one. Previously only vendor.products / vendor.invoiceNumber
-  // (the most recent record) were checked, so a product bought earlier (but not in the latest
-  // order) wouldn't match the search even though it appears in that vendor's history.
   const filteredVendors = vendors.filter(vendor => {
     const term = searchTerm.toLowerCase();
 
@@ -328,14 +318,12 @@ const Credit = ({ darkMode }) => {
 
   // ✅ Add product to selection with DUPLICATE CHECK
   const handleAddProductToSelection = (product) => {
-    // Check if product already exists in selected list (by id)
     const existingById = selectedProducts.find(p => p.product_id === product.id);
     if (existingById) {
       toast.error('Product already added to this vendor!');
       return;
     }
     
-    // Check if product with SAME NAME already exists (case-insensitive)
     const existingByName = selectedProducts.find(p => 
       p.product_name?.toLowerCase().trim() === product.name?.toLowerCase().trim()
     );
@@ -344,7 +332,6 @@ const Credit = ({ darkMode }) => {
       return;
     }
     
-    // If no duplicate, add the product
     setSelectedProducts([
       ...selectedProducts,
       {
@@ -379,7 +366,6 @@ const Credit = ({ darkMode }) => {
     setSelectedProducts(updated);
   };
 
-  // ✅ Filter products - only show products NOT already selected
   const filteredProducts = allProducts.filter(p =>
     p.name?.toLowerCase().includes(productSearch.toLowerCase()) &&
     !selectedProducts.find(sp => sp.product_id === p.id)
@@ -553,6 +539,114 @@ const Credit = ({ darkMode }) => {
     }
   };
 
+  // ========== EXCEL EXPORT ==========
+  const exportToExcel = () => {
+    if (vendors.length === 0) {
+      toast.error('No vendors to export');
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(vendors.map(v => ({
+      'Vendor Name': v.name || 'N/A',
+      'Products': v.products || 'N/A',
+      'Total Orders': v.records?.length || 0,
+      'Total Amount (Rs.)': (v.totalAmount || 0).toLocaleString(),
+      'Total Paid (Rs.)': (v.paidAmount || 0).toLocaleString(),
+      'Balance (Rs.)': (v.balanceAmount || 0).toLocaleString(),
+      'Stock Quantity': v.stockQuantity || 0,
+      'Status': (v.balanceAmount || 0) > 0 ? 'Due' : 'Paid',
+      'Created By': v.createdBy || 'System',
+      'Created At': v.createdAt ? new Date(v.createdAt).toLocaleString() : 'N/A'
+    })));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Vendors');
+    
+    // Add summary sheet
+    const summaryData = [{
+      'Metric': 'Total Vendors',
+      'Value': vendors.length
+    }, {
+      'Metric': 'Total Amount',
+      'Value': `Rs. ${vendors.reduce((sum, v) => sum + (v.totalAmount || 0), 0).toLocaleString()}`
+    }, {
+      'Metric': 'Total Paid',
+      'Value': `Rs. ${vendors.reduce((sum, v) => sum + (v.paidAmount || 0), 0).toLocaleString()}`
+    }, {
+      'Metric': 'Total Balance',
+      'Value': `Rs. ${vendors.reduce((sum, v) => sum + (v.balanceAmount || 0), 0).toLocaleString()}`
+    }, {
+      'Metric': 'Pending',
+      'Value': vendors.filter(v => v.balanceAmount > 0 && v.paidAmount === 0).length
+    }, {
+      'Metric': 'Partial',
+      'Value': vendors.filter(v => v.balanceAmount > 0 && v.paidAmount > 0).length
+    }, {
+      'Metric': 'Fully Paid',
+      'Value': vendors.filter(v => v.balanceAmount === 0).length
+    }];
+    const ws2 = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+
+    XLSX.writeFile(wb, `Credit_Vendors_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.success('Exported to Excel!');
+  };
+
+  // ========== PDF EXPORT ==========
+  const exportToPDF = () => {
+    if (vendors.length === 0) {
+      toast.error('No vendors to export');
+      return;
+    }
+
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    
+    doc.setFontSize(16);
+    doc.setTextColor(220, 38, 38);
+    doc.text('Credit Management Report', 14, 15);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+
+    // Summary
+    const totalAmount = vendors.reduce((sum, v) => sum + (v.totalAmount || 0), 0);
+    const totalPaid = vendors.reduce((sum, v) => sum + (v.paidAmount || 0), 0);
+    const totalBalance = vendors.reduce((sum, v) => sum + (v.balanceAmount || 0), 0);
+    
+    doc.setFontSize(9);
+    doc.text(`Total Vendors: ${vendors.length}  |  Total Amount: Rs. ${totalAmount.toLocaleString()}  |  Total Paid: Rs. ${totalPaid.toLocaleString()}  |  Total Balance: Rs. ${totalBalance.toLocaleString()}`, 14, 30);
+
+    const tableData = vendors.map(v => [
+      v.name || 'N/A',
+      v.products || 'N/A',
+      v.records?.length || 0,
+      `Rs. ${(v.totalAmount || 0).toLocaleString()}`,
+      `Rs. ${(v.paidAmount || 0).toLocaleString()}`,
+      `Rs. ${(v.balanceAmount || 0).toLocaleString()}`,
+      (v.balanceAmount || 0) > 0 ? 'Due' : 'Paid'
+    ]);
+
+    doc.autoTable({
+      head: [['Vendor Name', 'Products', 'Orders', 'Total', 'Paid', 'Balance', 'Status']],
+      body: tableData,
+      startY: 36,
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 12 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 15 }
+      }
+    });
+
+    doc.save(`Credit_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    toast.success('Exported to PDF!');
+  };
+
   if (loading) {
     return (
       <div className={`flex items-center justify-center h-96 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -564,7 +658,6 @@ const Credit = ({ darkMode }) => {
     );
   }
 
-  // ✅ Calculate totals for stats cards
   const totalAmount = vendors.reduce((sum, v) => sum + (v.totalAmount || 0), 0);
   const totalPaid = vendors.reduce((sum, v) => sum + (v.paidAmount || 0), 0);
   const totalBalance = vendors.reduce((sum, v) => sum + (v.balanceAmount || 0), 0);
@@ -600,12 +693,37 @@ const Credit = ({ darkMode }) => {
                 </p>
               </div>
             </div>
-            <button onClick={handleAddVendor} className="credit-btn-add">
-              <FiPlus className="credit-btn-icon" /> Add Vendor
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* ✅ Excel & PDF Buttons */}
+              <button
+                onClick={exportToExcel}
+                disabled={vendors.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                    : 'bg-green-500 hover:bg-green-600 text-white'
+                } ${vendors.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiFileIcon size={14} /> Excel
+              </button>
+              <button
+                onClick={exportToPDF}
+                disabled={vendors.length === 0}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                    : 'bg-red-500 hover:bg-red-600 text-white'
+                } ${vendors.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <FiDownload size={14} /> PDF
+              </button>
+              <button onClick={handleAddVendor} className="credit-btn-add">
+                <FiPlus className="credit-btn-icon" /> Add Vendor
+              </button>
+            </div>
           </div>
 
-          {/* ✅ 3 STATS CARDS - Total Amount, Total Paid, Total Balance */}
+          {/* 3 STATS CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
             <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-5 text-white shadow-lg">
               <div className="flex justify-between items-start">
@@ -776,7 +894,7 @@ const Credit = ({ darkMode }) => {
         </div>
       </div>
 
-      {/* View History Modal - ✅ FIXED: Records sorted NEWEST FIRST */}
+      {/* View History Modal */}
       {isViewModalOpen && selectedVendor && (
         <div className="credit-modal-overlay">
           <div className={`credit-modal ${darkMode ? 'dark' : ''}`}>
@@ -812,7 +930,7 @@ const Credit = ({ darkMode }) => {
                 </div>
               </div>
 
-              {/* All Records - ✅ SORTED NEWEST FIRST */}
+              {/* All Records */}
               <div className="mb-6">
                 <h3 className="credit-history-title">
                   <FiBox className="credit-history-icon" /> All Records
@@ -837,7 +955,6 @@ const Credit = ({ darkMode }) => {
                         </tr>
                       </thead>
                       <tbody>
-                        {/* ✅ FIXED: Sort records by createdAt - NEWEST FIRST */}
                         {[...selectedVendor.records]
                           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
                           .map((record, idx) => (
@@ -1122,7 +1239,7 @@ const Credit = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Add Vendor Modal - "New" button REMOVED, only existing products */}
+      {/* Add Vendor Modal */}
       {isAddModalOpen && (
         <div className="credit-modal-overlay">
           <div className={`credit-modal ${darkMode ? 'dark' : ''}`}>
@@ -1167,7 +1284,6 @@ const Credit = ({ darkMode }) => {
                     >
                       <FiShoppingCart />
                     </button>
-                    {/* ✅ "New" button REMOVED - user can only select existing products */}
                   </div>
                   
                   {showProductDropdown && (

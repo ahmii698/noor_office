@@ -10,25 +10,27 @@ use Illuminate\Support\Facades\Validator;
 class OldBatteryController extends Controller
 {
     /**
-     * ✅ Get all old batteries
-     * GET /api/old-batteries
+     * GET /api/old-batteries?status=in_stock|sold|all
+     * Default: in_stock (sale page ke liye)
      */
     public function index(Request $request)
     {
         try {
             $query = OldBattery::query();
 
-            // ✅ Search filter
+            $status = $request->get('status', 'in_stock');
+            if ($status !== 'all') {
+                $query->where('status', $status);
+            }
+
             if ($request->has('search') && !empty($request->search)) {
                 $query->search($request->search);
             }
 
-            // ✅ Date range filter
             if ($request->has('start_date') && $request->has('end_date')) {
                 $query->dateBetween($request->start_date, $request->end_date);
             }
 
-            // ✅ Order by latest first
             $oldBatteries = $query->orderBy('created_at', 'desc')->get();
 
             return response()->json([
@@ -36,7 +38,6 @@ class OldBatteryController extends Controller
                 'data' => $oldBatteries,
                 'count' => $oldBatteries->count()
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -47,44 +48,39 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ Get statistics
      * GET /api/old-batteries/stats
      */
     public function stats(Request $request)
     {
         try {
-            $query = OldBattery::query();
+            $all = OldBattery::query();
 
-            // ✅ Date range filter for stats
             if ($request->has('start_date') && $request->has('end_date')) {
-                $query->dateBetween($request->start_date, $request->end_date);
+                $all->dateBetween($request->start_date, $request->end_date);
             }
 
-            $oldBatteries = $query->get();
-            
-            $total = $oldBatteries->sum('trade_in_amount');
-            $count = $oldBatteries->count();
-            $avg = $count > 0 ? $total / $count : 0;
+            $records = $all->get();
+            $inStock = $records->where('status', 'in_stock');
+            $sold    = $records->where('status', 'sold');
 
-            // ✅ Get today's count
-            $todayCount = OldBattery::whereDate('purchase_date', today())->count();
-            
-            // ✅ Get this month's total
-            $monthTotal = OldBattery::whereMonth('purchase_date', now()->month)
-                                    ->whereYear('purchase_date', now()->year)
-                                    ->sum('trade_in_amount');
+            $stockValue    = $inStock->sum('trade_in_amount');
+            $soldCost      = $sold->sum('trade_in_amount');
+            $soldRevenue   = $sold->sum('selling_price');
+            $totalProfit   = $sold->sum('profit');
 
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'total_amount' => round($total, 2),
-                    'total_count' => $count,
-                    'average_amount' => round($avg, 2),
-                    'today_count' => $todayCount,
-                    'month_total' => round($monthTotal, 2)
+                    'total_count'      => $records->count(),
+                    'in_stock_count'   => $inStock->count(),
+                    'sold_count'       => $sold->count(),
+                    'stock_value'      => round($stockValue, 2),
+                    'sold_cost'        => round($soldCost, 2),
+                    'sold_revenue'     => round($soldRevenue, 2),
+                    'total_profit'     => round($totalProfit, 2),
+                    'today_count'      => OldBattery::whereDate('purchase_date', today())->count(),
                 ]
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -95,13 +91,11 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ Store new old battery record
      * POST /api/old-batteries
      */
     public function store(Request $request)
     {
         try {
-            // ✅ Validation
             $validator = Validator::make($request->all(), [
                 'battery_name' => 'required|string|max:255',
                 'trade_in_amount' => 'required|numeric|min:0',
@@ -119,13 +113,13 @@ class OldBatteryController extends Controller
                 ], 422);
             }
 
-            // ✅ Create record
             $oldBattery = OldBattery::create([
                 'battery_name' => $request->battery_name,
                 'trade_in_amount' => $request->trade_in_amount,
                 'customer_name' => $request->customer_name ?? 'Walk-in',
                 'customer_phone' => $request->customer_phone ?? null,
                 'note' => $request->note ?? null,
+                'status' => 'in_stock',
                 'purchase_date' => $request->purchase_date ?? now()
             ]);
 
@@ -134,7 +128,6 @@ class OldBatteryController extends Controller
                 'message' => 'Old battery record saved successfully',
                 'data' => $oldBattery
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -145,7 +138,6 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ Get single old battery record
      * GET /api/old-batteries/{id}
      */
     public function show($id)
@@ -164,7 +156,6 @@ class OldBatteryController extends Controller
                 'success' => true,
                 'data' => $oldBattery
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -175,7 +166,6 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ Update old battery record
      * PUT /api/old-batteries/{id}
      */
     public function update(Request $request, $id)
@@ -190,10 +180,10 @@ class OldBatteryController extends Controller
                 ], 404);
             }
 
-            // ✅ Validation
             $validator = Validator::make($request->all(), [
                 'battery_name' => 'sometimes|required|string|max:255',
                 'trade_in_amount' => 'sometimes|required|numeric|min:0',
+                'selling_price' => 'nullable|numeric|min:0',
                 'customer_name' => 'nullable|string|max:255',
                 'customer_phone' => 'nullable|string|max:20',
                 'note' => 'nullable|string',
@@ -208,15 +198,22 @@ class OldBatteryController extends Controller
                 ], 422);
             }
 
-            // ✅ Update record
-            $oldBattery->update($request->all());
+            $oldBattery->update($request->only([
+                'battery_name', 'trade_in_amount', 'selling_price',
+                'customer_name', 'customer_phone', 'note', 'purchase_date'
+            ]));
+
+            // Sold record ho tou profit dobara calculate
+            if ($oldBattery->status === 'sold' && $oldBattery->selling_price !== null) {
+                $oldBattery->profit = $oldBattery->selling_price - $oldBattery->trade_in_amount;
+                $oldBattery->save();
+            }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Record updated successfully',
                 'data' => $oldBattery
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -227,7 +224,6 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ Delete old battery record
      * DELETE /api/old-batteries/{id}
      */
     public function destroy($id)
@@ -248,7 +244,6 @@ class OldBatteryController extends Controller
                 'success' => true,
                 'message' => 'Record deleted successfully'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -259,7 +254,6 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ Bulk delete old battery records
      * DELETE /api/old-batteries/bulk-delete
      */
     public function bulkDelete(Request $request)
@@ -284,7 +278,6 @@ class OldBatteryController extends Controller
                 'success' => true,
                 'message' => "{$deleted} records deleted successfully"
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -295,7 +288,6 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ Get old batteries by date range
      * GET /api/old-batteries/date-range
      */
     public function getByDateRange(Request $request)
@@ -323,7 +315,6 @@ class OldBatteryController extends Controller
                 'data' => $oldBatteries,
                 'count' => $oldBatteries->count()
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -334,13 +325,13 @@ class OldBatteryController extends Controller
     }
 
     /**
-     * ✅ NEW: Sell an old battery (remove from old_batteries inventory)
      * POST /api/old-batteries/{id}/sell
+     * Body: selling_price (required), customer_name, customer_phone, note, invoice_no
+     * Record delete nahi hota, 'sold' mark hota hai aur profit save hota hai.
      */
     public function sellOldBattery($id, Request $request)
     {
         try {
-            // ✅ Find the old battery record
             $oldBattery = OldBattery::find($id);
 
             if (!$oldBattery) {
@@ -350,11 +341,19 @@ class OldBatteryController extends Controller
                 ], 404);
             }
 
-            // ✅ Validation for sell
+            if ($oldBattery->status === 'sold') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This battery is already sold'
+                ], 409);
+            }
+
             $validator = Validator::make($request->all(), [
+                'selling_price' => 'required|numeric|min:0',
                 'customer_name' => 'nullable|string|max:255',
                 'customer_phone' => 'nullable|string|max:20',
-                'note' => 'nullable|string'
+                'note' => 'nullable|string',
+                'invoice_no' => 'nullable|string|max:255'
             ]);
 
             if ($validator->fails()) {
@@ -365,27 +364,28 @@ class OldBatteryController extends Controller
                 ], 422);
             }
 
-            // ✅ Store the data before deleting
-            $batteryData = [
-                'id' => $oldBattery->id,
-                'battery_name' => $oldBattery->battery_name,
-                'trade_in_amount' => $oldBattery->trade_in_amount,
-                'customer_name' => $oldBattery->customer_name,
-                'customer_phone' => $oldBattery->customer_phone,
-                'note' => $oldBattery->note,
-                'purchase_date' => $oldBattery->purchase_date
-            ];
+            $sellingPrice = (float) $request->selling_price;
+            $purchasePrice = (float) $oldBattery->trade_in_amount;
 
-            // ✅ Delete the old battery record (it's been sold)
-            $oldBattery->delete();
+            $oldBattery->update([
+                'status' => 'sold',
+                'selling_price' => $sellingPrice,
+                'profit' => $sellingPrice - $purchasePrice,
+                'sold_at' => now(),
+                'sold_customer_name' => $request->customer_name ?: 'Walk-in',
+                'sold_customer_phone' => $request->customer_phone,
+                'sold_invoice_no' => $request->invoice_no,
+            ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Old battery sold successfully!',
-                'data' => $batteryData,
+                'data' => $oldBattery->fresh(),
+                'purchase_price' => $purchasePrice,
+                'selling_price' => $sellingPrice,
+                'profit' => $sellingPrice - $purchasePrice,
                 'sold_at' => now()->toISOString()
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

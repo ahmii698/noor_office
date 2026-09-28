@@ -357,7 +357,6 @@ const Dashboard = () => {
 
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Monthly Summary
     const monthlyDataSheet = monthlyData.map(m => ({
       'Month': m.month,
       'Sales (Rs.)': m.sales,
@@ -368,7 +367,6 @@ const Dashboard = () => {
     const ws1 = XLSX.utils.json_to_sheet(monthlyDataSheet);
     XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Summary');
 
-    // Sheet 2: Product Sales Distribution
     const productData = productSalesData.map(p => ({
       'Product': p.name,
       'Total Value (Rs.)': p.value
@@ -376,7 +374,6 @@ const Dashboard = () => {
     const ws2 = XLSX.utils.json_to_sheet(productData);
     XLSX.utils.book_append_sheet(wb, ws2, 'Product Sales');
 
-    // Sheet 3: Recent Invoices
     const invoiceData = recentInvoices.map(inv => ({
       'Invoice #': inv.invoice_no || inv.invoiceNo,
       'Customer': inv.customer_name || inv.customer?.name || 'Walk-in',
@@ -386,7 +383,6 @@ const Dashboard = () => {
     const ws3 = XLSX.utils.json_to_sheet(invoiceData);
     XLSX.utils.book_append_sheet(wb, ws3, 'Recent Invoices');
 
-    // Sheet 4: Summary Stats
     const summaryData = [{
       'Metric': 'Total Sales',
       'Value': `Rs. ${totalSales.toLocaleString()}`
@@ -433,7 +429,6 @@ const Dashboard = () => {
 
     const doc = new jsPDF('landscape', 'mm', 'a4');
     
-    // Header
     doc.setFontSize(18);
     doc.setTextColor(220, 38, 38);
     doc.text('Dashboard Report', 14, 15);
@@ -442,7 +437,6 @@ const Dashboard = () => {
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
     doc.text(`Filter: ${getFilterLabel()}`, 14, 28);
 
-    // Summary Stats
     doc.setFontSize(10);
     doc.text(`Total Sales: Rs. ${totalSales.toLocaleString()}`, 14, 36);
     doc.text(`Total Profit: Rs. ${totalProfitCalc.toLocaleString()} (${profitMargin.toFixed(1)}% margin)`, 14, 42);
@@ -453,7 +447,6 @@ const Dashboard = () => {
 
     let startY = 74;
 
-    // Monthly Summary Table
     doc.setFontSize(12);
     doc.setTextColor(59, 130, 246);
     doc.text('Monthly Summary', 14, startY);
@@ -485,7 +478,6 @@ const Dashboard = () => {
 
     startY = doc.lastAutoTable.finalY + 10;
 
-    // Product Sales Table
     if (productSalesData.length > 0) {
       doc.setFontSize(12);
       doc.setTextColor(34, 197, 94);
@@ -513,7 +505,6 @@ const Dashboard = () => {
       startY = doc.lastAutoTable.finalY + 10;
     }
 
-    // Recent Invoices Table
     if (recentInvoices.length > 0) {
       doc.setFontSize(12);
       doc.setTextColor(220, 38, 38);
@@ -710,7 +701,7 @@ const Dashboard = () => {
       inventory: 'Manage products, track purchases and sales',
       'finance-overview': 'View daily, weekly and monthly financial overview',
       'finance-expenses': 'Add, edit and manage all expenses',
-      'finance-charts': 'Visualize financial data with interactive charts',
+      'finance-charts': 'Visualize financial data with interactive charts', 
       'finance-reports': 'Analyze expense distribution and generate reports',
       'finance-reminders': 'Track upcoming bills, salaries and payments',
       'finance-credit': 'Manage vendor credits, payments and history',
@@ -881,7 +872,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900' : 'bg-gray-100'}`}>
+    <div className={`min-h-screen ${darkMode ? 'dark bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'}`}>
       <div className="flex h-screen">
         <Sidebar 
           activeMenu={activeMenu} 
@@ -912,7 +903,6 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* ✅ Excel & PDF Buttons */}
               <button
                 onClick={exportToExcel}
                 disabled={!hasData}
@@ -941,9 +931,7 @@ const Dashboard = () => {
               >
                 {darkMode ? <FiSun className="text-xl" /> : <FiMoon className="text-xl" />}
               </button>
-              <button onClick={handleLogout} className={`p-2 rounded-full transition ${darkMode ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-600'}`}>
-                <FiLogOut className="text-xl" />
-              </button>
+           
             </div>
           </div>
 
@@ -1219,7 +1207,7 @@ const Dashboard = () => {
 
                 {/* Recent Invoices */}
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                  <div className="px-6 py-4 border-b flex justify-between items-center">
+                  <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
                     <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                       <FiFileText className="text-red-500" /> Recent Invoices
                       <span className={`text-xs font-normal ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1231,9 +1219,9 @@ const Dashboard = () => {
                     </button>
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                       <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                        <tr>
+                        <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                           <th className="px-6 py-3 text-left text-xs font-medium uppercase">Invoice #</th>
                           <th className="px-6 py-3 text-left text-xs font-medium uppercase">Customer</th>
                           <th className="px-6 py-3 text-right text-xs font-medium uppercase">Amount</th>
@@ -1252,11 +1240,17 @@ const Dashboard = () => {
                         ) : (
                           recentInvoices.map(inv => (
                             <tr key={inv.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                              <td className="px-6 py-4 text-sm font-medium">{inv.invoice_no || inv.invoiceNo}</td>
-                              <td className="px-6 py-4 text-sm">{inv.customer_name || inv.customer?.name || 'Walk-in'}</td>
+                              <td className={`px-6 py-4 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{inv.invoice_no || inv.invoiceNo}</td>
+                              <td className={`px-6 py-4 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{inv.customer_name || inv.customer?.name || 'Walk-in'}</td>
                               <td className="px-6 py-4 text-sm font-semibold text-red-500 text-right">Rs. {(inv.total_amount || inv.total || 0).toLocaleString()}</td>
                               <td className="px-6 py-4 text-sm text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs ${inv.status === 'Paid' ? 'bg-green-100 text-green-700' : inv.status === 'Partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                                <span className={`px-2 py-1 rounded-full text-xs ${
+                                  inv.status === 'Paid' 
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                                    : inv.status === 'Partial' 
+                                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' 
+                                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                }`}>
                                   {inv.status || 'Pending'}
                                 </span>
                               </td>
@@ -1404,42 +1398,34 @@ const Dashboard = () => {
                 <EstimatedBill darkMode={darkMode} />
               )}
 
-              {/* Estimate Records */}
               {activeMenu === 'estimate-records' && (
                 <EstimateRecords darkMode={darkMode} />
               )}
 
-              {/* Battery Page */}
               {activeMenu === 'battery' && (
                 <BatteryPage darkMode={darkMode} />
               )}
 
-              {/* Battery Overview */}
               {activeMenu === 'battery-overview' && (
                 <BatteryOverview darkMode={darkMode} />
               )}
 
-              {/* Battery Charts */}
               {activeMenu === 'battery-charts' && (
                 <BatteryCharts darkMode={darkMode} />
               )}
 
-              {/* Old Batteries */}
               {activeMenu === 'old-batteries' && (
                 <OldBatteries darkMode={darkMode} />
               )}
 
-              {/* ✅ NEW: Car Purchase */}
               {activeMenu === 'car-purchase' && (
                 <CarPurchase darkMode={darkMode} />
               )}
 
-              {/* ✅ NEW: Car Sell */}
               {activeMenu === 'car-sell' && (
                 <CarSell darkMode={darkMode} />
               )}
 
-              {/* ✅ NEW: Car Records */}
               {activeMenu === 'car-records' && (
                 <CarRecords darkMode={darkMode} />
               )}

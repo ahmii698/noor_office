@@ -18,23 +18,13 @@ class InvoiceController extends Controller
      * time, WITHOUT re-interpreting/shifting it.
      *
      * Handles TWO input shapes correctly:
-     *  1) Plain "Y-m-d H:i:s" strings (no timezone info) — these are treated
-     *     as ALREADY being Asia/Karachi wall-clock time, via createFromFormat().
+     *  1) Plain "Y-m-d H:i:s" strings (no timezone info) — treated as ALREADY
+     *     being Asia/Karachi wall-clock time, via createFromFormat().
      *  2) ISO 8601 strings WITH an explicit timezone/UTC marker, e.g.
      *     "2026-08-22T13:36:00.000Z" (what JS `.toISOString()` sends).
-     *     Carbon::parse() correctly resolves these to the right ABSOLUTE
-     *     instant using the string's own timezone (UTC), but the resulting
-     *     Carbon object's *display* timezone stays UTC unless we explicitly
-     *     call ->setTimezone(). Previously we passed 'Asia/Karachi' as the
-     *     second arg to Carbon::parse(), but PHP's DateTime constructor
-     *     IGNORES that second timezone argument whenever the string itself
-     *     already carries explicit tz info — so the object silently stayed
-     *     in UTC, and ->format('Y-m-d H:i:s') printed raw UTC wall-clock
-     *     values (5 hours behind Karachi) into the database.
-     *
-     * Fix: always finish with ->setTimezone('Asia/Karachi') so the object's
-     * displayed/formatted time is guaranteed to be Karachi local time,
-     * regardless of what timezone info the input string carried.
+     *     Carbon::parse() resolves the correct absolute instant, then we
+     *     explicitly call ->setTimezone('Asia/Karachi') so the formatted
+     *     time is Karachi local time.
      */
     private function parseAsKarachiTime($dateString)
     {
@@ -42,17 +32,9 @@ class InvoiceController extends Controller
             return Carbon::now('Asia/Karachi');
         }
 
-        // Expected format from the frontend: "Y-m-d H:i:s" (no tz info —
-        // treat it as already being Karachi local time)
         try {
             return Carbon::createFromFormat('Y-m-d H:i:s', $dateString, 'Asia/Karachi');
         } catch (\Exception $e) {
-            // Fallback for any other format (e.g. ISO 8601 with offset/Z,
-            // like JS's toISOString()). Parse it as its own timezone first
-            // (resolves the correct absolute instant), THEN convert the
-            // display timezone to Asia/Karachi — do NOT rely on the second
-            // Carbon::parse() argument, it's ignored when the string has
-            // explicit tz info.
             try {
                 return Carbon::parse($dateString)->setTimezone('Asia/Karachi');
             } catch (\Exception $e2) {
@@ -230,8 +212,17 @@ class InvoiceController extends Controller
             $paidAmount = $validated['paid_amount'] ?? 0;
             $totalAmount = $validated['total_amount'];
             $remainingAmount = $validated['remaining_amount'] ?? ($totalAmount - $paidAmount);
-            
-            if ($paidAmount >= $totalAmount) {
+
+            // ✅ FIX (trade-in): Trade-in Only = hum ne customer se battery KHAREEDI hai
+            // aur paisay de diye hain. Ye customer ka udhaar nahi hai, isliye
+            // remaining hamesha 0 aur status 'Trade-in' — pending payments/reminders
+            // mein nahi aana chahiye.
+            $isTradeIn = ($validated['status'] ?? null) === 'Trade-in';
+
+           if ($isTradeIn) {
+    $status = 'Paid';
+    $remainingAmount = 0;
+}elseif ($paidAmount >= $totalAmount) {
                 $status = 'Paid';
             } elseif ($paidAmount > 0) {
                 $status = 'Partial';
@@ -240,7 +231,6 @@ class InvoiceController extends Controller
             }
 
             // ✅ FIX (timezone): Parse invoice date as Asia/Karachi local time
-            // directly — no implicit UTC assumption, no extra shift.
             $invoiceDateTime = $this->parseAsKarachiTime($validated['invoice_date'] ?? null);
 
             $invoiceId = DB::table('invoices')->insertGetId([
@@ -582,7 +572,11 @@ class InvoiceController extends Controller
     public function getPendingPayments()
     {
         try {
+            // ✅ FIX: sirf wahi invoices jin ki payment waqai baaki hai
+            // (remaining_amount > 0). Trade-in / purani galat entries
+            // (remaining = 0) ab Reminders mein nahi aayengi.
             $pendingInvoices = Invoice::whereIn('status', ['Partial', 'Pending'])
+                ->where('remaining_amount', '>', 0)
                 ->with(['items', 'customer'])
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -669,7 +663,6 @@ class InvoiceController extends Controller
             $paymentMethod = $request->payment_method ?? $invoice->payment_method ?? 'Cash';
 
             // ✅ FIX (timezone): Parse paid_at as Asia/Karachi local time
-            // directly — no implicit UTC assumption, no extra shift.
             $paidAt = $this->parseAsKarachiTime($request->paid_at);
 
             // ✅ UPDATE INVOICE

@@ -171,16 +171,17 @@ Route::prefix('estimates')->group(function () {
 });
 
 // ✅ ==================== OLD BATTERIES ROUTES (Complete CRUD + Sell) ====================
+// GET /old-batteries?status=in_stock|sold|all  (default: in_stock)
 Route::prefix('old-batteries')->group(function () {
-    Route::get('/', [OldBatteryController::class, 'index']);                    // GET all
-    Route::get('/stats', [OldBatteryController::class, 'stats']);               // GET stats
+    Route::get('/', [OldBatteryController::class, 'index']);                    // GET list (status filter)
+    Route::get('/stats', [OldBatteryController::class, 'stats']);               // GET stats (stock, sold, profit)
     Route::get('/date-range', [OldBatteryController::class, 'getByDateRange']); // GET by date
+    Route::delete('/bulk-delete', [OldBatteryController::class, 'bulkDelete']); // DELETE bulk (must be above /{id})
     Route::get('/{id}', [OldBatteryController::class, 'show']);                 // GET single
     Route::post('/', [OldBatteryController::class, 'store']);                   // POST create
     Route::put('/{id}', [OldBatteryController::class, 'update']);               // PUT update
     Route::delete('/{id}', [OldBatteryController::class, 'destroy']);           // DELETE single
-    Route::delete('/bulk-delete', [OldBatteryController::class, 'bulkDelete']); // DELETE bulk
-    Route::post('/{id}/sell', [OldBatteryController::class, 'sellOldBattery']); // ✅ NEW: Sell Old Battery
+    Route::post('/{id}/sell', [OldBatteryController::class, 'sellOldBattery']); // POST sell (selling_price + profit)
 });
 
 // ✅ ==================== CAR PURCHASE ROUTES (Complete CRUD) ====================

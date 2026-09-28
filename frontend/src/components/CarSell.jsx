@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   FiSave, FiUser, FiPhone, FiMapPin, FiDollarSign, 
   FiCalendar, FiTruck, FiFileText, FiPrinter, FiRefreshCw, 
-  FiHash, FiTag, FiSearch, FiX, FiDownload, FiFileText as FiFileIcon
+  FiHash, FiTag, FiSearch, FiX, FiDownload, FiFileText as FiFileIcon,
+  FiTrendingUp
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import logo from '/logo.jpg';
@@ -17,6 +18,7 @@ const CarSell = ({ darkMode }) => {
     sellDate: new Date().toISOString().split('T')[0],
     customerName: '',
     phoneNo: '',
+    purchasePrice: '',
     sellingPrice: '',
     make: '',
     model: '',
@@ -116,12 +118,13 @@ const CarSell = ({ darkMode }) => {
     setIsSearching(false);
   };
 
-  // ✅ Select a customer - Auto-fill form
+  // ✅ Select a customer - Auto-fill form (purchase price bhi auto-fill hoga)
   const selectCustomer = (car) => {
     setFormData({
       sellDate: new Date().toISOString().split('T')[0],
       customerName: car.customer_name || '',
       phoneNo: car.phone_no || '',
+      purchasePrice: car.purchase_price ?? '',
       sellingPrice: '',
       make: car.make || '',
       model: car.model || '',
@@ -150,6 +153,10 @@ const CarSell = ({ darkMode }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // ✅ Profit = Selling Price - Purchase Price
+  const profit = (parseFloat(formData.sellingPrice) || 0) - (parseFloat(formData.purchasePrice) || 0);
+  const hasProfitInputs = formData.sellingPrice !== '' && formData.purchasePrice !== '';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -164,7 +171,9 @@ const CarSell = ({ darkMode }) => {
         sellDate: formData.sellDate,
         customerName: formData.customerName,
         phoneNo: formData.phoneNo,
+        purchasePrice: parseFloat(formData.purchasePrice) || 0,
         sellingPrice: parseFloat(formData.sellingPrice),
+        profit: profit,
         make: formData.make,
         model: formData.model,
         vin: formData.vin,
@@ -186,6 +195,7 @@ const CarSell = ({ darkMode }) => {
           sellDate: new Date().toISOString().split('T')[0],
           customerName: '',
           phoneNo: '',
+          purchasePrice: '',
           sellingPrice: '',
           make: '',
           model: '',
@@ -256,7 +266,13 @@ const CarSell = ({ darkMode }) => {
             <div class="row"><strong>Name:</strong> ${formData.customerName || 'N/A'}</div>
             <div class="row"><strong>Phone:</strong> ${formData.phoneNo || 'N/A'}</div>
             <div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;">
+              <strong>Purchase Price:</strong> <span>Rs. ${(parseFloat(formData.purchasePrice) || 0).toLocaleString()}</span>
+            </div>
+            <div class="row">
               <strong>Sale Price:</strong> <span style="color:#16a34a;font-weight:bold;">Rs. ${(parseFloat(formData.sellingPrice) || 0).toLocaleString()}</span>
+            </div>
+            <div class="row" style="margin-top:4px;">
+              <strong>Profit:</strong> <span style="color:${profit >= 0 ? '#16a34a' : '#dc2626'};font-weight:bold;">Rs. ${profit.toLocaleString()}</span>
             </div>
             
             <div class="section-title" style="margin-top:15px;">VEHICLE DETAILS</div>
@@ -287,20 +303,26 @@ const CarSell = ({ darkMode }) => {
       return;
     }
 
-    const ws = XLSX.utils.json_to_sheet(savedSales.map(s => ({
-      'Date': s.sell_date ? new Date(s.sell_date).toLocaleDateString() : 'N/A',
-      'Customer Name': s.customer_name || 'N/A',
-      'Phone': s.phone_no || 'N/A',
-      'Make': s.make || 'N/A',
-      'Model': s.model || 'N/A',
-      'VIN': s.vin || 'N/A',
-      'Engine No': s.engine_no || 'N/A',
-      'Color': s.color || 'N/A',
-      'Reg No': s.reg_no || 'N/A',
-      'Running (km)': s.running || 'N/A',
-      'Sale Price': `Rs. ${(s.selling_price || 0).toLocaleString()}`,
-      'Dent': s.dent || 'None'
-    })));
+    const ws = XLSX.utils.json_to_sheet(savedSales.map(s => {
+      const purchase = parseFloat(s.purchase_price) || 0;
+      const sale = parseFloat(s.selling_price) || 0;
+      return {
+        'Date': s.sell_date ? new Date(s.sell_date).toLocaleDateString() : 'N/A',
+        'Customer Name': s.customer_name || 'N/A',
+        'Phone': s.phone_no || 'N/A',
+        'Make': s.make || 'N/A',
+        'Model': s.model || 'N/A',
+        'VIN': s.vin || 'N/A',
+        'Engine No': s.engine_no || 'N/A',
+        'Color': s.color || 'N/A',
+        'Reg No': s.reg_no || 'N/A',
+        'Running (km)': s.running || 'N/A',
+        'Purchase Price': `Rs. ${purchase.toLocaleString()}`,
+        'Sale Price': `Rs. ${sale.toLocaleString()}`,
+        'Profit': `Rs. ${(s.profit ?? (sale - purchase)).toLocaleString()}`,
+        'Dent': s.dent || 'None'
+      };
+    }));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Car Sales');
@@ -322,29 +344,38 @@ const CarSell = ({ darkMode }) => {
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
     
-    const tableData = savedSales.map(s => [
-      s.sell_date ? new Date(s.sell_date).toLocaleDateString() : 'N/A',
-      s.customer_name || 'N/A',
-      s.phone_no || 'N/A',
-      s.make || 'N/A',
-      s.model || 'N/A',
-      s.reg_no || 'N/A',
-      s.color || 'N/A',
-      s.running || 'N/A',
-      `Rs. ${(s.selling_price || 0).toLocaleString()}`
-    ]);
+    const tableData = savedSales.map(s => {
+      const purchase = parseFloat(s.purchase_price) || 0;
+      const sale = parseFloat(s.selling_price) || 0;
+      const rowProfit = s.profit ?? (sale - purchase);
+      return [
+        s.sell_date ? new Date(s.sell_date).toLocaleDateString() : 'N/A',
+        s.customer_name || 'N/A',
+        s.phone_no || 'N/A',
+        s.make || 'N/A',
+        s.model || 'N/A',
+        s.reg_no || 'N/A',
+        s.color || 'N/A',
+        s.running || 'N/A',
+        `Rs. ${purchase.toLocaleString()}`,
+        `Rs. ${sale.toLocaleString()}`,
+        `Rs. ${rowProfit.toLocaleString()}`
+      ];
+    });
 
     doc.autoTable({
-      head: [['Date', 'Customer', 'Phone', 'Make', 'Model', 'Reg No', 'Color', 'Running', 'Sale Price']],
+      head: [['Date', 'Customer', 'Phone', 'Make', 'Model', 'Reg No', 'Color', 'Running', 'Purchase Price', 'Sale Price', 'Profit']],
       body: tableData,
       startY: 28,
-      styles: { fontSize: 8 },
+      styles: { fontSize: 7 },
       headStyles: { fillColor: [22, 163, 74] },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 22 },
-        8: { cellWidth: 28 }
+        0: { cellWidth: 18 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 20 },
+        8: { cellWidth: 24 },
+        9: { cellWidth: 24 },
+        10: { cellWidth: 24 }
       }
     });
 
@@ -357,6 +388,7 @@ const CarSell = ({ darkMode }) => {
       sellDate: new Date().toISOString().split('T')[0],
       customerName: '',
       phoneNo: '',
+      purchasePrice: '',
       sellingPrice: '',
       make: '',
       model: '',
@@ -557,6 +589,21 @@ const CarSell = ({ darkMode }) => {
                 />
               </div>
 
+              {/* Purchase Price */}
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <FiDollarSign className="inline mr-1" /> Purchase Price (Rs.)
+                </label>
+                <input
+                  type="number"
+                  name="purchasePrice"
+                  value={formData.purchasePrice}
+                  onChange={handleChange}
+                  placeholder="Cost at which car was bought"
+                  className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                />
+              </div>
+
               {/* Selling Price */}
               <div>
                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -572,6 +619,24 @@ const CarSell = ({ darkMode }) => {
                   required
                 />
               </div>
+
+              {/* Profit (auto-calculated, read-only) */}
+              {hasProfitInputs && (
+                <div className="md:col-span-2">
+                  <div className={`flex items-center justify-between px-4 py-2.5 rounded-xl border ${
+                    profit >= 0
+                      ? (darkMode ? 'bg-green-900/20 border-green-700' : 'bg-green-50 border-green-300')
+                      : (darkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-300')
+                  }`}>
+                    <span className={`text-sm font-medium flex items-center gap-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      <FiTrendingUp /> Profit
+                    </span>
+                    <span className={`font-bold ${profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      Rs. {profit.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Make */}
               <div>

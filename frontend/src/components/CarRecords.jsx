@@ -43,6 +43,8 @@ const CarRecords = ({ darkMode }) => {
       }
 
       const allRecords = [
+        // ✅ Purchase records: the money always goes in the "Selling Price" column.
+        // "Purchase Price" column stays empty (null) for these — by design.
         ...purchases.map(p => ({
           id: p.id,
           type: 'purchase',
@@ -55,30 +57,42 @@ const CarRecords = ({ darkMode }) => {
           regNo: p.reg_no,
           color: p.color,
           mileage: p.running,
-          price: parseFloat(p.purchase_price) || 0,
-          sellingPrice: parseFloat(p.selling_price) || 0,
+          purchasePrice: null, // ✅ always empty for purchase-type rows
+          sellingPrice: parseFloat(p.selling_price) || 0, // ✅ purchase money shown here
+          profit: null,
+          price: parseFloat(p.selling_price) || 0, // used for totals/sorting
           engineNo: p.engine_no,
           vin: p.vin,
           notes: p.dent || p.notes
         })),
-        ...sales.map(s => ({
-          id: s.id,
-          type: 'sell',
-          date: s.sell_date || s.created_at,
-          name: s.customer_name,
-          phone: s.phone_no,
-          carMake: s.make,
-          carModel: s.model,
-          carYear: s.year || 'N/A',
-          regNo: s.reg_no,
-          color: s.color,
-          mileage: s.running,
-          price: parseFloat(s.selling_price) || 0,
-          purchasePrice: parseFloat(s.purchase_price) || 0,
-          engineNo: s.engine_no,
-          vin: s.vin,
-          notes: s.dent || s.notes
-        }))
+        // ✅ Sell records: unchanged — both Purchase Price and Selling Price + Profit shown
+        ...sales.map(s => {
+          const purchase = parseFloat(s.purchase_price) || 0;
+          const sale = parseFloat(s.selling_price) || 0;
+          const profit = (s.profit !== undefined && s.profit !== null)
+            ? parseFloat(s.profit)
+            : (sale - purchase);
+          return {
+            id: s.id,
+            type: 'sell',
+            date: s.sell_date || s.created_at,
+            name: s.customer_name,
+            phone: s.phone_no,
+            carMake: s.make,
+            carModel: s.model,
+            carYear: s.year || 'N/A',
+            regNo: s.reg_no,
+            color: s.color,
+            mileage: s.running,
+            purchasePrice: purchase,
+            sellingPrice: sale,
+            profit: profit,
+            price: sale, // used for totals/sorting
+            engineNo: s.engine_no,
+            vin: s.vin,
+            notes: s.dent || s.notes
+          };
+        })
       ];
 
       allRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -184,19 +198,27 @@ const CarRecords = ({ darkMode }) => {
   });
 
   // ✅ Stats
+  // "Total Purchase" = money spent buying cars → now lives in sellingPrice for type='purchase'
   const totalPurchases = records.filter(r => r.type === 'purchase').length;
   const totalSales = records.filter(r => r.type === 'sell').length;
-  const totalPurchaseAmount = records.filter(r => r.type === 'purchase').reduce((sum, r) => sum + r.price, 0);
-  const totalSaleAmount = records.filter(r => r.type === 'sell').reduce((sum, r) => sum + r.price, 0);
-  const profit = totalSaleAmount - totalPurchaseAmount;
+  const totalPurchaseAmount = records
+    .filter(r => r.type === 'purchase')
+    .reduce((sum, r) => sum + (r.sellingPrice || 0), 0);
+  const totalSaleAmount = records
+    .filter(r => r.type === 'sell')
+    .reduce((sum, r) => sum + (r.sellingPrice || 0), 0);
+  const totalSellProfit = records
+    .filter(r => r.type === 'sell')
+    .reduce((sum, r) => sum + (r.profit || 0), 0);
+  const profit = totalSellProfit; // profit only makes sense on completed sales
 
   // ✅ Filtered Stats (for display)
-  const filteredTotal = filteredRecords.reduce((sum, r) => sum + r.price, 0);
   const filteredPurchases = filteredRecords.filter(r => r.type === 'purchase');
   const filteredSales = filteredRecords.filter(r => r.type === 'sell');
-  const filteredPurchaseTotal = filteredPurchases.reduce((sum, r) => sum + r.price, 0);
-  const filteredSaleTotal = filteredSales.reduce((sum, r) => sum + r.price, 0);
-  const filteredProfit = filteredSaleTotal - filteredPurchaseTotal;
+  const filteredPurchaseTotal = filteredPurchases.reduce((sum, r) => sum + (r.sellingPrice || 0), 0);
+  const filteredSaleTotal = filteredSales.reduce((sum, r) => sum + (r.sellingPrice || 0), 0);
+  const filteredProfit = filteredSales.reduce((sum, r) => sum + (r.profit || 0), 0);
+  const filteredTotal = filteredPurchaseTotal + filteredSaleTotal;
 
   // ✅ Pagination
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
@@ -241,7 +263,9 @@ const CarRecords = ({ darkMode }) => {
       'Registration': r.regNo || 'N/A',
       'Color': r.color || 'N/A',
       'Mileage': r.mileage || 'N/A',
-      'Price': r.price,
+      'Purchase Price': r.purchasePrice != null ? r.purchasePrice : '',
+      'Selling Price': r.sellingPrice != null ? r.sellingPrice : '',
+      'Profit': r.type === 'sell' ? r.profit : '',
       'Notes': r.notes || 'N/A'
     }));
     
@@ -261,7 +285,7 @@ const CarRecords = ({ darkMode }) => {
     const doc = new jsPDF('landscape');
     doc.text('Car Records', 14, 10);
     doc.autoTable({
-      head: [['Type', 'Date', 'Name', 'Make', 'Model', 'Registration', 'Price']],
+      head: [['Type', 'Date', 'Name', 'Make', 'Model', 'Registration', 'Purchase Price', 'Selling Price', 'Profit']],
       body: records.map(r => [
         r.type === 'purchase' ? 'Purchase' : 'Sell',
         formatDate(r.date),
@@ -269,7 +293,9 @@ const CarRecords = ({ darkMode }) => {
         r.carMake,
         r.carModel,
         r.regNo || 'N/A',
-        `Rs. ${r.price.toLocaleString()}`
+        r.purchasePrice != null ? `Rs. ${r.purchasePrice.toLocaleString()}` : 'N/A',
+        r.sellingPrice != null ? `Rs. ${r.sellingPrice.toLocaleString()}` : 'N/A',
+        r.type === 'sell' ? `Rs. ${r.profit.toLocaleString()}` : 'N/A'
       ])
     });
     doc.save('Car_Records.pdf');
@@ -286,6 +312,16 @@ const CarRecords = ({ darkMode }) => {
     }
     const typeLabel = record.type === 'purchase' ? 'Purchase' : 'Sale';
     const color = record.type === 'purchase' ? '#dc2626' : '#16a34a';
+
+    // ✅ Purchase receipt: show the amount (from sellingPrice field) labeled as "Purchase Price"
+    // Sell receipt: unchanged — Purchase Price, Selling Price, Profit
+    const priceRowsHtml = record.type === 'purchase'
+      ? `<div class="row"><strong>Purchase Price:</strong> <span>Rs. ${(record.sellingPrice || 0).toLocaleString()}</span></div>`
+      : `
+        <div class="row"><strong>Purchase Price:</strong> <span>Rs. ${(record.purchasePrice || 0).toLocaleString()}</span></div>
+        <div class="row"><strong>Selling Price:</strong> <span>Rs. ${(record.sellingPrice || 0).toLocaleString()}</span></div>
+        <div class="row"><strong>Profit:</strong> <span style="color:${(record.profit || 0) >= 0 ? '#16a34a' : '#dc2626'};font-weight:bold;">Rs. ${(record.profit || 0).toLocaleString()}</span></div>
+      `;
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -320,8 +356,9 @@ const CarRecords = ({ darkMode }) => {
             <div class="row"><strong>Color:</strong> ${record.color || 'N/A'}</div>
             <div class="row"><strong>Mileage:</strong> ${record.mileage || 'N/A'} km</div>
             <div class="row"><strong>Engine No:</strong> ${record.engineNo || 'N/A'}</div>
+            <div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;"></div>
+            ${priceRowsHtml}
           </div>
-          <div class="total">${typeLabel} Price: Rs. ${record.price.toLocaleString()}</div>
           ${record.notes ? `<div style="margin-top:10px;padding:10px;background:#fef3c7;border-radius:5px;"><strong>Notes:</strong> ${record.notes}</div>` : ''}
           <div class="footer">Shop # 02, Gulshan-e-Iqbal, Karachi | 📞 0337 3267363</div>
         </body>
@@ -350,7 +387,7 @@ const CarRecords = ({ darkMode }) => {
   };
 
   return (
-    <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-100'} min-h-screen p-6`}>
+    <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'} min-h-screen p-6`}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
@@ -411,14 +448,14 @@ const CarRecords = ({ darkMode }) => {
                 placeholder="Search by name, make, registration..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                className={`w-full pl-10 pr-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
               />
             </div>
             
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className={`px-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
+              className={`px-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
             >
               <option value="all">All Types</option>
               <option value="purchase">📥 Purchases</option>
@@ -429,13 +466,13 @@ const CarRecords = ({ darkMode }) => {
             <div className="relative">
               <button
                 onClick={() => setShowDateDropdown(!showDateDropdown)}
-                className={`px-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition flex items-center gap-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
+                className={`px-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition flex items-center gap-2 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
               >
                 <FiCalendar /> {getDateLabel()} {showDateDropdown ? <FiChevronUp /> : <FiChevronDown />}
               </button>
               
               {showDateDropdown && (
-                <div className={`absolute top-full left-0 mt-1 rounded-xl shadow-2xl border z-50 min-w-[220px] ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                <div className={`absolute top-full left-0 mt-1 rounded-xl shadow-2xl border z-50 min-w-[220px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}>
                   <button
                     onClick={() => {
                       setDateFilter('all');
@@ -506,7 +543,7 @@ const CarRecords = ({ darkMode }) => {
                         type="date"
                         value={specificDate}
                         onChange={(e) => setSpecificDate(e.target.value)}
-                        className={`flex-1 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
+                        className={`flex-1 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                       />
                     </div>
                     <button
@@ -533,13 +570,13 @@ const CarRecords = ({ darkMode }) => {
                         type="date"
                         value={customDateRange.from}
                         onChange={(e) => setCustomDateRange(prev => ({ ...prev, from: e.target.value }))}
-                        className={`flex-1 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
+                        className={`flex-1 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                       />
                       <input
                         type="date"
                         value={customDateRange.to}
                         onChange={(e) => setCustomDateRange(prev => ({ ...prev, to: e.target.value }))}
-                        className={`flex-1 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
+                        className={`flex-1 px-2 py-1 rounded border text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                       />
                     </div>
                     <button
@@ -577,11 +614,12 @@ const CarRecords = ({ darkMode }) => {
           
           {/* ✅ Filter Summary */}
           {filteredRecords.length !== records.length && (
-            <div className={`mt-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div className={`mt-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
               Showing {filteredRecords.length} of {records.length} records • 
               Purchases: {filteredPurchases.length} • 
               Sales: {filteredSales.length} • 
-              Total: {formatCurrency(filteredTotal)} • 
+              Total Purchase: {formatCurrency(filteredPurchaseTotal)} • 
+              Total Sale: {formatCurrency(filteredSaleTotal)} • 
               {filteredProfit >= 0 ? 'Profit' : 'Loss'}: {formatCurrency(filteredProfit)}
             </div>
           )}
@@ -590,23 +628,25 @@ const CarRecords = ({ darkMode }) => {
         {/* ✅ Table */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className={`w-full min-w-[1050px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
               <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                <tr>
+                <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase">Type</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase">Date</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase">Name</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase">Make</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase">Model</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase">Reg No</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase">Price</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase">Purchase Price</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase">Selling Price</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase">Profit</th>
                   <th className="px-4 py-3 text-center text-xs font-medium uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                 {loading ? (
                   <tr>
-                    <td colSpan="8" className="px-6 py-12 text-center">
+                    <td colSpan="10" className="px-6 py-12 text-center">
                       <div className="flex items-center justify-center gap-3">
                         <div className="animate-spin h-8 w-8 border-4 border-red-500 border-t-transparent rounded-full"></div>
                         <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading records...</p>
@@ -615,14 +655,14 @@ const CarRecords = ({ darkMode }) => {
                   </tr>
                 ) : currentRecords.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="px-6 py-12 text-center">
+                    <td colSpan="10" className="px-6 py-12 text-center">
                       <div className="text-6xl mb-4">🚗</div>
                       <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No car records found</p>
                     </td>
                   </tr>
                 ) : (
                   currentRecords.map((record) => (
-                    <tr key={record.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
+                    <tr key={`${record.type}-${record.id}`} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                           record.type === 'purchase' 
@@ -632,13 +672,19 @@ const CarRecords = ({ darkMode }) => {
                           {record.type === 'purchase' ? '📥 Purchase' : '📤 Sell'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm">{formatDate(record.date)}</td>
-                      <td className="px-4 py-3 font-medium">{record.name}</td>
-                      <td className="px-4 py-3 text-sm">{record.carMake}</td>
-                      <td className="px-4 py-3 text-sm">{record.carModel}</td>
-                      <td className="px-4 py-3 text-sm">{record.regNo || 'N/A'}</td>
+                      <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDate(record.date)}</td>
+                      <td className={`px-4 py-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{record.name}</td>
+                      <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{record.carMake}</td>
+                      <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{record.carModel}</td>
+                      <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{record.regNo || 'N/A'}</td>
                       <td className="px-4 py-3 text-right font-semibold text-red-500">
-                        {formatCurrency(record.price)}
+                        {record.purchasePrice != null ? formatCurrency(record.purchasePrice) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-green-500">
+                        {record.sellingPrice != null ? formatCurrency(record.sellingPrice) : '-'}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-semibold ${record.type === 'sell' ? (record.profit >= 0 ? 'text-green-500' : 'text-red-500') : (darkMode ? 'text-gray-500' : 'text-gray-400')}`}>
+                        {record.type === 'sell' ? formatCurrency(record.profit) : '-'}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -663,11 +709,17 @@ const CarRecords = ({ darkMode }) => {
                 )}
               </tbody>
               {!loading && records.length > 0 && (
-                <tfoot className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
+                <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
                   <tr>
-                    <td colSpan="6" className="px-4 py-3 text-right font-bold">Total:</td>
+                    <td colSpan="6" className="px-4 py-3 text-right font-bold">Total (this page):</td>
                     <td className="px-4 py-3 text-right font-bold text-red-500">
-                      {formatCurrency(currentRecords.reduce((sum, r) => sum + r.price, 0))}
+                      {formatCurrency(currentRecords.reduce((sum, r) => sum + (r.purchasePrice || 0), 0))}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-green-500">
+                      {formatCurrency(currentRecords.reduce((sum, r) => sum + (r.sellingPrice || 0), 0))}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold">
+                      {formatCurrency(currentRecords.reduce((sum, r) => sum + (r.type === 'sell' ? r.profit : 0), 0))}
                     </td>
                     <td></td>
                   </tr>
@@ -678,7 +730,7 @@ const CarRecords = ({ darkMode }) => {
 
           {/* Pagination */}
           {!loading && totalPages > 1 && (
-            <div className="px-6 py-4 border-t flex justify-between items-center flex-wrap gap-3">
+            <div className={`px-6 py-4 border-t flex justify-between items-center flex-wrap gap-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
               <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredRecords.length)} of {filteredRecords.length} entries
               </div>
@@ -686,7 +738,7 @@ const CarRecords = ({ darkMode }) => {
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
-                  className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className={`p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode ? 'text-white hover:bg-gray-700' : 'text-gray-900 hover:bg-gray-100'}`}
                 >
                   ◀
                 </button>
@@ -694,7 +746,7 @@ const CarRecords = ({ darkMode }) => {
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className={`p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode ? 'text-white hover:bg-gray-700' : 'text-gray-900 hover:bg-gray-100'}`}
                 >
                   ▶
                 </button>
@@ -707,12 +759,12 @@ const CarRecords = ({ darkMode }) => {
       {/* Modal */}
       {isModalOpen && selectedRecord && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center sticky top-0 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+          <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'} flex justify-between items-center sticky top-0`}>
               <h3 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 {selectedRecord.type === 'purchase' ? '📥 Purchase' : '📤 Sale'} Details
               </h3>
-              <button onClick={() => { setIsModalOpen(false); setSelectedRecord(null); }} className="text-gray-500 hover:text-gray-700 text-2xl">
+              <button onClick={() => { setIsModalOpen(false); setSelectedRecord(null); }} className={`text-2xl ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}>
                 <FiX />
               </button>
             </div>
@@ -727,61 +779,90 @@ const CarRecords = ({ darkMode }) => {
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Date</p>
-                  <p className="font-semibold">{formatDate(selectedRecord.date)}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatDate(selectedRecord.date)}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     {selectedRecord.type === 'purchase' ? 'Seller' : 'Buyer'}
                   </p>
-                  <p className="font-semibold">{selectedRecord.name}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.name}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Phone</p>
-                  <p className="font-semibold">{selectedRecord.phone || 'N/A'}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.phone || 'N/A'}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Make</p>
-                  <p className="font-semibold">{selectedRecord.carMake}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.carMake}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Model</p>
-                  <p className="font-semibold">{selectedRecord.carModel}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.carModel}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Registration</p>
-                  <p className="font-semibold">{selectedRecord.regNo || 'N/A'}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.regNo || 'N/A'}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>VIN</p>
-                  <p className="font-semibold">{selectedRecord.vin || 'N/A'}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.vin || 'N/A'}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Color</p>
-                  <p className="font-semibold">{selectedRecord.color || 'N/A'}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.color || 'N/A'}</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Mileage</p>
-                  <p className="font-semibold">{selectedRecord.mileage || 'N/A'} km</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.mileage || 'N/A'} km</p>
                 </div>
                 <div>
                   <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Engine No</p>
-                  <p className="font-semibold">{selectedRecord.engineNo || 'N/A'}</p>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedRecord.engineNo || 'N/A'}</p>
                 </div>
-                <div className="col-span-2">
-                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Price</p>
-                  <p className={`text-2xl font-bold ${selectedRecord.type === 'purchase' ? 'text-red-500' : 'text-green-500'}`}>
-                    {formatCurrency(selectedRecord.price)}
-                  </p>
-                </div>
+
+                {/* ✅ Purchase record: single amount, labeled Purchase Price, pulled from sellingPrice field */}
+                {selectedRecord.type === 'purchase' && (
+                  <div className="col-span-2">
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Selling Price</p>
+                    <p className="text-2xl font-bold text-red-500">
+                      {formatCurrency(selectedRecord.sellingPrice)}
+                    </p>
+                  </div>
+                )}
+
+                {/* ✅ Sell record: Purchase Price, Selling Price, Profit — unchanged */}
+                {selectedRecord.type === 'sell' && (
+                  <>
+                    <div>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Purchase Price</p>
+                      <p className="text-xl font-bold text-red-500">
+                        {formatCurrency(selectedRecord.purchasePrice)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Selling Price</p>
+                      <p className="text-xl font-bold text-green-500">
+                        {formatCurrency(selectedRecord.sellingPrice)}
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Profit</p>
+                      <p className={`text-2xl font-bold ${selectedRecord.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {formatCurrency(selectedRecord.profit)}
+                      </p>
+                    </div>
+                  </>
+                )}
+
                 {selectedRecord.notes && (
                   <div className="col-span-2">
                     <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Notes</p>
-                    <p className={`p-3 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>{selectedRecord.notes}</p>
+                    <p className={`p-3 rounded-xl ${darkMode ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-900'}`}>{selectedRecord.notes}</p>
                   </div>
                 )}
               </div>
               
-              <div className="flex gap-3 pt-4 border-t dark:border-gray-700">
+              <div className={`flex gap-3 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                 <button
                   onClick={() => printRecord(selectedRecord)}
                   className="flex-1 py-2 bg-gray-800 text-white rounded-xl hover:bg-gray-700 transition flex items-center justify-center gap-2"

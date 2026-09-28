@@ -25,6 +25,7 @@ class CarSellController extends Controller
             'sellDate' => 'required|date',
             'customerName' => 'required|string|max:255',
             'phoneNo' => 'nullable|string|max:20',
+            'purchasePrice' => 'nullable|numeric',
             'sellingPrice' => 'required|numeric',
             'make' => 'required|string|max:100',
             'model' => 'required|string|max:100',
@@ -43,11 +44,17 @@ class CarSellController extends Controller
             ], 422);
         }
 
+        $purchasePrice = $request->purchasePrice ?? 0;
+        $sellingPrice = $request->sellingPrice;
+        $profit = $sellingPrice - $purchasePrice;
+
         $sell = CarSell::create([
             'sell_date' => $request->sellDate,
             'customer_name' => $request->customerName,
             'phone_no' => $request->phoneNo,
-            'selling_price' => $request->sellingPrice,
+            'purchase_price' => $purchasePrice,
+            'selling_price' => $sellingPrice,
+            'profit' => $profit,
             'make' => $request->make,
             'model' => $request->model,
             'vin' => $request->vin,
@@ -84,11 +91,16 @@ class CarSellController extends Controller
             return response()->json(['success' => false, 'message' => 'Not found'], 404);
         }
 
+        $purchasePrice = $request->purchasePrice ?? $sell->purchase_price;
+        $sellingPrice = $request->sellingPrice ?? $sell->selling_price;
+
         $sell->update([
             'sell_date' => $request->sellDate ?? $sell->sell_date,
             'customer_name' => $request->customerName ?? $sell->customer_name,
             'phone_no' => $request->phoneNo ?? $sell->phone_no,
-            'selling_price' => $request->sellingPrice ?? $sell->selling_price,
+            'purchase_price' => $purchasePrice,
+            'selling_price' => $sellingPrice,
+            'profit' => $sellingPrice - $purchasePrice,
             'make' => $request->make ?? $sell->make,
             'model' => $request->model ?? $sell->model,
             'vin' => $request->vin ?? $sell->vin,

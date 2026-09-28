@@ -18,7 +18,6 @@ const CarPurchase = ({ darkMode }) => {
     customerName: '',
     phoneNo: '',
     sellingPrice: '',
-    purchasePrice: '',
     make: '',
     model: '',
     vin: '',
@@ -63,7 +62,7 @@ const CarPurchase = ({ darkMode }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.customerName || !formData.make || !formData.model || !formData.purchasePrice) {
+    if (!formData.customerName || !formData.make || !formData.model || !formData.sellingPrice) {
       toast.error('Please fill all required fields');
       return;
     }
@@ -72,8 +71,7 @@ const CarPurchase = ({ darkMode }) => {
     try {
       const payload = {
         ...formData,
-        sellingPrice: parseFloat(formData.sellingPrice) || 0,
-        purchasePrice: parseFloat(formData.purchasePrice),
+        sellingPrice: parseFloat(formData.sellingPrice),
         running: parseFloat(formData.running) || 0,
       };
 
@@ -88,7 +86,6 @@ const CarPurchase = ({ darkMode }) => {
           customerName: '',
           phoneNo: '',
           sellingPrice: '',
-          purchasePrice: '',
           make: '',
           model: '',
           vin: '',
@@ -156,7 +153,6 @@ const CarPurchase = ({ darkMode }) => {
             <div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid #e5e7eb;">
               <strong>Selling Price:</strong> <span style="color:#16a34a;font-weight:bold;">Rs. ${(parseFloat(formData.sellingPrice) || 0).toLocaleString()}</span>
             </div>
-            <div class="row"><strong>Purchase Price:</strong> <span style="color:#dc2626;font-weight:bold;">Rs. ${(parseFloat(formData.purchasePrice) || 0).toLocaleString()}</span></div>
             
             <div class="section-title" style="margin-top:15px;">VEHICLE DETAILS</div>
             <div class="row"><strong>Make:</strong> ${formData.make || 'N/A'}</div>
@@ -198,7 +194,6 @@ const CarPurchase = ({ darkMode }) => {
       'Reg No': p.reg_no || 'N/A',
       'Running (km)': p.running || 'N/A',
       'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}`,
-      'Purchase Price': `Rs. ${(p.purchase_price || 0).toLocaleString()}`,
       'Dent': p.dent || 'None'
     })));
 
@@ -231,12 +226,11 @@ const CarPurchase = ({ darkMode }) => {
       p.reg_no || 'N/A',
       p.color || 'N/A',
       p.running || 'N/A',
-      `Rs. ${(p.selling_price || 0).toLocaleString()}`,
-      `Rs. ${(p.purchase_price || 0).toLocaleString()}`
+      `Rs. ${(p.selling_price || 0).toLocaleString()}`
     ]);
 
     doc.autoTable({
-      head: [['Date', 'Customer', 'Phone', 'Make', 'Model', 'Reg No', 'Color', 'Running', 'Selling', 'Purchase']],
+      head: [['Date', 'Customer', 'Phone', 'Make', 'Model', 'Reg No', 'Color', 'Running', 'Selling']],
       body: tableData,
       startY: 28,
       styles: { fontSize: 8 },
@@ -245,8 +239,7 @@ const CarPurchase = ({ darkMode }) => {
         0: { cellWidth: 20 },
         1: { cellWidth: 25 },
         2: { cellWidth: 22 },
-        8: { cellWidth: 22 },
-        9: { cellWidth: 22 }
+        8: { cellWidth: 25 }
       }
     });
 
@@ -373,7 +366,7 @@ const CarPurchase = ({ darkMode }) => {
               {/* Selling Price */}
               <div>
                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  <FiDollarSign className="inline mr-1" /> Selling Price (Rs.)
+                  <FiDollarSign className="inline mr-1" /> Selling Price * (Rs.)
                 </label>
                 <input
                   type="number"
@@ -381,21 +374,6 @@ const CarPurchase = ({ darkMode }) => {
                   value={formData.sellingPrice}
                   onChange={handleChange}
                   placeholder="Enter selling price"
-                  className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
-                />
-              </div>
-
-              {/* Purchase Price */}
-              <div>
-                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  <FiTag className="inline mr-1" /> Purchase Price * (Rs.)
-                </label>
-                <input
-                  type="number"
-                  name="purchasePrice"
-                  value={formData.purchasePrice}
-                  onChange={handleChange}
-                  placeholder="Enter purchase price"
                   className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
                   required
                 />
@@ -554,7 +532,6 @@ const CarPurchase = ({ darkMode }) => {
                     customerName: '',
                     phoneNo: '',
                     sellingPrice: '',
-                    purchasePrice: '',
                     make: '',
                     model: '',
                     vin: '',

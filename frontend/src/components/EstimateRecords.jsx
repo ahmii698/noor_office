@@ -35,7 +35,6 @@ const EstimateRecords = ({ darkMode }) => {
   const [hiddenIds, setHiddenIds] = useState([]);
   const [visibilityFilter, setVisibilityFilter] = useState('active');
 
-  // Load hidden IDs from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem('noorani_hidden_estimates');
@@ -50,7 +49,6 @@ const EstimateRecords = ({ darkMode }) => {
     }
   }, []);
 
-  // Save hidden IDs to localStorage
   const saveHiddenIds = (ids) => {
     try {
       localStorage.setItem('noorani_hidden_estimates', JSON.stringify(ids));
@@ -59,7 +57,6 @@ const EstimateRecords = ({ darkMode }) => {
     }
   };
 
-  // Get today, week, month, year start dates
   const getToday = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -90,7 +87,6 @@ const EstimateRecords = ({ darkMode }) => {
     return date;
   };
 
-  // Fetch estimates
   const fetchEstimates = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -116,7 +112,6 @@ const EstimateRecords = ({ darkMode }) => {
     fetchEstimates();
   }, [fetchEstimates]);
 
-  // Format date
   const formatDate = (dateString) => {
     if (!dateString) return '';
     try {
@@ -152,12 +147,13 @@ const EstimateRecords = ({ darkMode }) => {
     return `Rs. ${amount?.toLocaleString() || 0}`;
   };
 
-  // Get status badge
   const getStatusBadge = (validUntil) => {
-    if (!validUntil) return 'bg-gray-100 text-gray-700';
+    if (!validUntil) return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
     const now = new Date();
     const validDate = new Date(validUntil);
-    return validDate < now ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+    return validDate < now 
+      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' 
+      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
   };
 
   const getStatusText = (validUntil) => {
@@ -167,7 +163,6 @@ const EstimateRecords = ({ darkMode }) => {
     return validDate < now ? 'Expired' : 'Active';
   };
 
-  // Toggle hide
   const toggleHideEstimate = (id) => {
     setHiddenIds(prev => {
       let updated;
@@ -183,7 +178,6 @@ const EstimateRecords = ({ darkMode }) => {
     });
   };
 
-  // Delete estimate
   const handleDeleteEstimate = async (id, estimateNo) => {
     if (!window.confirm(`Delete estimate ${estimateNo} permanently?`)) return;
 
@@ -206,19 +200,16 @@ const EstimateRecords = ({ darkMode }) => {
     }
   };
 
-  // View estimate details
   const viewEstimateDetails = (estimate) => {
     setSelectedEstimate(estimate);
     setIsModalOpen(true);
   };
 
-  // Close modal
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedEstimate(null);
   };
 
-  // ✅ PRINT SINGLE ESTIMATE - WITH REG NO
   const printSingleEstimate = () => {
     if (!selectedEstimate) return;
 
@@ -259,7 +250,6 @@ const EstimateRecords = ({ darkMode }) => {
         </tr>
       `;
 
-      // Values - only show if they exist
       const nameVal = selectedEstimate.name || selectedEstimate.company_name || '';
       const policyVal = selectedEstimate.policy_number || '';
       const colorVal = selectedEstimate.color || '';
@@ -267,7 +257,7 @@ const EstimateRecords = ({ darkMode }) => {
       const makeVal = selectedEstimate.make || '';
       const modelVal = selectedEstimate.model || '';
       const engineVal = selectedEstimate.engine_no || '';
-      const regNoVal = selectedEstimate.reg_no || ''; // ✅ REG NO ADDED
+      const regNoVal = selectedEstimate.reg_no || '';
       const hasAnyValue = nameVal || policyVal || colorVal || vinVal || makeVal || modelVal || engineVal || regNoVal;
 
       printWindow.document.write(`
@@ -304,7 +294,6 @@ const EstimateRecords = ({ darkMode }) => {
               .header-text .subtitle { font-size: 13px; color: #6b7280; }
               .content { padding: 30px; position: relative; z-index: 1; background: transparent; }
               
-              /* ✅ DATE & TIME BAR */
               .date-time-bar {
                 display: flex;
                 justify-content: space-between;
@@ -325,7 +314,6 @@ const EstimateRecords = ({ darkMode }) => {
                 color: #1f2937;
               }
               
-              /* ✅ INFO GRID - WITH REG NO */
               .info-grid { 
                 display: grid; 
                 grid-template-columns: 1fr 1fr; 
@@ -385,13 +373,11 @@ const EstimateRecords = ({ darkMode }) => {
                 </div>
               </div>
               <div class="content">
-                <!-- ✅ DATE & TIME - UPPAR -->
                 <div class="date-time-bar">
                   <span><span class="label"> DATE</span> <span class="value">${formatDate(selectedEstimate.date)}</span></span>
                   <span><span class="label"> TIME</span> <span class="value">${estimateTime}</span></span>
                 </div>
 
-                <!-- ✅ INFO GRID - WITH REG NO -->
                 <div class="info-grid">
                   ${nameVal ? `<div class="info-item"><span class="label">Name</span><span class="value">${nameVal}</span></div>` : ''}
                   ${policyVal ? `<div class="info-item"><span class="label">Policy</span><span class="value">${policyVal}</span></div>` : ''}
@@ -404,7 +390,6 @@ const EstimateRecords = ({ darkMode }) => {
                   ${!hasAnyValue ? `<div class="info-item" style="grid-column: span 2; text-align:center; color:#9ca3af;">No details available</div>` : ''}
                 </div>
 
-                <!-- ✅ ITEMS TABLE -->
                 <table>
                   <thead>
                     <tr><th style="text-align:center;">#</th><th style="text-align:left;">Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Total</th></tr>
@@ -436,7 +421,6 @@ const EstimateRecords = ({ darkMode }) => {
     }, 300);
   };
 
-  // Export to Excel
   const exportToExcel = () => {
     const ws = XLSX.utils.json_to_sheet(filteredEstimates.map(est => ({
       'Name': est.name || est.company_name || '',
@@ -459,7 +443,6 @@ const EstimateRecords = ({ darkMode }) => {
     toast.success('Exported to Excel');
   };
 
-  // Export to PDF
   const exportToPDF = () => {
     const doc = new jsPDF('landscape');
     doc.text(`Estimates Records - All`, 14, 10);
@@ -480,7 +463,6 @@ const EstimateRecords = ({ darkMode }) => {
     toast.success('Exported to PDF');
   };
 
-  // Filter estimates
   const filteredEstimates = useMemo(() => {
     let filtered = estimates;
 
@@ -546,7 +528,6 @@ const EstimateRecords = ({ darkMode }) => {
     return filtered;
   }, [estimates, searchTerm, filterStatus, dateFilter, hiddenIds, visibilityFilter, customDateFrom, customDateTo, singleDate]);
 
-  // Pagination
   const totalPages = Math.ceil(filteredEstimates.length / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -572,7 +553,7 @@ const EstimateRecords = ({ darkMode }) => {
 
   return (
     <>
-      <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-100'} min-h-screen p-6`}>
+      <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'} min-h-screen p-6`}>
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
@@ -610,7 +591,7 @@ const EstimateRecords = ({ darkMode }) => {
                   placeholder="Search estimates..."
                   value={searchTerm}
                   onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                  className={`w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
+                  className={`w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
                 />
               </div>
 
@@ -649,7 +630,7 @@ const EstimateRecords = ({ darkMode }) => {
               <select
                 value={dateFilter}
                 onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); setShowCustomDate(e.target.value === 'custom'); setShowSingleDate(e.target.value === 'single'); }}
-                className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
               >
                 <option value="all">All Time</option>
                 <option value="today">Today</option>
@@ -668,7 +649,7 @@ const EstimateRecords = ({ darkMode }) => {
                   type="date"
                   value={singleDate}
                   onChange={(e) => setSingleDate(e.target.value)}
-                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-teal-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-teal-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                 />
                 <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   {singleDate ? `Showing: ${singleDate} (${filteredEstimates.length} records)` : 'Select a date'}
@@ -683,14 +664,14 @@ const EstimateRecords = ({ darkMode }) => {
                   type="date"
                   value={customDateFrom}
                   onChange={(e) => setCustomDateFrom(e.target.value)}
-                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                 />
-                <span className="text-gray-500">to</span>
+                <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>to</span>
                 <input
                   type="date"
                   value={customDateTo}
                   onChange={(e) => setCustomDateTo(e.target.value)}
-                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                 />
                 {customDateFrom && customDateTo && (
                   <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -704,18 +685,18 @@ const EstimateRecords = ({ darkMode }) => {
           {/* Table */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[800px]">
+              <table className={`w-full min-w-[800px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                 <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">#</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Policy #</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Reg No</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Date</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Total</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Items</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium uppercase text-gray-500 dark:text-gray-400 min-w-[280px]">Actions</th>
+                  <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Policy #</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Reg No</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Date</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase">Total</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase">Items</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium uppercase min-w-[280px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
@@ -734,18 +715,18 @@ const EstimateRecords = ({ darkMode }) => {
 
                       return (
                         <tr key={est.id} className={`${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} ${isHidden ? 'opacity-60' : ''}`}>
-                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{indexOfFirstItem + idx + 1}</td>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{est.name || est.company_name || ''}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{est.policy_number || ''}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{est.reg_no || ''}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{formatDate(est.date)}</td>
+                          <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{indexOfFirstItem + idx + 1}</td>
+                          <td className={`px-4 py-3 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{est.name || est.company_name || ''}</td>
+                          <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{est.policy_number || ''}</td>
+                          <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{est.reg_no || ''}</td>
+                          <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDate(est.date)}</td>
                           <td className="px-4 py-3 text-sm font-semibold text-red-500 text-right">{formatCurrency(est.total_amount)}</td>
                           <td className="px-4 py-3">
                             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusColor}`}>
                               {status}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                          <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                             {est.items?.length || 0} items
                           </td>
                           <td className="px-4 py-3">
@@ -780,7 +761,7 @@ const EstimateRecords = ({ darkMode }) => {
               </table>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center flex-wrap gap-3">
+            <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center flex-wrap gap-3`}>
               <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredEstimates.length)} of {filteredEstimates.length} entries
               </div>
@@ -788,7 +769,7 @@ const EstimateRecords = ({ darkMode }) => {
                 <button
                   onClick={() => handlePageChange(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className={`p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode ? 'text-white hover:bg-gray-700' : 'text-gray-900 hover:bg-gray-100'}`}
                 >
                   <FiChevronLeft />
                 </button>
@@ -825,7 +806,7 @@ const EstimateRecords = ({ darkMode }) => {
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className={`p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode ? 'text-white hover:bg-gray-700' : 'text-gray-900 hover:bg-gray-100'}`}
                 >
                   <FiChevronRight />
                 </button>
@@ -838,8 +819,8 @@ const EstimateRecords = ({ darkMode }) => {
       {/* Estimate Details Modal */}
       {isModalOpen && selectedEstimate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className={`sticky top-0 flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} bg-white dark:bg-gray-900 rounded-t-2xl`}>
+          <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className={`sticky top-0 flex justify-between items-center p-4 border-b ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'} rounded-t-2xl`}>
               <div>
                 <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiFileText className="inline mr-2 text-red-500" /> Estimate Details
@@ -863,7 +844,7 @@ const EstimateRecords = ({ darkMode }) => {
               </div>
             </div>
             <div className="p-6 space-y-6">
-              <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
                 <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>VEHICLE / POLICY INFORMATION</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Name</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedEstimate.name || selectedEstimate.company_name || ''}</p></div>
@@ -883,9 +864,9 @@ const EstimateRecords = ({ darkMode }) => {
               <div>
                 <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Items</h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                     <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                      <tr>
+                      <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                         <th className="px-4 py-2 text-left text-sm">#</th>
                         <th className="px-4 py-2 text-left text-sm">Item</th>
                         <th className="px-4 py-2 text-center text-sm">Qty</th>
@@ -895,22 +876,22 @@ const EstimateRecords = ({ darkMode }) => {
                     </thead>
                     <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                       {selectedEstimate.items?.length === 0 ? (
-                        <tr><td colSpan="5" className="px-4 py-8 text-center text-gray-400">No items</td></tr>
+                        <tr><td colSpan="5" className={`px-4 py-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No items</td></tr>
                       ) : (
                         selectedEstimate.items?.map((item, idx) => (
                           <tr key={idx}>
-                            <td className="px-4 py-2 text-sm text-center">{idx + 1}</td>
-                            <td className="px-4 py-2 text-sm">{item.name}</td>
-                            <td className="px-4 py-2 text-sm text-center">{item.quantity || 1}</td>
-                            <td className="px-4 py-2 text-sm text-right">Rs. {(item.price || 0).toLocaleString()}</td>
-                            <td className="px-4 py-2 text-sm text-right font-semibold">Rs. {((item.price || 0) * (item.quantity || 1)).toLocaleString()}</td>
+                            <td className={`px-4 py-2 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{idx + 1}</td>
+                            <td className={`px-4 py-2 text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</td>
+                            <td className={`px-4 py-2 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.quantity || 1}</td>
+                            <td className={`px-4 py-2 text-sm text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Rs. {(item.price || 0).toLocaleString()}</td>
+                            <td className={`px-4 py-2 text-sm text-right font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {((item.price || 0) * (item.quantity || 1)).toLocaleString()}</td>
                           </tr>
                         ))
                       )}
                     </tbody>
                     <tfoot className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                       <tr>
-                        <td colSpan="4" className="px-4 py-3 text-right font-bold">Total:</td>
+                        <td colSpan="4" className={`px-4 py-3 text-right font-bold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>Total:</td>
                         <td className="px-4 py-3 text-right font-bold text-red-500">{formatCurrency(selectedEstimate.total_amount)}</td>
                       </tr>
                     </tfoot>
@@ -925,7 +906,7 @@ const EstimateRecords = ({ darkMode }) => {
                 </div>
               )}
             </div>
-            <div className={`sticky bottom-0 flex justify-end gap-3 p-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} bg-white dark:bg-gray-900 rounded-b-2xl`}>
+            <div className={`sticky bottom-0 flex justify-end gap-3 p-4 border-t ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'} rounded-b-2xl`}>
               <button
                 onClick={() => toggleHideEstimate(selectedEstimate.id)}
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 shadow-md"

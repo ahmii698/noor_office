@@ -24,53 +24,6 @@ const getTodayKarachi = () => {
   return new Date(karachiStr);
 };
 
-// ✅ Get date parts in Karachi timezone
-const getKarachiDateString = (date) => {
-  if (!date) return null;
-  const d = date instanceof Date ? date : new Date(date);
-  return d.toLocaleDateString('en-US', { timeZone: 'Asia/Karachi' });
-};
-
-const getTodayKarachiStr = () => {
-  return new Date().toLocaleDateString('en-US', { timeZone: 'Asia/Karachi' });
-};
-
-const getWeekStartKarachi = () => {
-  const today = getTodayKarachi();
-  const day = today.getDay();
-  const diff = (day === 0 ? 6 : day - 1);
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-};
-
-const getMonthStartKarachi = () => {
-  const today = getTodayKarachi();
-  const start = new Date(today.getFullYear(), today.getMonth(), 1);
-  start.setHours(0, 0, 0, 0);
-  return start;
-};
-
-const getYearStartKarachi = () => {
-  const today = getTodayKarachi();
-  const start = new Date(today.getFullYear(), 0, 1);
-  start.setHours(0, 0, 0, 0);
-  return start;
-};
-
-// ✅ Format date in Karachi timezone
-const formatDateKarachi = (dateString) => {
-  if (!dateString) return '-';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-PK', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'Asia/Karachi'
-  });
-};
-
 // ✅ Format currency
 const formatCurrency = (amount) => {
   return `Rs. ${(amount || 0).toLocaleString()}`;
@@ -90,15 +43,32 @@ const BatteryCharts = ({ darkMode }) => {
   });
 
   // ✅ Battery filter
+  // Old battery KHAREEDNA (Trade-in) sale nahi hai — skip.
+  // Old battery BECHNA ('Old Battery Sale') sale hai — include.
   const isBatteryItem = (item) => {
     if (!item) return false;
-    return item.service_category === 'Battery' || 
-           item.service_name?.toLowerCase().includes('battery');
+    if (item.service_category === 'Trade-in') return false;
+    return (
+      item.service_category === 'Battery' ||
+      item.service_category === 'Old Battery Sale' ||
+      item.service_name?.toLowerCase().includes('battery')
+    );
   };
 
   const getBatteryItems = (items) => {
     if (!items || !Array.isArray(items)) return [];
     return items.filter(item => isBatteryItem(item));
+  };
+
+  // ✅ Final invoice total — trade-in discount minus karke (Overview page ki tarah)
+  const calculateInvoiceBatteryTotal = (inv, batteryItems, rawItemsTotal) => {
+    const invDiscount = parseFloat(inv.discount) || 0;
+    const isOldBatterySale = batteryItems.some(item => item.service_category === 'Old Battery Sale');
+
+    if (isOldBatterySale || invDiscount <= 0) {
+      return rawItemsTotal;
+    }
+    return Math.max(0, rawItemsTotal - invDiscount);
   };
 
   // ✅ Get date range for custom filter - WITH KARACHI TIMEZONE
@@ -139,7 +109,7 @@ const BatteryCharts = ({ darkMode }) => {
     return { start, end: now };
   };
 
-  // ✅ Filter invoices by date - FIXED: Compare using normalized dates
+  // ✅ Filter invoices by date
   const filterInvoicesByDate = (invoices, filter, customDateValue = null) => {
     if (filter === 'all' || !invoices || invoices.length === 0) return invoices;
     const range = getDateRange(filter, customDateValue);
@@ -162,7 +132,6 @@ const BatteryCharts = ({ darkMode }) => {
         api.get('/invoices')
       ]);
 
-      // ✅ Invoices ko properly handle karo
       let invoices = [];
       if (Array.isArray(invoicesRes.data)) {
         invoices = invoicesRes.data;
@@ -186,7 +155,6 @@ const BatteryCharts = ({ darkMode }) => {
         return inv.items.some(item => isBatteryItem(item));
       });
 
-      // Monthly sales data (for selected year)
       const monthlyData = {};
       const batteryCount = {};
       const dailyData = {};
@@ -194,7 +162,6 @@ const BatteryCharts = ({ darkMode }) => {
       batteryInvoices.forEach(inv => {
         if (!inv.invoice_date) return;
         
-        // ✅ Convert to Karachi timezone
         const date = getKarachiDate(inv.invoice_date);
         if (!date) return;
         
@@ -205,25 +172,25 @@ const BatteryCharts = ({ darkMode }) => {
         
         const month = date.getMonth();
         const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
-        // ✅ FIXED: Use proper Karachi date string for day key
         const dayKey = date.toLocaleDateString('en-US', { timeZone: 'Asia/Karachi' });
         
         const batteryItems = getBatteryItems(inv.items);
         if (batteryItems.length === 0) return;
 
-        let invTotal = 0;
-        let invCount = 0;
+        let rawTotal = 0;
 
         batteryItems.forEach(item => {
           const qty = parseInt(item.quantity) || 0;
           const price = parseFloat(item.price) || 0;
-          invTotal += price * qty;
-          invCount += qty;
+          rawTotal += price * qty;
           
           const name = item.service_name;
           if (!batteryCount[name]) batteryCount[name] = 0;
           batteryCount[name] += qty;
         });
+
+        // ✅ Trade-in discount minus karke final total
+        const invTotal = calculateInvoiceBatteryTotal(inv, batteryItems, rawTotal);
 
         if (!monthlyData[monthKey]) monthlyData[monthKey] = 0;
         monthlyData[monthKey] += invTotal;
@@ -232,7 +199,6 @@ const BatteryCharts = ({ darkMode }) => {
         dailyData[dayKey] += invTotal;
       });
 
-      // Convert to arrays
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const monthlySales = monthNames.map((name, index) => {
         const key = `${selectedYear}-${String(index + 1).padStart(2, '0')}`;
@@ -248,7 +214,7 @@ const BatteryCharts = ({ darkMode }) => {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
 
-      // ✅ Daily trend (last 30 days) - sorted by Karachi timezone
+      // Daily trend (last 30 days)
       const sortedDays = Object.keys(dailyData)
         .sort((a, b) => new Date(a) - new Date(b))
         .slice(-30);
@@ -288,10 +254,8 @@ const BatteryCharts = ({ darkMode }) => {
       return;
     }
 
-    // Create separate sheets for different data
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Monthly Sales
     const monthlyData = chartData.monthlySales.map(m => ({
       'Month': m.month,
       'Sales (Rs.)': m.sales
@@ -299,7 +263,6 @@ const BatteryCharts = ({ darkMode }) => {
     const ws1 = XLSX.utils.json_to_sheet(monthlyData);
     XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Sales');
 
-    // Sheet 2: Top Batteries
     const batteryData = chartData.topBatteries.map(b => ({
       'Battery Name': b.name,
       'Quantity Sold': b.count
@@ -307,7 +270,6 @@ const BatteryCharts = ({ darkMode }) => {
     const ws2 = XLSX.utils.json_to_sheet(batteryData);
     XLSX.utils.book_append_sheet(wb, ws2, 'Top Batteries');
 
-    // Sheet 3: Daily Trend
     const dailyData = chartData.dailyTrend.map(d => ({
       'Date': d.date,
       'Sales (Rs.)': d.sales
@@ -315,7 +277,6 @@ const BatteryCharts = ({ darkMode }) => {
     const ws3 = XLSX.utils.json_to_sheet(dailyData);
     XLSX.utils.book_append_sheet(wb, ws3, 'Daily Trend');
 
-    // Sheet 4: Summary
     const totalRevenue = chartData.monthlySales.reduce((sum, m) => sum + m.sales, 0);
     const totalBatteries = chartData.topBatteries.reduce((sum, b) => sum + b.count, 0);
     const summaryData = [{
@@ -351,7 +312,6 @@ const BatteryCharts = ({ darkMode }) => {
 
     const doc = new jsPDF('landscape', 'mm', 'a4');
     
-    // Header
     doc.setFontSize(18);
     doc.setTextColor(220, 38, 38);
     doc.text('Battery Sales Report', 14, 15);
@@ -361,7 +321,6 @@ const BatteryCharts = ({ darkMode }) => {
     doc.text(`Filter: ${getFilterLabel()}`, 14, 28);
     doc.text('Timezone: Asia/Karachi (UTC+5)', 14, 34);
 
-    // Summary Stats
     const totalRevenue = chartData.monthlySales.reduce((sum, m) => sum + m.sales, 0);
     const totalBatteries = chartData.topBatteries.reduce((sum, b) => sum + b.count, 0);
     const topBattery = chartData.topBatteries.length > 0 ? chartData.topBatteries[0].name : '-';
@@ -373,7 +332,6 @@ const BatteryCharts = ({ darkMode }) => {
 
     let startY = 60;
 
-    // Monthly Sales Table
     doc.setFontSize(12);
     doc.setTextColor(59, 130, 246);
     doc.text('Monthly Sales', 14, startY);
@@ -399,7 +357,6 @@ const BatteryCharts = ({ darkMode }) => {
 
     startY = doc.lastAutoTable.finalY + 10;
 
-    // Top Batteries Table
     doc.setFontSize(12);
     doc.setTextColor(34, 197, 94);
     doc.text('Top Selling Batteries', 14, startY);
@@ -425,7 +382,6 @@ const BatteryCharts = ({ darkMode }) => {
 
     startY = doc.lastAutoTable.finalY + 10;
 
-    // Daily Trend Table (last 20 days)
     if (chartData.dailyTrend.length > 0) {
       doc.setFontSize(12);
       doc.setTextColor(139, 92, 246);
@@ -455,7 +411,7 @@ const BatteryCharts = ({ darkMode }) => {
     toast.success('Exported to PDF!');
   };
 
-  // ✅ Simple bar chart component - FIXED: pixel-based height instead of %
+  // ✅ Simple bar chart component
   const BarChart = ({ data, label, color = '#ef4444', maxValue = null }) => {
     if (!data || data.length === 0) {
       return <div className="text-center py-8 text-gray-400">No data available</div>;

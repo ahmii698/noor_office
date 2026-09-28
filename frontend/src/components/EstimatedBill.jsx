@@ -676,7 +676,7 @@ const EstimatedBill = ({ darkMode }) => {
   };
 
   return (
-    <div className={`${darkMode ? 'bg-gray-900' : 'bg-gray-100'} min-h-screen p-6`}>
+    <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'} min-h-screen p-6`}>
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
@@ -695,7 +695,6 @@ const EstimatedBill = ({ darkMode }) => {
                 {editingEstimateId && <span className="text-xs text-yellow-500">✏️ Editing</span>}
               </div>
               
-              {/* ✅ Excel & PDF Buttons for Saved Estimates */}
               <button
                 onClick={exportToExcel}
                 disabled={savedEstimates.length === 0}
@@ -745,14 +744,14 @@ const EstimatedBill = ({ darkMode }) => {
               </button>
             </div>
             {isLoading ? (
-              <div className="text-center py-8 text-gray-400">Loading...</div>
+              <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</div>
             ) : savedEstimates.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">No saved estimates</div>
+              <div className={`text-center py-8 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No saved estimates</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                   <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                    <tr>
+                    <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase">Estimate #</th>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase">Type</th>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase">Name</th>
@@ -765,22 +764,22 @@ const EstimatedBill = ({ darkMode }) => {
                   <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                     {savedEstimates.map((est) => (
                       <tr key={est.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                        <td className="px-3 py-2 text-sm font-medium">{est.estimate_no}</td>
+                        <td className={`px-3 py-2 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{est.estimate_no}</td>
                         <td className="px-3 py-2 text-sm">
                           <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                             est.estimate_type === 'insurance' 
-                              ? 'bg-blue-100 text-blue-700' 
-                              : 'bg-green-100 text-green-700'
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' 
+                              : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                           }`}>
                             {est.estimate_type === 'insurance' ? 'Insurance' : 'Customer'}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-sm">{est.name}</td>
+                        <td className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{est.name}</td>
                         <td className="px-3 py-2 text-sm text-right font-semibold text-red-500">
                           Rs. {est.total_amount?.toLocaleString() || 0}
                         </td>
-                        <td className="px-3 py-2 text-sm">{new Date(est.date).toLocaleDateString()}</td>
-                        <td className="px-3 py-2 text-sm">{new Date(est.valid_until).toLocaleDateString()}</td>
+                        <td className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{new Date(est.date).toLocaleDateString()}</td>
+                        <td className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{new Date(est.valid_until).toLocaleDateString()}</td>
                         <td className="px-3 py-2 text-sm text-center">
                           <div className="flex items-center justify-center gap-2">
                             <button
@@ -869,8 +868,8 @@ const EstimatedBill = ({ darkMode }) => {
                 Estimate Details
                 <span className={`ml-3 text-xs font-normal px-3 py-1 rounded-full ${
                   estimateType === 'insurance' 
-                    ? 'bg-blue-100 text-blue-700' 
-                    : 'bg-green-100 text-green-700'
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' 
+                    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                 }`}>
                   {estimateType === 'insurance' ? '📋 FOR INSURANCE' : '👤 FOR CUSTOMER'}
                 </span>
@@ -881,7 +880,7 @@ const EstimatedBill = ({ darkMode }) => {
                   placeholder="Name"
                   value={estimateData.name}
                   onChange={(e) => setEstimateData(prev => ({ ...prev, name: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
 
                 {estimateType === 'insurance' && (
@@ -890,7 +889,7 @@ const EstimatedBill = ({ darkMode }) => {
                     placeholder="Policy Number"
                     value={estimateData.policyNumber}
                     onChange={(e) => setEstimateData(prev => ({ ...prev, policyNumber: e.target.value }))}
-                    className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                    className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                   />
                 )}
 
@@ -899,42 +898,42 @@ const EstimatedBill = ({ darkMode }) => {
                   placeholder="Color"
                   value={estimateData.color}
                   onChange={(e) => setEstimateData(prev => ({ ...prev, color: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
                 <input
                   type="text"
                   placeholder="Make (Brand)"
                   value={estimateData.make}
                   onChange={(e) => setEstimateData(prev => ({ ...prev, make: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
                 <input
                   type="text"
                   placeholder="VIN (Vehicle Identification Number)"
                   value={estimateData.vin}
                   onChange={(e) => setEstimateData(prev => ({ ...prev, vin: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
                 <input
                   type="text"
                   placeholder="Model"
                   value={estimateData.model}
                   onChange={(e) => setEstimateData(prev => ({ ...prev, model: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
                 <input
                   type="text"
                   placeholder="Engine No"
                   value={estimateData.engineNo}
                   onChange={(e) => setEstimateData(prev => ({ ...prev, engineNo: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
                 <input
                   type="text"
                   placeholder="Reg No (Registration Number)"
                   value={estimateData.regNo}
                   onChange={(e) => setEstimateData(prev => ({ ...prev, regNo: e.target.value }))}
-                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
 
                 {estimateType === 'insurance' && (
@@ -943,7 +942,7 @@ const EstimatedBill = ({ darkMode }) => {
                     placeholder="Address"
                     value={estimateData.address}
                     onChange={(e) => setEstimateData(prev => ({ ...prev, address: e.target.value }))}
-                    className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                    className={`px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                   />
                 )}
 
@@ -953,7 +952,7 @@ const EstimatedBill = ({ darkMode }) => {
                     type="date"
                     value={estimateData.date}
                     onChange={(e) => setEstimateData(prev => ({ ...prev, date: e.target.value }))}
-                    className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300'}`}
+                    className={`w-full px-4 py-2.5 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                   />
                 </div>
               </div>
@@ -972,14 +971,14 @@ const EstimatedBill = ({ darkMode }) => {
                   placeholder="Item Name"
                   value={newItem.name}
                   onChange={(e) => setNewItem(prev => ({ ...prev, name: e.target.value }))}
-                  className="md:col-span-2 px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  className={`md:col-span-2 px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
                 />
                 <input
                   type="number"
                   placeholder="Qty"
                   value={newItem.quantity}
                   onChange={(e) => setNewItem(prev => ({ ...prev, quantity: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
                   min="1"
                   step="1"
                 />
@@ -988,7 +987,7 @@ const EstimatedBill = ({ darkMode }) => {
                   placeholder="Price"
                   value={newItem.price}
                   onChange={(e) => setNewItem(prev => ({ ...prev, price: e.target.value }))}
-                  className="px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  className={`px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
                   min="0"
                   step="0.01"
                 />
@@ -1001,9 +1000,9 @@ const EstimatedBill = ({ darkMode }) => {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                   <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-                    <tr>
+                    <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase w-[50px]">#</th>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase">Item</th>
                       <th className="px-3 py-2 text-center text-xs font-medium uppercase w-[70px]">Qty</th>
@@ -1015,7 +1014,7 @@ const EstimatedBill = ({ darkMode }) => {
                   <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                     {estimateData.items.length === 0 ? (
                       <tr>
-                        <td colSpan="6" className="px-6 py-8 text-center text-gray-400">
+                        <td colSpan="6" className={`px-6 py-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                           No items added yet
                         </td>
                       </tr>
@@ -1024,14 +1023,14 @@ const EstimatedBill = ({ darkMode }) => {
                         const itemTotal = getItemTotal(item);
                         return (
                           <tr key={item.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                            <td className="px-3 py-2 text-sm text-center">{idx + 1}</td>
-                            <td className="px-3 py-2 text-sm">{item.name}</td>
+                            <td className={`px-3 py-2 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{idx + 1}</td>
+                            <td className={`px-3 py-2 text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</td>
                             <td className="px-3 py-2 text-sm text-center">
                               <input
                                 type="number"
                                 value={item.quantity || 1}
                                 onChange={(e) => updateItemQuantity(item.id, e.target.value)}
-                                className="w-16 px-2 py-1 rounded border text-center dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                className={`w-16 px-2 py-1 rounded border text-center ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                                 min="1"
                                 step="1"
                               />
@@ -1041,7 +1040,7 @@ const EstimatedBill = ({ darkMode }) => {
                                 type="number"
                                 value={item.price}
                                 onChange={(e) => updateItemPrice(item.id, e.target.value)}
-                                className="w-28 px-2 py-1 rounded border text-right dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                className={`w-28 px-2 py-1 rounded border text-right ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                                 min="0"
                                 step="0.01"
                               />
@@ -1072,7 +1071,7 @@ const EstimatedBill = ({ darkMode }) => {
                   onChange={(e) => setEstimateData(prev => ({ ...prev, notes: e.target.value }))}
                   placeholder="Add notes..."
                   rows="2"
-                  className={`w-full px-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300'}`}
+                  className={`w-full px-4 py-2 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-gray-50 border-gray-300 text-gray-900'}`}
                 />
               </div>
             </div>
@@ -1088,8 +1087,8 @@ const EstimatedBill = ({ darkMode }) => {
                   <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Type</span>
                   <span className={`font-semibold px-2 py-0.5 rounded text-xs ${
                     estimateType === 'insurance' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'bg-green-100 text-green-700'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' 
+                      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                   }`}>
                     {estimateType === 'insurance' ? 'Insurance' : 'Customer'}
                   </span>
@@ -1098,7 +1097,7 @@ const EstimatedBill = ({ darkMode }) => {
                   <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Items</span>
                   <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{estimateData.items.length}</span>
                 </div>
-                <div className="flex justify-between py-3 border-t-2 dark:border-gray-700">
+                <div className={`flex justify-between py-3 border-t-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <span className="text-xl font-bold text-red-500">Total</span>
                   <span className="text-2xl font-bold text-red-500">{formatCurrency(total)}</span>
                 </div>
@@ -1110,7 +1109,7 @@ const EstimatedBill = ({ darkMode }) => {
                   disabled={estimateData.items.length === 0 || isSaving}
                   className={`w-full py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2 shadow-lg ${
                     estimateData.items.length === 0 || isSaving
-                      ? 'bg-gray-400 cursor-not-allowed'
+                      ? 'bg-gray-400 cursor-not-allowed text-white'
                       : 'bg-green-600 hover:bg-green-700 text-white'
                   }`}
                 >
@@ -1123,7 +1122,7 @@ const EstimatedBill = ({ darkMode }) => {
                   disabled={estimateData.items.length === 0 || isPrinting}
                   className={`w-full py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2 shadow-lg ${
                     estimateData.items.length === 0 || isPrinting
-                      ? 'bg-gray-400 cursor-not-allowed'
+                      ? 'bg-gray-400 cursor-not-allowed text-white'
                       : 'bg-gray-800 hover:bg-gray-700 text-white'
                   }`}
                 >
@@ -1132,7 +1131,7 @@ const EstimatedBill = ({ darkMode }) => {
                 </button>
               </div>
 
-              <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
+              <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
                 <p>Valid for 7 days from date of issue</p>
                 {editingEstimateId && <p className="mt-1 text-yellow-500">✏️ Editing - Save to update</p>}
               </div>

@@ -15,9 +15,32 @@ import {
 import api from '../services/api';
 import logo from '/logo.jpg';
 
-// ✅ FIXED: Convert date to a JS Date object.
+// ✅ FIXED: Backend ka time already Pakistan time me hai.
 const toPakistanTime = (dateString) => {
   if (!dateString) return null;
+
+  if (typeof dateString === 'string') {
+    const dt = dateString.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (dt) {
+      return new Date(
+        parseInt(dt[1], 10),
+        parseInt(dt[2], 10) - 1,
+        parseInt(dt[3], 10),
+        parseInt(dt[4], 10),
+        parseInt(dt[5], 10),
+        dt[6] ? parseInt(dt[6], 10) : 0
+      );
+    }
+
+    const dOnly = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dOnly) {
+      return new Date(
+        parseInt(dOnly[1], 10),
+        parseInt(dOnly[2], 10) - 1,
+        parseInt(dOnly[3], 10)
+      );
+    }
+  }
 
   const date = new Date(dateString);
   if (!isNaN(date.getTime())) return date;
@@ -25,89 +48,34 @@ const toPakistanTime = (dateString) => {
   return null;
 };
 
-// ✅ Format date for table - PAKISTAN TIME
 const formatTableDate = (dateString) => {
   if (!dateString) return 'N/A';
-  
   const date = toPakistanTime(dateString);
   if (!date) return 'N/A';
-  
   return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Karachi'
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
   });
 };
 
-// ✅ Format date for invoice details modal - PAKISTAN TIME
 const formatInvoiceDate = (dateString) => {
   if (!dateString) return 'N/A';
-  
   const date = toPakistanTime(dateString);
   if (!date) return 'N/A';
-  
   return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Karachi'
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
   });
 };
 
-// ✅ Format payment history date - PAKISTAN TIME
 const formatPaymentHistoryDate = (dateString) => {
   if (!dateString) return 'N/A';
-  
   const date = toPakistanTime(dateString);
   if (!date) return 'N/A';
-  
   return date.toLocaleString('en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Karachi'
+    month: '2-digit', day: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
   });
-};
-
-// ✅ Helper: Format date in Pakistan Time (UTC+5)
-const formatPakistanDateTime = (dateString) => {
-  if (!dateString) return { date: 'N/A', time: '' };
-  
-  const date = toPakistanTime(dateString);
-  if (!date) return { date: 'N/A', time: '' };
-  
-  try {
-    const formattedDate = date.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      timeZone: 'Asia/Karachi'
-    });
-    
-    const formattedTime = date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Karachi'
-    });
-    
-    return { date: formattedDate, time: formattedTime };
-  } catch (e) {
-    console.error('Date parse error:', e);
-    return { date: 'N/A', time: '' };
-  }
 };
 
 const getToday = () => {
@@ -145,7 +113,6 @@ const roundToTwo = (num) => {
   return Math.round(num * 100) / 100;
 };
 
-// ✅ LocalStorage key for hidden invoices
 const HIDDEN_INVOICES_KEY = 'noorani_hidden_invoices';
 
 const loadHiddenIds = () => {
@@ -362,16 +329,19 @@ const Records = ({ darkMode }) => {
       endOfDay.setHours(23, 59, 59, 999);
       
       filtered = filtered.filter(inv => {
-        const invDate = new Date(inv.date);
+        const invDate = toPakistanTime(inv.date);
+        if (!invDate) return false;
         return invDate >= startOfDay && invDate <= endOfDay;
       });
     } else if (dateFilter === 'custom' && customDateFrom && customDateTo) {
       const fromDate = new Date(customDateFrom);
+      fromDate.setHours(0, 0, 0, 0);
       const toDate = new Date(customDateTo);
       toDate.setHours(23, 59, 59, 999);
       
       filtered = filtered.filter(inv => {
-        const invDate = new Date(inv.date);
+        const invDate = toPakistanTime(inv.date);
+        if (!invDate) return false;
         return invDate >= fromDate && invDate <= toDate;
       });
     } else if (dateFilter !== 'all' && dateFilter !== 'custom' && dateFilter !== 'single') {
@@ -379,25 +349,17 @@ const Records = ({ darkMode }) => {
       let startDate;
       
       switch (dateFilter) {
-        case 'today':
-          startDate = getToday();
-          break;
-        case 'week':
-          startDate = getStartOfWeek();
-          break;
-        case 'month':
-          startDate = getStartOfMonth();
-          break;
-        case 'year':
-          startDate = getStartOfYear();
-          break;
-        default:
-          startDate = null;
+        case 'today': startDate = getToday(); break;
+        case 'week': startDate = getStartOfWeek(); break;
+        case 'month': startDate = getStartOfMonth(); break;
+        case 'year': startDate = getStartOfYear(); break;
+        default: startDate = null;
       }
       
       if (startDate) {
         filtered = filtered.filter(inv => {
-          const invDate = new Date(inv.date);
+          const invDate = toPakistanTime(inv.date);
+          if (!invDate) return false;
           return invDate >= startDate && invDate <= now;
         });
       }
@@ -516,20 +478,12 @@ const Records = ({ darkMode }) => {
 
   const getDateFilterLabel = () => {
     const labels = {
-      all: 'All Time',
-      today: 'Today',
-      week: 'This Week',
-      month: 'This Month',
-      year: 'This Year',
-      single: 'Single Date',
-      custom: 'Custom Range'
+      all: 'All Time', today: 'Today', week: 'This Week',
+      month: 'This Month', year: 'This Year',
+      single: 'Single Date', custom: 'Custom Range'
     };
-    if (dateFilter === 'single' && singleDate) {
-      return `Single Date: ${singleDate}`;
-    }
-    if (dateFilter === 'custom' && customDateFrom && customDateTo) {
-      return `${customDateFrom} to ${customDateTo}`;
-    }
+    if (dateFilter === 'single' && singleDate) return `Single Date: ${singleDate}`;
+    if (dateFilter === 'custom' && customDateFrom && customDateTo) return `${customDateFrom} to ${customDateTo}`;
     return labels[dateFilter] || 'All Time';
   };
 
@@ -546,11 +500,7 @@ const Records = ({ darkMode }) => {
   const closeEditModal = useCallback(() => {
     setIsEditModalOpen(false);
     setEditingInvoice(null);
-    setEditFormData({
-      discountType: 'fixed',
-      discountValue: '',
-      discountNote: ''
-    });
+    setEditFormData({ discountType: 'fixed', discountValue: '', discountNote: '' });
   }, []);
 
   const handleEditChange = useCallback((e) => {
@@ -565,12 +515,9 @@ const Records = ({ darkMode }) => {
 
   const handleEditSubmit = useCallback(async () => {
     if (!editingInvoice) return;
-    
     setIsSubmitting(true);
-    
     try {
       const { discountValue, discountNote, discountType } = editFormData;
-      
       const subtotal = editingInvoice.subtotal || editingInvoice.total;
       let discountAmount = 0;
       
@@ -589,18 +536,13 @@ const Records = ({ darkMode }) => {
       const newRemainingAmount = newTotal - newPaidAmount;
       const newStatus = newRemainingAmount <= 0.01 ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Pending');
       
-      const roundedDiscount = roundToTwo(discountAmount);
-      const roundedNewTotal = roundToTwo(newTotal);
-      const roundedPaidAmount = roundToTwo(newPaidAmount);
-      const roundedRemaining = roundToTwo(newRemainingAmount);
-      
       const payload = {
         subtotal: subtotal,
-        discount: roundedDiscount,
+        discount: roundToTwo(discountAmount),
         discount_note: discountNote || null,
-        total_amount: roundedNewTotal,
-        paid_amount: roundedPaidAmount,
-        remaining_amount: roundedRemaining,
+        total_amount: roundToTwo(newTotal),
+        paid_amount: roundToTwo(newPaidAmount),
+        remaining_amount: roundToTwo(newRemainingAmount),
         status: newStatus,
         payment_method: editingInvoice.paymentMethod || 'cash'
       };
@@ -609,15 +551,12 @@ const Records = ({ darkMode }) => {
       
       if (response.data) {
         toast.success('Invoice updated successfully!');
-        
         await fetchInvoices();
         closeEditModal();
         
         if (isModalOpen && selectedInvoice?.id === editingInvoice.id) {
           const updatedInvoice = invoices.find(inv => inv.id === editingInvoice.id);
-          if (updatedInvoice) {
-            setSelectedInvoice(updatedInvoice);
-          }
+          if (updatedInvoice) setSelectedInvoice(updatedInvoice);
           fetchPaymentHistory(editingInvoice.invoiceNo);
         }
       }
@@ -634,15 +573,7 @@ const Records = ({ darkMode }) => {
       const date = toPakistanTime(inv.date) || new Date();
       return {
         'Invoice #': inv.invoiceNo,
-        'Date & Time': date.toLocaleString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-          timeZone: 'Asia/Karachi'
-        }),
+        'Date & Time': date.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
         'Customer Name': inv.customer?.name || 'Walk-in',
         'Phone': inv.customer?.phone || 'N/A',
         'Car Number': inv.customer?.carNumber || 'N/A',
@@ -671,15 +602,7 @@ const Records = ({ darkMode }) => {
         const date = toPakistanTime(inv.date) || new Date();
         return [
           inv.invoiceNo,
-          date.toLocaleString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'Asia/Karachi'
-          }),
+          date.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
           inv.customer?.name || 'Walk-in',
           inv.customer?.phone || 'N/A',
           inv.customer?.carNumber || 'N/A',
@@ -709,7 +632,6 @@ const Records = ({ darkMode }) => {
     setPaymentHistory([]);
   }, []);
 
-  // ==================== PRINT SINGLE INVOICE - UPDATED COMPACT ====================
   const printSingleInvoice = useCallback(() => {
     if (!selectedInvoice) return;
     
@@ -743,19 +665,8 @@ const Records = ({ darkMode }) => {
     const subtotal = selectedInvoice.subtotal || selectedInvoice.total;
 
     const invoiceDate = toPakistanTime(selectedInvoice.date) || new Date();
-    const formattedDate = invoiceDate.toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      timeZone: 'Asia/Karachi'
-    });
-    const formattedTime = invoiceDate.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-      timeZone: 'Asia/Karachi'
-    });
+    const formattedDate = invoiceDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const formattedTime = invoiceDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
     const fullDateTime = `${formattedDate}, ${formattedTime}`;
 
     const printContent = `
@@ -766,103 +677,23 @@ const Records = ({ darkMode }) => {
           <meta charset="UTF-8">
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { 
-              font-family: 'Segoe UI', Arial, sans-serif; 
-              margin: 0; 
-              padding: 20px; 
-              background: #f0f0f0; 
-            }
-            .invoice-container { 
-              max-width: 800px; 
-              margin: 0 auto; 
-              background: white; 
-              border-radius: 12px; 
-              box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
-              overflow: hidden; 
-            }
-            .header { 
-              background: white; 
-              padding: 18px 20px; 
-              border-bottom: 2px solid #dc2626; 
-              display: flex; 
-              align-items: center; 
-              gap: 20px; 
-            }
-            .header-logo { 
-              width: 70px; 
-              height: 70px; 
-              border-radius: 50%; 
-              object-fit: cover; 
-              border: 3px solid #dc2626; 
-              flex-shrink: 0; 
-            }
-            .header-text { 
-              flex: 1; 
-              text-align: center; 
-            }
-            .header-text .shop-name { 
-              font-size: 24px; 
-              font-weight: bold; 
-              color: #1f2937; 
-              letter-spacing: 1px; 
-            }
-            .header-text .subtitle { 
-              font-size: 13px; 
-              color: #6b7280; 
-            }
-            .customer-info { 
-              margin: 15px; 
-              padding: 15px; 
-              border: 1px solid #e5e7eb; 
-              border-radius: 8px; 
-              background: #fafafa;
-            }
-            .customer-info h4 { 
-              margin-bottom: 8px; 
-              color: #1f2937; 
-              font-size: 13px; 
-              font-weight: 600;
-              border-bottom: 1px solid #e5e7eb;
-              padding-bottom: 6px;
-            }
-            .customer-info .info-row { 
-              display: flex; 
-              padding: 2px 0; 
-              font-size: 12px; 
-            }
-            .customer-info .info-label { 
-              font-weight: 600; 
-              min-width: 100px; 
-              color: #4b5563; 
-            }
-            .customer-info .info-value { 
-              color: #1f2937; 
-            }
-            .customer-info .invoice-row {
-              display: flex;
-              justify-content: space-between;
-              padding-top: 4px;
-              font-size: 12px;
-            }
-            .customer-info .invoice-row strong {
-              color: #1f2937;
-            }
-            table { 
-              width: calc(100% - 30px); 
-              margin: 15px; 
-              border-collapse: collapse; 
-            }
-            th, td { 
-              border: 1px solid #e5e7eb; 
-              padding: 6px 8px; 
-              text-align: left; 
-              font-size: 12px; 
-            }
-            th { 
-              background: #1f2937; 
-              color: white; 
-              font-weight: 600; 
-            }
+            body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f0f0f0; }
+            .invoice-container { max-width: 800px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; }
+            .header { background: white; padding: 18px 20px; border-bottom: 2px solid #dc2626; display: flex; align-items: center; gap: 20px; }
+            .header-logo { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #dc2626; flex-shrink: 0; }
+            .header-text { flex: 1; text-align: center; }
+            .header-text .shop-name { font-size: 24px; font-weight: bold; color: #1f2937; letter-spacing: 1px; }
+            .header-text .subtitle { font-size: 13px; color: #6b7280; }
+            .customer-info { margin: 15px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+            .customer-info h4 { margin-bottom: 8px; color: #1f2937; font-size: 13px; font-weight: 600; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+            .customer-info .info-row { display: flex; padding: 2px 0; font-size: 12px; }
+            .customer-info .info-label { font-weight: 600; min-width: 100px; color: #4b5563; }
+            .customer-info .info-value { color: #1f2937; }
+            .customer-info .invoice-row { display: flex; justify-content: space-between; padding-top: 4px; font-size: 12px; }
+            .customer-info .invoice-row strong { color: #1f2937; }
+            table { width: calc(100% - 30px); margin: 15px; border-collapse: collapse; }
+            th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; font-size: 12px; }
+            th { background: #1f2937; color: white; font-weight: 600; }
             th:nth-child(1) { text-align: center; width: 30px; }
             th:nth-child(3) { text-align: center; width: 70px; }
             th:nth-child(4) { text-align: center; width: 40px; }
@@ -870,89 +701,24 @@ const Records = ({ darkMode }) => {
             th:nth-child(6) { text-align: right; width: 90px; }
             td:nth-child(5) { text-align: right; }
             td:nth-child(6) { text-align: right; }
-            .payment-details { 
-              margin: 15px; 
-              padding: 12px 15px; 
-              border: 1px solid #e5e7eb; 
-              border-radius: 8px; 
-              background: #fafafa;
-            }
-            .payment-details h4 { 
-              margin-bottom: 8px; 
-              color: #1f2937; 
-              font-size: 13px; 
-              font-weight: 600;
-              border-bottom: 1px solid #e5e7eb;
-              padding-bottom: 6px;
-            }
-            .payment-details .payment-row {
-              display: flex;
-              justify-content: space-between;
-              padding: 2px 0;
-              font-size: 12px;
-            }
-            .payment-details .payment-row.total-row {
-              border-top: 2px solid #dc2626;
-              padding-top: 8px;
-              margin-top: 4px;
-              font-size: 16px;
-              font-weight: bold;
-            }
-            .payment-details .payment-row.total-row .total-label {
-              color: #1f2937;
-            }
-            .payment-details .payment-row.total-row .total-amount {
-              color: #dc2626;
-            }
-            .payment-status-paid { 
-              color: #16a34a; 
-              font-weight: bold; 
-            }
-            .payment-status-pending { 
-              color: #ea580c; 
-              font-weight: bold; 
-            }
-            .payment-status-partial { 
-              color: #2563eb; 
-              font-weight: bold; 
-            }
-            .footer { 
-              padding: 12px 15px; 
-              background: #f8f9fa; 
-              border-top: 1px solid #e5e7eb; 
-              font-size: 11px; 
-              color: #4b5563; 
-              text-align: center;
-            }
+            .payment-details { margin: 15px; padding: 12px 15px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+            .payment-details h4 { margin-bottom: 8px; color: #1f2937; font-size: 13px; font-weight: 600; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }
+            .payment-details .payment-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
+            .payment-details .payment-row.total-row { border-top: 2px solid #dc2626; padding-top: 8px; margin-top: 4px; font-size: 16px; font-weight: bold; }
+            .payment-details .payment-row.total-row .total-label { color: #1f2937; }
+            .payment-details .payment-row.total-row .total-amount { color: #dc2626; }
+            .payment-status-paid { color: #16a34a; font-weight: bold; }
+            .payment-status-pending { color: #ea580c; font-weight: bold; }
+            .payment-status-partial { color: #2563eb; font-weight: bold; }
+            .footer { padding: 12px 15px; background: #f8f9fa; border-top: 1px solid #e5e7eb; font-size: 11px; color: #4b5563; text-align: center; }
             .footer .address { margin-bottom: 3px; }
             .footer .social { margin-top: 4px; }
             .footer .social span { display: inline-block; margin: 0 6px; }
-            .print-actions { 
-              text-align: center; 
-              margin-top: 20px; 
-              padding: 15px; 
-              background: white; 
-              border-radius: 12px; 
-              max-width: 800px; 
-              margin-left: auto; 
-              margin-right: auto; 
-            }
-            .print-btn, .close-btn { 
-              padding: 10px 24px; 
-              border: none; 
-              border-radius: 8px; 
-              cursor: pointer; 
-              font-size: 14px; 
-              font-weight: 500; 
-              margin: 0 8px; 
-            }
+            .print-actions { text-align: center; margin-top: 20px; padding: 15px; background: white; border-radius: 12px; max-width: 800px; margin-left: auto; margin-right: auto; }
+            .print-btn, .close-btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; margin: 0 8px; }
             .print-btn { background: #dc2626; color: white; }
             .close-btn { background: #6b7280; color: white; }
-            @media print { 
-              body { background: white; padding: 0; } 
-              .print-actions { display: none; } 
-              .invoice-container { box-shadow: none; border-radius: 0; } 
-            }
+            @media print { body { background: white; padding: 0; } .print-actions { display: none; } .invoice-container { box-shadow: none; border-radius: 0; } }
           </style>
         </head>
         <body>
@@ -996,52 +762,19 @@ const Records = ({ darkMode }) => {
             
             <div class="payment-details">
               <h4>PAYMENT DETAILS</h4>
-              <div class="payment-row">
-                <span><strong>Subtotal:</strong></span>
-                <span>Rs. ${subtotal.toLocaleString()}</span>
-              </div>
-              ${selectedInvoice.discount > 0 ? `
-              <div class="payment-row">
-                <span><strong>Discount:</strong></span>
-                <span style="color:#dc2626;">- Rs. ${selectedInvoice.discount.toLocaleString()} ${selectedInvoice.discountNote ? `(${selectedInvoice.discountNote})` : ''}</span>
-              </div>
-              ` : ''}
-              <div class="payment-row">
-                <span><strong>Total Amount:</strong></span>
-                <span style="font-weight:bold;color:#dc2626;">Rs. ${selectedInvoice.total.toLocaleString()}</span>
-              </div>
-              <div class="payment-row">
-                <span><strong>Paid Amount:</strong></span>
-                <span style="color:#16a34a;font-weight:bold;">Rs. ${paidAmount.toLocaleString()}</span>
-              </div>
-              <div class="payment-row">
-                <span><strong>Payment Method:</strong></span>
-                <span>${(selectedInvoice.paymentMethod || 'Cash').toUpperCase()}</span>
-              </div>
-              <div class="payment-row">
-                <span><strong>Remaining Balance:</strong></span>
-                <span style="color:${remainingAmount > 0 ? '#ea580c' : '#16a34a'};font-weight:bold;">Rs. ${remainingAmount.toLocaleString()}</span>
-              </div>
-              <div class="payment-row" style="border-top:1px solid #e5e7eb;padding-top:6px;margin-top:4px;">
-                <span><strong>Payment Status:</strong></span>
-                <span class="${isFullyPaid ? 'payment-status-paid' : (paidAmount > 0 ? 'payment-status-partial' : 'payment-status-pending')}">
-                  ${isFullyPaid ? 'FULLY PAID' : (paidAmount > 0 ? 'PARTIAL' : 'PENDING')}
-                </span>
-              </div>
-              <!-- ✅ TOTAL inside Payment Details -->
-              <div class="payment-row total-row">
-                <span class="total-label">TOTAL</span>
-                <span class="total-amount">Rs. ${selectedInvoice.total.toLocaleString()}</span>
-              </div>
+              <div class="payment-row"><span><strong>Subtotal:</strong></span><span>Rs. ${subtotal.toLocaleString()}</span></div>
+              ${selectedInvoice.discount > 0 ? `<div class="payment-row"><span><strong>Discount:</strong></span><span style="color:#dc2626;">- Rs. ${selectedInvoice.discount.toLocaleString()} ${selectedInvoice.discountNote ? `(${selectedInvoice.discountNote})` : ''}</span></div>` : ''}
+              <div class="payment-row"><span><strong>Total Amount:</strong></span><span style="font-weight:bold;color:#dc2626;">Rs. ${selectedInvoice.total.toLocaleString()}</span></div>
+              <div class="payment-row"><span><strong>Paid Amount:</strong></span><span style="color:#16a34a;font-weight:bold;">Rs. ${paidAmount.toLocaleString()}</span></div>
+              <div class="payment-row"><span><strong>Payment Method:</strong></span><span>${(selectedInvoice.paymentMethod || 'Cash').toUpperCase()}</span></div>
+              <div class="payment-row"><span><strong>Remaining Balance:</strong></span><span style="color:${remainingAmount > 0 ? '#ea580c' : '#16a34a'};font-weight:bold;">Rs. ${remainingAmount.toLocaleString()}</span></div>
+              <div class="payment-row" style="border-top:1px solid #e5e7eb;padding-top:6px;margin-top:4px;"><span><strong>Payment Status:</strong></span><span class="${isFullyPaid ? 'payment-status-paid' : (paidAmount > 0 ? 'payment-status-partial' : 'payment-status-pending')}">${isFullyPaid ? 'FULLY PAID' : (paidAmount > 0 ? 'PARTIAL' : 'PENDING')}</span></div>
+              <div class="payment-row total-row"><span class="total-label">TOTAL</span><span class="total-amount">Rs. ${selectedInvoice.total.toLocaleString()}</span></div>
             </div>
             
             <div class="footer">
-              <div class="address">
-                Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi
-              </div>
-              <div style="margin:3px 0;">
-                📞 0337 3267363
-              </div>
+              <div class="address">Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi</div>
+              <div style="margin:3px 0;">📞 0337 3267363</div>
               <div class="social">
                 <span>📘 Facebook: https://www.facebook.com/Noorani.Car.AC/</span>
                 <span>📷 Instagram: https://www.instagram.com/nooranicarac/</span>
@@ -1053,11 +786,7 @@ const Records = ({ darkMode }) => {
             <button class="print-btn" onclick="window.print()">Print Bill</button>
             <button class="close-btn" onclick="window.close()">Close</button>
           </div>
-          <script>
-            setTimeout(function() { 
-              window.print(); 
-            }, 500);
-          </script>
+          <script>setTimeout(function() { window.print(); }, 500);</script>
         </body>
       </html>
     `;
@@ -1081,7 +810,7 @@ const Records = ({ darkMode }) => {
 
   return (
     <>
-      <div className={`${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="px-6 py-4 bg-red-500">
           <div className="flex flex-wrap justify-between items-center gap-4">
             <div className="flex items-center gap-2">
@@ -1090,9 +819,7 @@ const Records = ({ darkMode }) => {
                 <h3 className="text-lg font-semibold text-white">All Invoices Records</h3>
                 <p className="text-xs text-red-100 mt-1 flex items-center gap-1">
                   <FiFileText className="text-xs" /> Total Invoices: {invoices.length} | Showing: {filteredInvoices.length}
-                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">
-                    {getDateFilterLabel()}
-                  </span>
+                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">{getDateFilterLabel()}</span>
                 </p>
               </div>
             </div>
@@ -1192,46 +919,17 @@ const Records = ({ darkMode }) => {
           </div>
           
           <div className="flex gap-1 flex-wrap">
-            <button
-              onClick={() => handleDateFilterChange('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                dateFilter === 'all' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('today')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                dateFilter === 'today' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Today
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('week')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                dateFilter === 'week' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              This Week
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('month')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                dateFilter === 'month' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              This Month
-            </button>
-            <button
-              onClick={() => handleDateFilterChange('year')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                dateFilter === 'year' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              This Year
-            </button>
+            {['all','today','week','month','year'].map(f => (
+              <button
+                key={f}
+                onClick={() => handleDateFilterChange(f)}
+                className={`px-3 py-1.5 rounded-lg text-xs transition capitalize ${
+                  dateFilter === f ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {f === 'all' ? 'All' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : f === 'month' ? 'This Month' : 'This Year'}
+              </button>
+            ))}
             <button
               onClick={() => handleDateFilterChange('single')}
               className={`px-3 py-1.5 rounded-lg text-xs transition ${
@@ -1253,42 +951,33 @@ const Records = ({ darkMode }) => {
           <div className="flex gap-1 flex-wrap">
             <button
               onClick={() => handleFilterChange('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                filterStatus === 'all' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs transition ${filterStatus === 'all' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               All
             </button>
             <button
               onClick={() => handleFilterChange('paid')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-                filterStatus === 'paid' ? 'bg-green-600 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${filterStatus === 'paid' ? 'bg-green-600 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               <FiCheckCircle className="text-xs" /> Paid
             </button>
             <button
               onClick={() => handleFilterChange('partial')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-                filterStatus === 'partial' ? 'bg-yellow-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${filterStatus === 'partial' ? 'bg-yellow-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               <FiAlertCircle className="text-xs" /> Partial
             </button>
             <button
               onClick={() => handleFilterChange('pending')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-                filterStatus === 'pending' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${filterStatus === 'pending' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               <FiClock className="text-xs" /> Pending
             </button>
           </div>
         </div>
 
-        {/* Single Date Input */}
         {showSingleDate && (
-          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 bg-teal-50 dark:bg-teal-900/10`}>
+          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 ${darkMode ? 'bg-teal-900/10' : 'bg-teal-50'}`}>
             <div className="flex items-center gap-2">
               <FiCalendar className={`${darkMode ? 'text-teal-400' : 'text-teal-600'}`} />
               <span className={`text-sm font-medium ${darkMode ? 'text-teal-400' : 'text-teal-700'}`}>Select Date:</span>
@@ -1297,17 +986,12 @@ const Records = ({ darkMode }) => {
               type="date"
               value={singleDate}
               onChange={(e) => setSingleDate(e.target.value)}
-              className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-teal-500 outline-none text-sm ${
-                darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
-              }`}
+              className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-teal-500 outline-none text-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
             />
             <button
               onClick={() => {
-                if (singleDate) {
-                  toast.success(`Showing records for ${singleDate}`);
-                } else {
-                  toast.warning('Please select a date');
-                }
+                if (singleDate) toast.success(`Showing records for ${singleDate}`);
+                else toast.error('Please select a date');
               }}
               className="px-4 py-1.5 bg-teal-500 text-white rounded-lg text-sm hover:bg-teal-600 transition flex items-center gap-1 shadow-md"
             >
@@ -1321,9 +1005,8 @@ const Records = ({ darkMode }) => {
           </div>
         )}
 
-        {/* Custom Date Range Inputs */}
         {showCustomDate && (
-          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 bg-purple-50 dark:bg-purple-900/10`}>
+          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 ${darkMode ? 'bg-purple-900/10' : 'bg-purple-50'}`}>
             <div className="flex items-center gap-2">
               <FiCalendar className={`${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
               <span className={`text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-700'}`}>Custom Date Range:</span>
@@ -1334,9 +1017,7 @@ const Records = ({ darkMode }) => {
                 type="date"
                 value={customDateFrom}
                 onChange={(e) => setCustomDateFrom(e.target.value)}
-                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${
-                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
-                }`}
+                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
               />
             </div>
             <div className="flex items-center gap-2">
@@ -1345,18 +1026,13 @@ const Records = ({ darkMode }) => {
                 type="date"
                 value={customDateTo}
                 onChange={(e) => setCustomDateTo(e.target.value)}
-                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${
-                  darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'
-                }`}
+                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
               />
             </div>
             <button
               onClick={() => {
-                if (customDateFrom && customDateTo) {
-                  toast.success(`Showing records from ${customDateFrom} to ${customDateTo}`);
-                } else {
-                  toast.warning('Please select both From and To dates');
-                }
+                if (customDateFrom && customDateTo) toast.success(`Showing records from ${customDateFrom} to ${customDateTo}`);
+                else toast.error('Please select both From and To dates');
               }}
               className="px-4 py-1.5 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition flex items-center gap-1 shadow-md"
             >
@@ -1371,29 +1047,29 @@ const Records = ({ darkMode }) => {
         )}
         
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1250px]">
+          <table className={`w-full min-w-[1250px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
             <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[120px]">Invoice #</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[180px]">Date & Time</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[130px]">Customer</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[130px]">Phone</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[120px]">Car Number</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 min-w-[150px]">Services</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[80px]">Total</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[80px]">Discount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[100px]">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[130px]">Created By</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400 whitespace-nowrap min-w-[220px]">Action</th>
+              <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[120px]">Invoice #</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[180px]">Date & Time</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[130px]">Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[130px]">Phone</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[120px]">Car Number</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase min-w-[150px]">Services</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[80px]">Total</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[80px]">Discount</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[100px]">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[130px]">Created By</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase whitespace-nowrap min-w-[220px]">Action</th>
               </tr>
             </thead>
-            <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
+            <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
               {currentInvoices.length === 0 ? (
                 <tr>
                   <td colSpan="11" className="px-6 py-12 text-center">
-                    <FiInbox className="text-6xl mx-auto text-gray-500" />
-                    <p className="mt-2 text-gray-500">No invoices found</p>
-                    <p className="text-sm mt-1 text-gray-400">
+                    <FiInbox className={`text-6xl mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                    <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No invoices found</p>
+                    <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                       {searchTerm ? `No results for "${searchTerm}"` : visibilityFilter === 'hidden' ? 'No hidden invoices' : 'Create your first invoice from the Billing section'}
                     </p>
                   </td>
@@ -1405,32 +1081,32 @@ const Records = ({ darkMode }) => {
                   const isHidden = hiddenIds.includes(inv.id);
                   
                   return (
-                    <tr key={inv.id} className={`${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} ${isWalkin ? darkMode ? 'bg-yellow-900/10' : 'bg-yellow-50' : ''}`}>
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">{inv.invoiceNo}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                    <tr key={inv.id} className={`${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} ${isWalkin ? (darkMode ? 'bg-yellow-900/10' : 'bg-yellow-50') : ''}`}>
+                      <td className={`px-4 py-3 font-medium whitespace-nowrap ${darkMode ? 'text-white' : 'text-gray-900'}`}>{inv.invoiceNo}</td>
+                      <td className={`px-4 py-3 whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {formatTableDate(inv.date)}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      <td className={`px-4 py-3 whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {isWalkin ? (
-                          <span className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400">
+                          <span className={`flex items-center gap-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
                             <FiUserX className="text-xs" /> Walk-in
                           </span>
                         ) : (
                           inv.customer?.name || 'Walk-in'
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.phone || 'N/A'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{inv.customer?.carNumber || 'N/A'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                      <td className={`px-4 py-3 whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{inv.customer?.phone || 'N/A'}</td>
+                      <td className={`px-4 py-3 whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{inv.customer?.carNumber || 'N/A'}</td>
+                      <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {inv.items.slice(0, 2).map(i => i.name).join(', ')}
                         {inv.items.length > 2 && ` +${inv.items.length - 2} more`}
                       </td>
                       <td className="px-4 py-3 font-semibold text-red-500 whitespace-nowrap">Rs. {inv.total.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      <td className={`px-4 py-3 whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {inv.discount > 0 ? (
-                          <span className="text-red-500 font-semibold">- Rs. {inv.discount.toLocaleString()}</span>
+                          <span className={`font-semibold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>- Rs. {inv.discount.toLocaleString()}</span>
                         ) : (
-                          <span className="text-gray-400">None</span>
+                          <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>None</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -1442,7 +1118,6 @@ const Records = ({ darkMode }) => {
                         }`}>
                           {inv.status === 'Paid' ? <FiCheckCircle className="text-xs" /> : 
                            inv.status === 'Partial' ? <FiAlertCircle className="text-xs" /> : 
-                           inv.status === 'Pending' ? <FiClock className="text-xs" /> :
                            <FiClock className="text-xs" />}
                           {inv.status || 'Pending'}
                         </span>
@@ -1468,14 +1143,12 @@ const Records = ({ darkMode }) => {
                           </button>
                           <button 
                             onClick={() => toggleHideInvoice(inv.id)} 
-                            title={isHidden ? 'Unhide - show on this page again' : 'Hide - removes from this page only, keeps in database'}
                             className="px-3 py-1.5 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-1 shadow-md whitespace-nowrap"
                           >
                             {isHidden ? <FiEye className="text-sm" /> : <FiEyeOff className="text-sm" />} {isHidden ? 'Unhide' : 'Hide'}
                           </button>
                           <button 
                             onClick={() => openDeleteConfirm(inv)} 
-                            title="Delete permanently - removes from database"
                             className="px-3 py-1.5 bg-red-700 text-white rounded-lg text-sm hover:bg-red-800 transition flex items-center gap-1 shadow-md whitespace-nowrap"
                           >
                             <FiTrash2 className="text-sm" /> Delete
@@ -1490,15 +1163,15 @@ const Records = ({ darkMode }) => {
           </table>
         </div>
         
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center flex-wrap gap-3">
-          <div className="text-sm text-gray-500 dark:text-gray-400">
+        <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center flex-wrap gap-3`}>
+          <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredInvoices.length)} of {filteredInvoices.length} entries
           </div>
           <div className="flex gap-2 flex-wrap">
             <button 
               onClick={() => handlePageChange(currentPage - 1)} 
               disabled={currentPage === 1} 
-              className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+              className={`p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode ? 'text-white hover:bg-gray-800' : 'text-gray-900 hover:bg-gray-100'}`}
             >
               <FiChevronLeft className="text-lg" />
             </button>
@@ -1508,17 +1181,17 @@ const Records = ({ darkMode }) => {
                 pageNum = i + 1;
               } else if (currentPage <= 4) {
                 pageNum = i + 1;
-                if (i === 5) return <span key="dots1" className="px-2 py-1 text-gray-500">...</span>;
-                if (i === 6) return <button key={totalPages} onClick={() => handlePageChange(totalPages)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">{totalPages}</button>;
+                if (i === 5) return <span key="dots1" className={`px-2 py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>...</span>;
+                if (i === 6) return <button key={totalPages} onClick={() => handlePageChange(totalPages)} className={`w-8 h-8 rounded-lg text-sm transition ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100'}`}>{totalPages}</button>;
               } else if (currentPage >= totalPages - 3) {
-                if (i === 0) return <button key={1} onClick={() => handlePageChange(1)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">1</button>;
-                if (i === 1) return <span key="dots1" className="px-2 py-1 text-gray-500">...</span>;
+                if (i === 0) return <button key={1} onClick={() => handlePageChange(1)} className={`w-8 h-8 rounded-lg text-sm transition ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100'}`}>1</button>;
+                if (i === 1) return <span key="dots1" className={`px-2 py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>...</span>;
                 pageNum = totalPages - 5 + i;
               } else {
-                if (i === 0) return <button key={1} onClick={() => handlePageChange(1)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">1</button>;
-                if (i === 1) return <span key="dots1" className="px-2 py-1 text-gray-500">...</span>;
-                if (i === 5) return <span key="dots2" className="px-2 py-1 text-gray-500">...</span>;
-                if (i === 6) return <button key={totalPages} onClick={() => handlePageChange(totalPages)} className="w-8 h-8 rounded-lg text-sm transition hover:bg-gray-100 dark:hover:bg-gray-800">{totalPages}</button>;
+                if (i === 0) return <button key={1} onClick={() => handlePageChange(1)} className={`w-8 h-8 rounded-lg text-sm transition ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100'}`}>1</button>;
+                if (i === 1) return <span key="dots1" className={`px-2 py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>...</span>;
+                if (i === 5) return <span key="dots2" className={`px-2 py-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>...</span>;
+                if (i === 6) return <button key={totalPages} onClick={() => handlePageChange(totalPages)} className={`w-8 h-8 rounded-lg text-sm transition ${darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100'}`}>{totalPages}</button>;
                 pageNum = currentPage - 1 + (i - 2);
               }
               return (
@@ -1526,7 +1199,7 @@ const Records = ({ darkMode }) => {
                   key={pageNum}
                   onClick={() => handlePageChange(pageNum)}
                   className={`w-8 h-8 rounded-lg text-sm transition ${
-                    currentPage === pageNum ? 'bg-red-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    currentPage === pageNum ? 'bg-red-500 text-white' : darkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
                   {pageNum}
@@ -1536,7 +1209,7 @@ const Records = ({ darkMode }) => {
             <button 
               onClick={() => handlePageChange(currentPage + 1)} 
               disabled={currentPage === totalPages} 
-              className="p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+              className={`p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode ? 'text-white hover:bg-gray-800' : 'text-gray-900 hover:bg-gray-100'}`}
             >
               <FiChevronRight className="text-lg" />
             </button>
@@ -1547,13 +1220,13 @@ const Records = ({ darkMode }) => {
       {/* Invoice Details Modal */}
       {isModalOpen && selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className="sticky top-0 flex justify-between items-center p-4 border-b rounded-t-2xl bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+          <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className={`sticky top-0 flex justify-between items-center p-4 border-b rounded-t-2xl ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiFileText className="text-xl text-red-500" /> Invoice Details
                 </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{selectedInvoice.invoiceNo}</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{selectedInvoice.invoiceNo}</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => openEditModal(selectedInvoice)} className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2 shadow-md">
@@ -1562,55 +1235,55 @@ const Records = ({ darkMode }) => {
                 <button onClick={printSingleInvoice} className="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 shadow-md">
                   <FiPrinter /> Print
                 </button>
-                <button onClick={closeModal} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition">
+                <button onClick={closeModal} className={`p-2 rounded-lg transition ${darkMode ? 'text-red-400 hover:bg-red-900/20' : 'text-red-500 hover:bg-red-50'}`}>
                   <FiX />
                 </button>
               </div>
             </div>
             <div className="p-6 space-y-6">
               {/* Customer Information */}
-              <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiUser className="text-lg text-red-500" /> Customer Information
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiUser className="text-xs" /> Full Name</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.name || 'Walk-in Customer'}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiPhone className="text-xs" /> Phone Number</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.phone || 'N/A'}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiTool className="text-xs" /> Car Number Plate</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.carNumber || 'N/A'}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiPackage className="text-xs" /> Car Model</p><p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.customer?.carModel || 'N/A'}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1"><FiCalendar className="text-xs" /> Invoice Date & Time</p><p className="font-semibold text-gray-900 dark:text-white">{formatInvoiceDate(selectedInvoice.date)}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiUser className="text-xs" /> Full Name</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.name || 'Walk-in Customer'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiPhone className="text-xs" /> Phone Number</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.phone || 'N/A'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiTool className="text-xs" /> Car Number Plate</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.carNumber || 'N/A'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiPackage className="text-xs" /> Car Model</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.carModel || 'N/A'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiCalendar className="text-xs" /> Invoice Date & Time</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatInvoiceDate(selectedInvoice.date)}</p></div>
                 </div>
               </div>
               
               {/* Services Table */}
               <div>
-                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiTool className="text-lg text-red-500" /> Services Provided
                 </h3>
                 <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-100 dark:bg-gray-800">
-                      <tr>
+                  <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                    <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+                      <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                         <th className="px-4 py-2 text-left text-sm">#</th>
                         <th className="px-4 py-2 text-left text-sm">Service Name</th>
                         <th className="px-4 py-2 text-left text-sm">Category</th>
                         <th className="px-4 py-2 text-right text-sm">Price</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                       {selectedInvoice.items.map((item, idx) => (
                         <tr key={idx}>
-                          <td className="px-4 py-2 text-sm">{idx + 1}</td>
-                          <td className="px-4 py-2 text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
-                          <td className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">{item.category || 'Service'}</td>
+                          <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{idx + 1}</td>
+                          <td className={`px-4 py-2 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</td>
+                          <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.category || 'Service'}</td>
                           <td className="px-4 py-2 text-sm text-right font-semibold text-red-500">Rs. {item.price.toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-gray-100 dark:bg-gray-800">
+                    <tfoot className={darkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'}>
                       <tr>
                         <td colSpan="3" className="px-4 py-3 text-right font-bold">Subtotal:</td>
-                        <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-white">Rs. {(selectedInvoice.subtotal || selectedInvoice.total).toLocaleString()}</td>
+                        <td className={`px-4 py-3 text-right font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {(selectedInvoice.subtotal || selectedInvoice.total).toLocaleString()}</td>
                       </tr>
                       {selectedInvoice.discount > 0 && (
                         <tr>
@@ -1628,32 +1301,34 @@ const Records = ({ darkMode }) => {
               </div>
               
               {/* Payment Details */}
-              <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-green-900/20 border-green-800' : 'bg-green-50 border-green-200'}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiDollarSign className="text-lg text-red-500" /> Payment Details
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Total Amount</p><p className="text-xl font-bold text-gray-900 dark:text-white">Rs. {selectedInvoice.total.toLocaleString()}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Paid Amount</p><p className="text-xl font-bold text-green-500">Rs. {(selectedInvoice.paidAmount || selectedInvoice.total).toLocaleString()}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Remaining Balance</p><p className="text-xl font-bold text-red-500">Rs. {(selectedInvoice.remainingAmount || 0).toLocaleString()}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Payment Method</p><p className="font-semibold text-gray-900 dark:text-white flex items-center gap-1"><FiDollarSign className="text-sm" /> {selectedInvoice.paymentMethod || 'Cash'}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Discount</p><p className="font-semibold text-red-500">{selectedInvoice.discount > 0 ? `Rs. ${selectedInvoice.discount.toLocaleString()}` : 'None'}</p></div>
-                  <div><p className="text-sm text-gray-500 dark:text-gray-400">Payment Status</p><span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1 w-fit ${selectedInvoice.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : selectedInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                    {selectedInvoice.status === 'Paid' ? <FiCheckCircle /> : selectedInvoice.status === 'Partial' ? <FiAlertCircle /> : <FiClock />}
-                    {selectedInvoice.status === 'Paid' ? 'FULLY PAID' : selectedInvoice.status === 'Partial' ? 'PARTIAL PAYMENT' : 'PENDING'}
-                  </span></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Amount</p><p className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {selectedInvoice.total.toLocaleString()}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paid Amount</p><p className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {(selectedInvoice.paidAmount || selectedInvoice.total).toLocaleString()}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Remaining Balance</p><p className="text-xl font-bold text-red-500">Rs. {(selectedInvoice.remainingAmount || 0).toLocaleString()}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Method</p><p className={`font-semibold flex items-center gap-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}><FiDollarSign className="text-sm" /> {selectedInvoice.paymentMethod || 'Cash'}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount</p><p className="font-semibold text-red-500">{selectedInvoice.discount > 0 ? `Rs. ${selectedInvoice.discount.toLocaleString()}` : 'None'}</p></div>
+                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Status</p>
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1 w-fit ${selectedInvoice.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : selectedInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                      {selectedInvoice.status === 'Paid' ? <FiCheckCircle /> : selectedInvoice.status === 'Partial' ? <FiAlertCircle /> : <FiClock />}
+                      {selectedInvoice.status === 'Paid' ? 'FULLY PAID' : selectedInvoice.status === 'Partial' ? 'PARTIAL PAYMENT' : 'PENDING'}
+                    </span>
+                  </div>
                 </div>
                 {selectedInvoice.discountNote && (
-                  <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-800">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Discount Note</p>
-                    <p className="font-semibold text-gray-900 dark:text-white">{selectedInvoice.discountNote}</p>
+                  <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-green-800' : 'border-green-200'}`}>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount Note</p>
+                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.discountNote}</p>
                   </div>
                 )}
               </div>
 
               {/* Payment History Section */}
               <div className={`p-4 rounded-xl border ${darkMode ? 'bg-purple-900/10 border-purple-800' : 'bg-purple-50 border-purple-200'}`}>
-                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiClock className="text-lg text-purple-500" /> Payment History
                 </h3>
                 {loadingHistory ? (
@@ -1663,14 +1338,14 @@ const Records = ({ darkMode }) => {
                   </div>
                 ) : paymentHistory.length === 0 ? (
                   <div className="text-center py-6">
-                    <FiClock className="text-3xl text-gray-400 mx-auto mb-2" />
+                    <FiClock className={`text-3xl mx-auto mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                     <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No payment history found</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                       <thead className={darkMode ? 'bg-purple-900/30' : 'bg-purple-100'}>
-                        <tr>
+                        <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                           <th className="px-3 py-2 text-left text-xs font-semibold uppercase">#</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Amount</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Payment Method</th>
@@ -1680,8 +1355,8 @@ const Records = ({ darkMode }) => {
                       <tbody className={`divide-y ${darkMode ? 'divide-purple-900/30' : 'divide-purple-100'}`}>
                         {paymentHistory.map((payment, idx) => (
                           <tr key={payment.id || idx} className={darkMode ? 'hover:bg-purple-900/10' : 'hover:bg-purple-50'}>
-                            <td className="px-3 py-2 text-sm text-center">{idx + 1}</td>
-                            <td className="px-3 py-2 text-sm font-semibold text-green-600 dark:text-green-400">
+                            <td className={`px-3 py-2 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{idx + 1}</td>
+                            <td className={`px-3 py-2 text-sm font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                               Rs. {parseFloat(payment.amount).toLocaleString()}
                             </td>
                             <td className="px-3 py-2 text-sm">
@@ -1689,16 +1364,16 @@ const Records = ({ darkMode }) => {
                                 {payment.payment_method || 'Cash'}
                               </span>
                             </td>
-                            <td className="px-3 py-2 text-sm">
+                            <td className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                               {formatPaymentHistoryDate(payment.paid_at)}
                             </td>
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot className={`${darkMode ? 'bg-purple-900/30' : 'bg-purple-100'} font-semibold`}>
+                      <tfoot className={`${darkMode ? 'bg-purple-900/30 text-gray-200' : 'bg-purple-100 text-gray-800'} font-semibold`}>
                         <tr>
                           <td className="px-3 py-2 text-right">Total:</td>
-                          <td className="px-3 py-2 text-green-600 dark:text-green-400">
+                          <td className={`px-3 py-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                             Rs. {paymentHistory.reduce((sum, p) => sum + parseFloat(p.amount), 0).toLocaleString()}
                           </td>
                           <td colSpan="2"></td>
@@ -1710,7 +1385,7 @@ const Records = ({ darkMode }) => {
               </div>
 
               {/* Created By */}
-              <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-blue-50'} border ${darkMode ? 'border-gray-700' : 'border-blue-200'}`}>
+              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'}`}>
                 <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiUser className="text-lg text-blue-500" /> Created By
                 </h3>
@@ -1731,7 +1406,7 @@ const Records = ({ darkMode }) => {
               </div>
             </div>
             
-            <div className="sticky bottom-0 flex justify-end gap-3 p-4 border-t rounded-b-2xl bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+            <div className={`sticky bottom-0 flex justify-end gap-3 p-4 border-t rounded-b-2xl ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
               <button onClick={closeModal} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
                 <FiX /> Close
               </button>
@@ -1755,46 +1430,45 @@ const Records = ({ darkMode }) => {
       {/* Edit Invoice Modal */}
       {isEditModalOpen && editingInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className="sticky top-0 flex justify-between items-center p-4 border-b rounded-t-2xl bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+          <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className={`sticky top-0 flex justify-between items-center p-4 border-b rounded-t-2xl ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiEdit2 className="text-xl text-blue-500" /> Edit Invoice
                 </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{editingInvoice.invoiceNo} - {editingInvoice.customer?.name}</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{editingInvoice.invoiceNo} - {editingInvoice.customer?.name}</p>
               </div>
-              <button onClick={closeEditModal} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition">
+              <button onClick={closeEditModal} className={`p-2 rounded-lg transition ${darkMode ? 'text-red-400 hover:bg-red-900/20' : 'text-red-500 hover:bg-red-50'}`}>
                 <FiX />
               </button>
             </div>
             
             <div className="p-6 space-y-6">
-              {/* Current Invoice Summary */}
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                <h3 className="font-semibold text-lg mb-3 text-gray-900 dark:text-white">Current Invoice Summary</h3>
+                <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Current Invoice Summary</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Subtotal</p>
-                    <p className="font-bold text-gray-900 dark:text-white">Rs. {(editingInvoice.subtotal || editingInvoice.total).toLocaleString()}</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Subtotal</p>
+                    <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {(editingInvoice.subtotal || editingInvoice.total).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Current Discount</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Current Discount</p>
                     <p className="font-bold text-red-500">{editingInvoice.discount > 0 ? `Rs. ${editingInvoice.discount.toLocaleString()}` : 'None'}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Total</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total</p>
                     <p className="font-bold text-red-500">Rs. {editingInvoice.total.toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Paid</p>
-                    <p className="font-bold text-green-500">Rs. {(editingInvoice.paidAmount || 0).toLocaleString()}</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paid</p>
+                    <p className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {(editingInvoice.paidAmount || 0).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Remaining</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Remaining</p>
                     <p className="font-bold text-red-500">Rs. {(editingInvoice.remainingAmount || 0).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Status</p>
+                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</p>
                     <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${editingInvoice.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : editingInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                       {editingInvoice.status || 'Pending'}
                     </span>
@@ -1802,9 +1476,8 @@ const Records = ({ darkMode }) => {
                 </div>
               </div>
 
-              {/* Discount Section */}
               <div className={`p-4 rounded-xl border ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-red-200 bg-red-50'}`}>
-                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2 text-gray-900 dark:text-white">
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   <FiGift className="text-lg text-red-500" /> Add / Update Discount
                 </h3>
                 
@@ -1815,7 +1488,7 @@ const Records = ({ darkMode }) => {
                       name="discountType"
                       value={editFormData.discountType}
                       onChange={handleEditChange}
-                      className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                      className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
                     >
                       <option value="fixed">Fixed Amount (Rs.)</option>
                       <option value="percentage">Percentage (%)</option>
@@ -1831,7 +1504,7 @@ const Records = ({ darkMode }) => {
                       value={editFormData.discountValue}
                       onChange={handleEditChange}
                       placeholder={editFormData.discountType === 'percentage' ? 'e.g. 10' : 'e.g. 500'}
-                      className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                      className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
                     />
                   </div>
                 </div>
@@ -1844,12 +1517,11 @@ const Records = ({ darkMode }) => {
                     value={editFormData.discountNote}
                     onChange={handleEditChange}
                     placeholder="e.g. Premium Customer Discount"
-                    className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                    className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-400 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
                   />
                 </div>
               </div>
 
-              {/* Preview Changes */}
               {(() => {
                 const subtotal = editingInvoice.subtotal || editingInvoice.total;
                 let discountAmount = 0;
@@ -1869,27 +1541,27 @@ const Records = ({ darkMode }) => {
 
                 return (
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                    <h3 className="font-semibold text-lg mb-3 text-gray-900 dark:text-white">Preview Changes</h3>
+                    <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Preview Changes</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Subtotal</p>
-                        <p className="font-bold text-gray-900 dark:text-white">Rs. {subtotal.toLocaleString()}</p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Subtotal</p>
+                        <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {subtotal.toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Discount</p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount</p>
                         <p className="font-bold text-red-500">{discountAmount > 0 ? `- Rs. ${discountAmount.toLocaleString()}` : 'None'}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">New Total</p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New Total</p>
                         <p className="font-bold text-red-500">Rs. {newTotal.toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">New Remaining</p>
+                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New Remaining</p>
                         <p className="font-bold text-red-500">Rs. {newRemaining.toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="mt-3">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">New Status</p>
+                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New Status</p>
                       <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${newStatus === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : newStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                         {newStatus === 'Paid' ? '✅ FULLY PAID' : newStatus === 'Partial' ? '⚠️ PARTIAL PAYMENT' : '⏳ PENDING'}
                       </span>
@@ -1899,7 +1571,7 @@ const Records = ({ darkMode }) => {
               })()}
             </div>
             
-            <div className="sticky bottom-0 flex justify-end gap-3 p-4 border-t rounded-b-2xl bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+            <div className={`sticky bottom-0 flex justify-end gap-3 p-4 border-t rounded-b-2xl ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
               <button onClick={closeEditModal} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
                 <FiX /> Cancel
               </button>
@@ -1915,16 +1587,16 @@ const Records = ({ darkMode }) => {
       {/* Delete Confirmation Modal */}
       {deleteConfirmInvoice && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className={`max-w-md w-full rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`max-w-md w-full rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="p-6 text-center">
-              <div className="w-16 h-16 mx-auto rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4">
-                <FiAlertTriangle className="text-3xl text-red-600 dark:text-red-400" />
+              <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${darkMode ? 'bg-red-900/30' : 'bg-red-100'}`}>
+                <FiAlertTriangle className={`text-3xl ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
               </div>
               <h3 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 Delete Invoice Permanently?
               </h3>
               <p className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Invoice <strong>{deleteConfirmInvoice.invoiceNo}</strong> ({deleteConfirmInvoice.customer?.name || 'Walk-in'})
+                Invoice <strong className={darkMode ? 'text-white' : 'text-gray-900'}>{deleteConfirmInvoice.invoiceNo}</strong> ({deleteConfirmInvoice.customer?.name || 'Walk-in'})
               </p>
               <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 This will remove the record from the database completely. This action cannot be undone.

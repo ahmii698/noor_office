@@ -13,7 +13,6 @@ class CarPurchase extends Model
         'customer_name',
         'phone_no',
         'selling_price',
-        'purchase_price',
         'make',
         'model',
         'vin',
@@ -28,7 +27,6 @@ class CarPurchase extends Model
     protected $casts = [
         'purchase_date' => 'date',
         'selling_price' => 'decimal:2',
-        'purchase_price' => 'decimal:2',
         'running' => 'decimal:2',
     ];
 }

@@ -12,7 +12,9 @@ class CarSell extends Model
         'sell_date',
         'customer_name',
         'phone_no',
+        'purchase_price',
         'selling_price',
+        'profit',
         'make',
         'model',
         'vin',
@@ -26,7 +28,9 @@ class CarSell extends Model
 
     protected $casts = [
         'sell_date' => 'date',
+        'purchase_price' => 'decimal:2',
         'selling_price' => 'decimal:2',
+        'profit' => 'decimal:2',
         'running' => 'decimal:2',
     ];
 }

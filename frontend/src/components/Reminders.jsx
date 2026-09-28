@@ -37,13 +37,11 @@ const Reminders = ({ darkMode }) => {
   });
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // ✅ Payment History States
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [selectedInvoiceNo, setSelectedInvoiceNo] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // ✅ Get payment method display with bank/wallet name
   const getPaymentMethodDisplay = () => {
     if (paymentMethod === 'cash') return 'Cash';
     if (paymentMethod === 'card') return 'Credit/Debit Card';
@@ -56,7 +54,6 @@ const Reminders = ({ darkMode }) => {
     return paymentMethod;
   };
 
-  // ✅ Check user role on mount
   useEffect(() => {
     const user = localStorage.getItem('user');
     if (user) {
@@ -65,19 +62,16 @@ const Reminders = ({ darkMode }) => {
     }
   }, []);
 
-  // ✅ Base tabs (everyone can see)
   const baseTabs = [
     { id: 'birthday', label: 'Birthday', icon: FiGift, count: birthdayCustomers.length },
     { id: 'tuning', label: 'Tuning', icon: FiTool, count: tuningReminders.length },
     { id: 'oil_change', label: 'Oil Change', icon: FiDroplet, count: oilChangeReminders.length },
   ];
 
-  // ✅ Admin only tabs
   const adminTabs = [
     { id: 'pending_payments', label: 'Pending Payments', icon: FiDollarSign, count: pendingPayments.length },
   ];
 
-  // ✅ All tabs based on role
   const tabs = [...baseTabs, ...(isAdmin ? adminTabs : [])];
 
   const fetchAllData = async () => {
@@ -105,14 +99,12 @@ const Reminders = ({ darkMode }) => {
     }
   };
 
-  // ✅ Auto-refresh every 3 hours (10800000 milliseconds)
   useEffect(() => {
     fetchAllData();
     const interval = setInterval(fetchAllData, 10800000);
     return () => clearInterval(interval);
   }, [isAdmin]);
 
-  // ✅ Fetch payment history for specific invoice
   const fetchPaymentHistory = async (invoiceNo) => {
     setLoadingHistory(true);
     setSelectedInvoiceNo(invoiceNo);
@@ -232,7 +224,6 @@ const Reminders = ({ darkMode }) => {
     }
   };
 
-  // ✅ Handle payment update with payment method + bank/wallet name + date/time
   const handlePaymentUpdate = async () => {
     if (!isAdmin) {
       toast.error('Only admin can record payments');
@@ -353,7 +344,6 @@ const Reminders = ({ darkMode }) => {
     }
   };
 
-  // ========== EXCEL EXPORT ==========
   const exportToExcel = () => {
     const data = getCurrentData();
     if (data.length === 0) {
@@ -406,7 +396,6 @@ const Reminders = ({ darkMode }) => {
     toast.success(`Exported ${tabLabel} to Excel!`);
   };
 
-  // ========== PDF EXPORT ==========
   const exportToPDF = () => {
     const data = getCurrentData();
     if (data.length === 0) {
@@ -492,7 +481,7 @@ const Reminders = ({ darkMode }) => {
   const isPendingPayments = activeTab === 'pending_payments';
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
       {/* Header */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="flex items-center justify-between flex-wrap gap-4">
@@ -508,7 +497,6 @@ const Reminders = ({ darkMode }) => {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* ✅ Excel & PDF Buttons */}
             <button
               onClick={exportToExcel}
               disabled={currentData.length === 0}
@@ -547,7 +535,7 @@ const Reminders = ({ darkMode }) => {
 
       {/* Tabs */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <div className="flex border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} overflow-x-auto">
+        <div className={`flex border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} overflow-x-auto`}>
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
@@ -598,9 +586,9 @@ const Reminders = ({ darkMode }) => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                 <thead className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                  <tr>
+                  <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">#</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Customer</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Phone</th>
@@ -645,11 +633,11 @@ const Reminders = ({ darkMode }) => {
                     
                     return (
                       <tr key={item.id || index} className={`${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
-                        <td className="px-4 py-3 text-sm text-center">{index + 1}</td>
+                        <td className={`px-4 py-3 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{index + 1}</td>
                         <td className="px-4 py-3">
                           <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{name}</span>
                         </td>
-                        <td className="px-4 py-3 text-sm">{phone}</td>
+                        <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{phone}</td>
                         <td className="px-4 py-3 text-sm">
                           <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
                             {car}
@@ -668,15 +656,17 @@ const Reminders = ({ darkMode }) => {
                                 {item.invoice_no}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <td className={`px-4 py-3 text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                               Rs. {item.total_amount?.toLocaleString() || 0}
                             </td>
-                            <td className="px-4 py-3 text-sm text-green-600 dark:text-green-400">
+                            <td className={`px-4 py-3 text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                               Rs. {item.paid_amount?.toLocaleString() || 0}
                             </td>
                             <td className="px-4 py-3 text-sm">
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                item.remaining_amount > 0 ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'
+                                item.remaining_amount > 0 
+                                  ? darkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-500/20 text-red-500'
+                                  : darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-500/20 text-green-500'
                               }`}>
                                 Rs. {item.remaining_amount?.toLocaleString() || 0}
                               </span>
@@ -689,10 +679,12 @@ const Reminders = ({ darkMode }) => {
                                 {item.service_name || 'N/A'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-sm">{formatDate(date)}</td>
+                            <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDate(date)}</td>
                             <td className="px-4 py-3 text-sm">
                               <span className={`px-2 py-1 rounded-full text-xs ${
-                                daysAgo >= 180 ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-600'
+                                daysAgo >= 180 
+                                  ? darkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-500/20 text-red-500'
+                                  : darkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-500/20 text-yellow-600'
                               }`}>
                                 {daysAgo} days
                               </span>
@@ -793,11 +785,11 @@ const Reminders = ({ darkMode }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-2xl w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-              <h3 className="text-xl font-semibold flex items-center gap-2">
+              <h3 className={`text-xl font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 <FiMessageSquare className="text-red-500" />
                 Edit {editForm.service_type?.replace('_', ' ').toUpperCase()} Message
               </h3>
-              <button onClick={() => setShowEditModal(false)} className="text-gray-500 hover:text-gray-700 text-2xl">
+              <button onClick={() => setShowEditModal(false)} className={`text-2xl ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}>
                 <FiX />
               </button>
             </div>
@@ -805,7 +797,7 @@ const Reminders = ({ darkMode }) => {
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Message Template
-                  <span className="text-xs text-gray-400 block mt-1">
+                  <span className={`text-xs block mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     Use {'{customer_name}'}, {'{car_number}'}, {'{car_model}'}, {'{service_date}'}, {'{phone}'}, {'{service_name}'}, {'{quantity}'}, {'{price}'}, {'{total}'} as placeholders
                   </span>
                 </label>
@@ -814,7 +806,7 @@ const Reminders = ({ darkMode }) => {
                   onChange={(e) => setEditForm({ ...editForm, message_template: e.target.value })}
                   rows="5"
                   className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                   }`}
                 />
               </div>
@@ -827,7 +819,7 @@ const Reminders = ({ darkMode }) => {
                   value={editForm.whatsapp_number}
                   onChange={(e) => setEditForm({ ...editForm, whatsapp_number: e.target.value })}
                   className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                   }`}
                   placeholder="e.g., 03322751363"
                 />
@@ -855,18 +847,18 @@ const Reminders = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Payment Modal */}
+      {/* Payment Modal */}
       {showPaymentModal && selectedPayment && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-              <h3 className="text-xl font-semibold flex items-center gap-2">
+              <h3 className={`text-xl font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 <FiDollarSign className="text-red-500" />
                 Record Payment
               </h3>
               <button 
                 onClick={() => { setShowPaymentModal(false); setSelectedPayment(null); setPaymentAmount(''); setPaymentMethod('cash'); setSelectedBank(''); }} 
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className={`text-2xl ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <FiX />
               </button>
@@ -875,20 +867,20 @@ const Reminders = ({ darkMode }) => {
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Customer</p>
                 <p className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedPayment.customer_name}</p>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mt-2`}>Invoice #</p>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Invoice #</p>
                 <p className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedPayment.invoice_no}</p>
-                <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}">
+                <div className={`grid grid-cols-3 gap-4 mt-3 pt-3 border-t ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
                   <div>
                     <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total</p>
                     <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {selectedPayment.total_amount?.toLocaleString()}</p>
                   </div>
                   <div>
                     <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paid</p>
-                    <p className={`font-semibold text-green-600 dark:text-green-400`}>Rs. {selectedPayment.paid_amount?.toLocaleString()}</p>
+                    <p className={`font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>Rs. {selectedPayment.paid_amount?.toLocaleString()}</p>
                   </div>
                   <div>
                     <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Pending</p>
-                    <p className={`font-semibold text-red-600 dark:text-red-400`}>Rs. {selectedPayment.remaining_amount?.toLocaleString()}</p>
+                    <p className={`font-semibold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>Rs. {selectedPayment.remaining_amount?.toLocaleString()}</p>
                   </div>
                 </div>
               </div>
@@ -896,7 +888,7 @@ const Reminders = ({ darkMode }) => {
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Payment Amount (Rs.)
-                  <span className="text-xs text-gray-400 block mt-1">Max: Rs. {selectedPayment.remaining_amount?.toLocaleString()}</span>
+                  <span className={`text-xs block mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Max: Rs. {selectedPayment.remaining_amount?.toLocaleString()}</span>
                 </label>
                 <input
                   type="number"
@@ -904,7 +896,7 @@ const Reminders = ({ darkMode }) => {
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   placeholder="Enter amount"
                   className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                   }`}
                   min="0.01"
                   max={selectedPayment.remaining_amount}
@@ -926,7 +918,7 @@ const Reminders = ({ darkMode }) => {
                     }
                   }}
                   className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
                   }`}
                 >
                   <option value="cash">Cash</option>
@@ -947,7 +939,7 @@ const Reminders = ({ darkMode }) => {
                     onChange={(e) => setSelectedBank(e.target.value)}
                     placeholder="e.g., Allied Bank, HBL, Meezan Bank"
                     className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                     }`}
                   />
                   {!selectedBank && (
@@ -974,7 +966,7 @@ const Reminders = ({ darkMode }) => {
                     onChange={(e) => setSelectedBank(e.target.value)}
                     placeholder="e.g., Sadapay, Easypaisa, JazzCash, Nayapay"
                     className={`w-full px-4 py-3 rounded-xl border-2 focus:ring-2 focus:ring-red-500 outline-none transition ${
-                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300'
+                      darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'
                     }`}
                   />
                   {!selectedBank && (
@@ -1025,18 +1017,18 @@ const Reminders = ({ darkMode }) => {
         </div>
       )}
 
-      {/* ✅ Payment History Modal */}
+      {/* Payment History Modal */}
       {showHistoryModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className={`${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-2xl w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
-              <h3 className="text-xl font-semibold flex items-center gap-2">
+              <h3 className={`text-xl font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                 <FiClock className="text-purple-500" />
                 Payment History - {selectedInvoiceNo}
               </h3>
               <button 
                 onClick={() => { setShowHistoryModal(false); setPaymentHistory([]); }} 
-                className="text-gray-500 hover:text-gray-700 text-2xl"
+                className={`text-2xl ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <FiX />
               </button>
@@ -1055,9 +1047,9 @@ const Reminders = ({ darkMode }) => {
               ) : (
                 <>
                   <div className="overflow-x-auto">
-                    <table className="w-full">
+                    <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                       <thead className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-                        <tr>
+                        <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase">#</th>
                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase">Amount</th>
                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase">Payment Method</th>
@@ -1068,8 +1060,8 @@ const Reminders = ({ darkMode }) => {
                       <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                         {paymentHistory.map((payment, index) => (
                           <tr key={payment.id || index} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}>
-                            <td className="px-4 py-2 text-sm text-center">{index + 1}</td>
-                            <td className="px-4 py-2 text-sm font-semibold text-green-600 dark:text-green-400">
+                            <td className={`px-4 py-2 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{index + 1}</td>
+                            <td className={`px-4 py-2 text-sm font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                               Rs. {parseFloat(payment.amount).toLocaleString()}
                             </td>
                             <td className="px-4 py-2 text-sm">
@@ -1079,7 +1071,7 @@ const Reminders = ({ darkMode }) => {
                                 {payment.payment_method || 'Cash'}
                               </span>
                             </td>
-                            <td className="px-4 py-2 text-sm">
+                            <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                               {payment.paid_at ? (
                                 new Date(payment.paid_at).toLocaleString('en-US', {
                                   month: '2-digit',
@@ -1104,10 +1096,10 @@ const Reminders = ({ darkMode }) => {
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot className={`${darkMode ? 'bg-gray-700' : 'bg-gray-50'} font-semibold`}>
+                      <tfoot className={`${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-50 text-gray-800'} font-semibold`}>
                         <tr>
                           <td colSpan="1" className="px-4 py-3 text-right">Total Paid:</td>
-                          <td className="px-4 py-3 text-green-600 dark:text-green-400">
+                          <td className={`px-4 py-3 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                             Rs. {paymentHistory.reduce((sum, p) => sum + parseFloat(p.amount), 0).toLocaleString()}
                           </td>
                           <td colSpan="3"></td>

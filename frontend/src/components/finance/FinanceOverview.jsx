@@ -20,6 +20,64 @@ const debounce = (func, delay) => {
   };
 };
 
+// ============================================================
+// 🕒 KARACHI TIMEZONE HELPERS (Asia/Karachi, UTC+5, no DST)
+// Saari date filtering 'YYYY-MM-DD' strings par hoti hai jo Karachi ke
+// hisab se nikalti hain, isliye browser/server timezone ka asar nahi padta.
+// ============================================================
+const KARACHI_TZ = 'Asia/Karachi';
+
+const karachiFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: KARACHI_TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
+// Kisi bhi date value ko Karachi ki 'YYYY-MM-DD' string mein badalta hai
+const toKarachiDateStr = (value) => {
+  if (!value) return '';
+  const str = String(value).trim();
+
+  // Sirf date: jaisi hai waisi (already calendar date hai)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+  // Time hai magar timezone nahi (e.g. "2026-09-29 00:30:00") -> Karachi time maan lo
+  const hasTz = /(Z|[+-]\d{2}:?\d{2})$/i.test(str);
+  if (!hasTz && /^\d{4}-\d{2}-\d{2}[ T]/.test(str)) return str.substring(0, 10);
+
+  // ISO with Z / offset -> Karachi mein convert
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  return karachiFormatter.format(d);
+};
+
+// Aaj ki date (Karachi)
+const getKarachiToday = () => karachiFormatter.format(new Date());
+
+// Is hafte ka Monday (Karachi)
+const getWeekStartStr = () => {
+  const d = new Date(`${getKarachiToday()}T00:00:00Z`);
+  const day = d.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  d.setUTCDate(d.getUTCDate() - diff);
+  return d.toISOString().slice(0, 10);
+};
+
+// Is mahine ki 1 tareekh (Karachi)
+const getMonthStartStr = () => `${getKarachiToday().slice(0, 8)}01`;
+
+// Is saal ki 1 January (Karachi)
+const getYearStartStr = () => `${getKarachiToday().slice(0, 4)}-01-01`;
+
+// 'YYYY-MM-DD' -> 'DD/MM/YYYY' display
+const formatDisplayDate = (value) => {
+  const s = toKarachiDateStr(value);
+  if (!s) return '-';
+  const [y, m, d] = s.split('-');
+  return `${d}/${m}/${y}`;
+};
+
 // ✅ Battery filter function - Battery items ko detect karega
 const isBatteryItem = (item) => {
   if (!item) return false;
@@ -38,43 +96,31 @@ const hasNonBatteryItems = (items) => {
   return getNonBatteryItems(items).length > 0;
 };
 
-// Helper: Get date range for filter (with custom date support)
+// Helper: Get date range for filter (Karachi 'YYYY-MM-DD' strings)
 const getDateRange = (filter, customDate = null) => {
-  const now = new Date();
-  const start = new Date();
-  
-  // Custom date filter
+  const today = getKarachiToday();
+
   if (filter === 'custom' && customDate) {
-    const date = new Date(customDate);
-    start.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
+    return { start: customDate, end: customDate };
   }
-  
+
   switch (filter) {
     case 'today':
-      start.setHours(0, 0, 0, 0);
-      break;
+      return { start: today, end: today };
     case 'week':
-      const day = now.getDay();
-      const diff = (day === 0 ? 6 : day - 1);
-      start.setDate(now.getDate() - diff);
-      start.setHours(0, 0, 0, 0);
-      break;
+      return { start: getWeekStartStr(), end: today };
     case 'month':
-      start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      break;
+      return { start: getMonthStartStr(), end: today };
     case 'year':
-      start.setMonth(0, 1);
-      start.setHours(0, 0, 0, 0);
-      break;
+      return { start: getYearStartStr(), end: today };
     default:
       return null;
   }
-  return { start, end: now };
+};
+
+const isInRange = (dayStr, range) => {
+  if (!dayStr) return false;
+  return dayStr >= range.start && dayStr <= range.end;
 };
 
 // Helper: Filter invoices by date range
@@ -85,8 +131,7 @@ const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   
   return invoices.filter(inv => {
     if (!inv.invoice_date) return false;
-    const invDate = new Date(inv.invoice_date);
-    return invDate >= range.start && invDate <= range.end;
+    return isInRange(toKarachiDateStr(inv.invoice_date), range);
   });
 };
 
@@ -97,14 +142,38 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   if (!range) return expenses;
   
   return expenses.filter(exp => {
-    if (!exp.expense_date && !exp.date) return false;
-    const expDate = new Date(exp.expense_date || exp.date || exp.created_at);
-    return expDate >= range.start && expDate <= range.end;
+    const raw = exp.expense_date || exp.date || exp.created_at;
+    if (!raw) return false;
+    return isInRange(toKarachiDateStr(raw), range);
   });
 };
 
-// ✅ Collapsible Stat Card - sirf 2 lines default (title + amount).
-// Expand/collapse ab is card ka apna nahi, poore page ka EK global switch control karta hai (expanded prop se aata hai)
+// ✅ Helper: Non-battery products ki purchase cost (Karachi date ke hisab se)
+// created_at (poora timestamp) pehle, phir date_added
+const getInventoryCost = (products, filter, customDate = null) => {
+  const nonBattery = (products || []).filter(p =>
+    p.category !== 'Battery' && !p.name?.toLowerCase().includes('battery')
+  );
+
+  let list = nonBattery;
+  if (filter !== 'all') {
+    const range = getDateRange(filter, customDate);
+    if (range) {
+      list = nonBattery.filter(p => {
+        const raw = p.created_at || p.date_added;
+        if (!raw) return false;
+        return isInRange(toKarachiDateStr(raw), range);
+      });
+    }
+  }
+
+  return list.reduce(
+    (sum, p) => sum + (parseFloat(p.purchase_price) || 0) * (parseInt(p.quantity) || 0),
+    0
+  );
+};
+
+// ✅ Collapsible Stat Card
 const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onClick, expanded }) => {
   return (
     <div
@@ -136,30 +205,29 @@ const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onCli
 
 // Memoized Invoice Details Component - ✅ Battery filtered out
 const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
-  if (!data?.details || data.details.length === 0) {
-    return (
-      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
-        <p className="text-gray-500">No sales data available</p>
-      </div>
-    );
-  }
-  
   const allItems = useMemo(() => {
     const items = [];
-    data.details.forEach(inv => {
-      // ✅ Sirf non-battery items include karo
+    (data?.details || []).forEach(inv => {
       const nonBatteryItems = getNonBatteryItems(inv.items);
       nonBatteryItems.forEach(item => {
         items.push({ ...item, inv });
       });
     });
     return items;
-  }, [data.details]);
+  }, [data?.details]);
+
+  if (!data?.details || data.details.length === 0) {
+    return (
+      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'} text-center`}>
+        <p>No sales data available</p>
+      </div>
+    );
+  }
   
   if (allItems.length === 0) {
     return (
-      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
-        <p className="text-gray-500">No non-battery sales data available</p>
+      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'} text-center`}>
+        <p>No non-battery sales data available</p>
       </div>
     );
   }
@@ -167,13 +235,13 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   return (
     <div className="mt-4 space-y-3">
       <div className="flex justify-between items-center">
-        <h4 className="font-semibold">📋 {title}</h4>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 {title}</h4>
+        <button onClick={onClose} className={`text-lg ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}>✕</button>
       </div>
       <div className="overflow-x-auto max-h-96">
-        <table className="w-full text-sm">
-          <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-            <tr>
+        <table className={`w-full text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+          <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
+            <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
               <th className="px-3 py-2 text-left">Item</th>
               <th className="px-3 py-2 text-left">Type</th>
               <th className="px-3 py-2 text-right">Purchase</th>
@@ -184,34 +252,38 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
               <th className="px-3 py-2 text-left">Customer</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             {allItems.map((item, idx) => (
-              <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td className="px-3 py-2 font-medium">{item.service_name}</td>
+              <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
+                <td className={`px-3 py-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.service_name}</td>
                 <td className="px-3 py-2">
-                  <span className={`px-2 py-1 rounded text-xs ${item.isProduct ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    item.isProduct 
+                      ? darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700' 
+                      : darkMode ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-100 text-purple-700'
+                  }`}>
                     {item.isProduct ? 'Product' : 'Service'}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right">
+                <td className={`px-3 py-2 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   {item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}
                 </td>
-                <td className="px-3 py-2 text-right">Rs. {item.price.toLocaleString()}</td>
-                <td className="px-3 py-2 text-center font-semibold">{item.quantity}</td>
-                <td className="px-3 py-2 text-right font-semibold text-green-500">
+                <td className={`px-3 py-2 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Rs. {item.price.toLocaleString()}</td>
+                <td className={`px-3 py-2 text-center font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.quantity}</td>
+                <td className={`px-3 py-2 text-right font-semibold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>
                   + Rs. {item.unitProfit.toLocaleString()}
                 </td>
-                <td className="px-3 py-2 text-right font-semibold text-green-500">
+                <td className={`px-3 py-2 text-right font-semibold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>
                   Rs. {(item.unitProfit * item.quantity).toLocaleString()}
                 </td>
-                <td className="px-3 py-2 text-xs">{item.inv.customer}</td>
+                <td className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.inv.customer}</td>
                </tr>
             ))}
           </tbody>
-          <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+          <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
             <tr>
               <td colSpan="6" className="px-3 py-2 text-right font-bold">Total:</td>
-              <td className="px-3 py-2 text-right font-bold text-green-500">Rs. {data.profit.toLocaleString()}</td>
+              <td className={`px-3 py-2 text-right font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {data.profit.toLocaleString()}</td>
               <td></td>
              </tr>
           </tfoot>
@@ -223,53 +295,53 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
 
 // Memoized Expense Details Component
 const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
+  const totalAmount = useMemo(() => 
+    (expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0), 
+    [expenses]
+  );
+
   if (!expenses || expenses.length === 0) {
     return (
-      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'} text-center`}>
-        <p className="text-gray-500">No expense data available</p>
+      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'} text-center`}>
+        <p>No expense data available</p>
       </div>
     );
   }
   
-  const totalAmount = useMemo(() => 
-    expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0), 
-    [expenses]
-  );
-  
   return (
     <div className="mt-4 space-y-3">
       <div className="flex justify-between items-center">
-        <h4 className="font-semibold">📋 {title}</h4>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
+        <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 {title}</h4>
+        <button onClick={onClose} className={`text-lg ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}>✕</button>
       </div>
       <div className="overflow-x-auto max-h-96">
-        <table className="w-full text-sm">
-          <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
-            <tr>
+        <table className={`w-full text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+          <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
+            <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
               <th className="px-3 py-2 text-left">Description</th>
               <th className="px-3 py-2 text-left">Category</th>
               <th className="px-3 py-2 text-left">Date</th>
               <th className="px-3 py-2 text-right">Amount</th>
              </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             {expenses.map((exp, idx) => (
-              <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                <td className="px-3 py-2 font-medium">{exp.description}</td>
+              <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
+                <td className={`px-3 py-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{exp.description}</td>
                 <td className="px-3 py-2">
-                  <span className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                  <span className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>
                     {exp.category || 'General'}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-sm">{new Date(exp.date || exp.expense_date).toLocaleDateString()}</td>
-                <td className="px-3 py-2 text-right font-semibold text-red-500">Rs. {exp.amount.toLocaleString()}</td>
+                <td className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDisplayDate(exp.date || exp.expense_date)}</td>
+                <td className={`px-3 py-2 text-right font-semibold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {exp.amount.toLocaleString()}</td>
                </tr>
             ))}
           </tbody>
-          <tfoot className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+          <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
             <tr>
               <td colSpan="3" className="px-3 py-2 text-right font-bold">Total:</td>
-              <td className="px-3 py-2 text-right font-bold text-red-500">Rs. {totalAmount.toLocaleString()}</td>
+              <td className={`px-3 py-2 text-right font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {totalAmount.toLocaleString()}</td>
              </tr>
           </tfoot>
         </table>
@@ -279,12 +351,11 @@ const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
 });
 
 const FinanceOverview = ({ darkMode }) => {
-  // Filter states
   const [timeFilter, setTimeFilter] = useState('all');
   const [customDate, setCustomDate] = useState('');
   const [showCustomDate, setShowCustomDate] = useState(false);
   
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(parseInt(getKarachiToday().slice(0, 4)));
   const [showYearlyReport, setShowYearlyReport] = useState(true);
   const [showTodayDetails, setShowTodayDetails] = useState(false);
   const [showWeekDetails, setShowWeekDetails] = useState(false);
@@ -295,10 +366,8 @@ const FinanceOverview = ({ darkMode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // ✅ Ek hi global switch - saare stat cards ki extra lines yahan se control hoti hain
   const [showAllDetails, setShowAllDetails] = useState(false);
   
-  // Pagination state for yearly report
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   
@@ -306,7 +375,6 @@ const FinanceOverview = ({ darkMode }) => {
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
   
-  // Dynamic data states - updated based on filter
   const [filteredSalesData, setFilteredSalesData] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
   const [filteredExpenseData, setFilteredExpenseData] = useState([]);
   const [filteredStats, setFilteredStats] = useState({
@@ -340,7 +408,6 @@ const FinanceOverview = ({ darkMode }) => {
     monthDiscount: 0
   });
 
-  // Get filter label
   const getFilterLabel = useCallback(() => {
     const labels = {
       all: 'All Time',
@@ -353,7 +420,6 @@ const FinanceOverview = ({ darkMode }) => {
     return labels[timeFilter] || 'All Time';
   }, [timeFilter, customDate]);
 
-  // Handle custom date change
   const handleCustomDateChange = (e) => {
     const date = e.target.value;
     setCustomDate(date);
@@ -363,49 +429,25 @@ const FinanceOverview = ({ darkMode }) => {
     }
   };
 
-  // Toggle custom date picker
   const toggleCustomDate = () => {
     setShowCustomDate(!showCustomDate);
   };
 
-  // Clear custom date
   const clearCustomDate = () => {
     setCustomDate('');
     setTimeFilter('all');
     setShowCustomDate(false);
   };
 
-  // Memoized helper functions
-  const getStartOfWeek = useCallback(() => {
-    const today = new Date();
-    const day = today.getDay();
-    const diff = (day === 0 ? 6 : day - 1);
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - diff);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
-  }, []);
-
-  const getStartOfMonth = useCallback(() => {
-    const date = new Date();
-    date.setDate(1);
-    date.setHours(0, 0, 0, 0);
-    return date;
-  }, []);
-
-  // ✅ Calculate filtered data based on time filter - BATTERY EXCLUDED
   const calculateFilteredData = useCallback((invoicesList, expensesList, productsMap) => {
-    // Filter invoices by date
     const filteredInvoices = filterInvoicesByDate(invoicesList, timeFilter, customDate || null);
     const filteredExpenses = filterExpensesByDate(expensesList, timeFilter, customDate || null);
     
     let total = 0, items = 0, profit = 0, discount = 0, details = [];
     
     filteredInvoices.forEach(inv => {
-      // ✅ Sirf non-battery items lo
       const nonBatteryItems = getNonBatteryItems(inv.items);
       
-      // ✅ Agar koi non-battery item nahi hai toh invoice skip karo
       if (nonBatteryItems.length === 0) {
         return;
       }
@@ -415,7 +457,6 @@ const FinanceOverview = ({ darkMode }) => {
       let itemCount = 0;
       let invDiscount = parseFloat(inv.discount) || 0;
       
-      // ✅ Sirf non-battery items ka calculation karo
       nonBatteryItems.forEach(item => {
         const itemQty = parseInt(item.quantity) || 0;
         const itemPrice = parseFloat(item.price) || 0;
@@ -480,15 +521,23 @@ const FinanceOverview = ({ darkMode }) => {
     };
   }, [timeFilter, customDate]);
 
-  // Fetch functions with abort controller
+  // ✅ Products API response shape ko safely handle karega
+  // (seedha array, { data: [...] }, { products: [...] } - teeno cases)
   const fetchProducts = useCallback(async (signal) => {
     try {
       const response = await api.get('/products', { signal });
-      if (response.data && Array.isArray(response.data)) {
-        setProducts(response.data);
-        return response.data;
-      }
-      return [];
+      const raw = response.data;
+
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.products)
+        ? raw.products
+        : [];
+
+      setProducts(list);
+      return list;
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('Error fetching products:', err);
@@ -546,7 +595,6 @@ const FinanceOverview = ({ darkMode }) => {
         productsMap.set(p.name, p);
       });
       
-      // Calculate filtered data based on selected filter - ✅ Battery excluded
       const filtered = calculateFilteredData(invoicesList, expensesList, productsMap);
       setFilteredSalesData(filtered.sales);
       setFilteredExpenseData(filtered.expenses);
@@ -557,10 +605,10 @@ const FinanceOverview = ({ darkMode }) => {
         discount: filtered.sales.discount
       });
       
-      // Also calculate today, week, month for individual cards - ✅ Battery excluded
-      const todayStr = new Date().toDateString();
-      const weekStart = getStartOfWeek();
-      const monthStart = getStartOfMonth();
+      // 🕒 Karachi ke hisab se aaj / hafta / mahina
+      const todayStr = getKarachiToday();
+      const weekStartStr = getWeekStartStr();
+      const monthStartStr = getMonthStartStr();
       
       let todayTotal = 0, todayItems = 0, todayProfit = 0, todayDiscount = 0, todayDetails = [];
       let weekTotal = 0, weekItems = 0, weekProfit = 0, weekDiscount = 0, weekDetails = [];
@@ -569,22 +617,20 @@ const FinanceOverview = ({ darkMode }) => {
       invoicesList.forEach(inv => {
         if (!inv.invoice_date) return;
         
-        // ✅ Sirf non-battery items lo
         const nonBatteryItems = getNonBatteryItems(inv.items);
         if (nonBatteryItems.length === 0) return;
         
-        const invDate = new Date(inv.invoice_date);
-        const invDateStr = invDate.toDateString();
-        const isToday = invDateStr === todayStr;
-        const isThisWeek = invDate >= weekStart;
-        const isThisMonth = invDate >= monthStart;
+        const invDay = toKarachiDateStr(inv.invoice_date);
+        if (!invDay) return;
+        const isToday = invDay === todayStr;
+        const isThisWeek = invDay >= weekStartStr && invDay <= todayStr;
+        const isThisMonth = invDay >= monthStartStr && invDay <= todayStr;
         
         let invTotal = 0;
         let invProfit = 0;
         let itemCount = 0;
         let invDiscount = parseFloat(inv.discount) || 0;
         
-        // ✅ Sirf non-battery items ka calculation karo
         nonBatteryItems.forEach(item => {
           const itemQty = parseInt(item.quantity) || 0;
           const itemPrice = parseFloat(item.price) || 0;
@@ -653,27 +699,30 @@ const FinanceOverview = ({ darkMode }) => {
       let monthExp = 0, monthExpCount = 0, monthExpList = [];
       
       expensesList.forEach(exp => {
-        const expDate = new Date(exp.expense_date || exp.date || exp.created_at);
+        const rawDate = exp.expense_date || exp.date || exp.created_at;
+        const expDay = toKarachiDateStr(rawDate);
         const amount = parseFloat(exp.amount) || 0;
         const expenseItem = {
           id: exp.id,
           description: exp.description,
           amount: amount,
-          date: exp.expense_date || exp.date || exp.created_at,
+          date: rawDate,
           category: exp.category
         };
         
-        if (expDate.toDateString() === todayStr) {
+        if (!expDay) return;
+        
+        if (expDay === todayStr) {
           todayExp += amount;
           todayExpCount++;
           todayExpList.push(expenseItem);
         }
-        if (expDate >= weekStart) {
+        if (expDay >= weekStartStr && expDay <= todayStr) {
           weekExp += amount;
           weekExpCount++;
           weekExpList.push(expenseItem);
         }
-        if (expDate >= monthStart) {
+        if (expDay >= monthStartStr && expDay <= todayStr) {
           monthExp += amount;
           monthExpCount++;
           monthExpList.push(expenseItem);
@@ -703,17 +752,15 @@ const FinanceOverview = ({ darkMode }) => {
         monthDiscount: monthDiscount
       });
       
-      // ✅ Yearly Report - Battery Excluded
       const year = selectedYear;
       const yearInvoices = invoicesList.filter(inv => {
         if (!inv.invoice_date) return false;
-        return new Date(inv.invoice_date).getFullYear() === year;
+        return toKarachiDateStr(inv.invoice_date).slice(0, 4) === String(year);
       });
       
       let yearlyTotal = 0, yearlyItems = 0, yearlyProfit = 0, yearlyDiscount = 0, yearlyDetails = [];
       
       yearInvoices.forEach(inv => {
-        // ✅ Sirf non-battery items lo
         const nonBatteryItems = getNonBatteryItems(inv.items);
         if (nonBatteryItems.length === 0) return;
         
@@ -722,7 +769,6 @@ const FinanceOverview = ({ darkMode }) => {
         let itemCount = 0;
         let invDiscount = parseFloat(inv.discount) || 0;
         
-        // ✅ Sirf non-battery items ka calculation karo
         nonBatteryItems.forEach(item => {
           const itemQty = parseInt(item.quantity) || 0;
           const itemPrice = parseFloat(item.price) || 0;
@@ -777,7 +823,7 @@ const FinanceOverview = ({ darkMode }) => {
     }
     
     return () => abortController.abort();
-  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, getStartOfWeek, getStartOfMonth, calculateFilteredData, timeFilter, customDate]);
+  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, calculateFilteredData, timeFilter, customDate]);
 
   useEffect(() => {
     const cleanup = loadAllData();
@@ -786,11 +832,9 @@ const FinanceOverview = ({ darkMode }) => {
     };
   }, [loadAllData]);
 
-  // ✅ Yearly Report items - Battery already filtered out in loadAllData
   const flattenedItems = useMemo(() => {
     const items = [];
     selectedYearData.details.forEach(inv => {
-      // ✅ Already non-battery items only, but double-check
       const nonBatteryItems = getNonBatteryItems(inv.items);
       nonBatteryItems.forEach(item => {
         items.push({ ...item, inv });
@@ -824,6 +868,12 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, [currentPage, totalPages]);
 
+  // ✅ Inventory purchase cost for the currently selected filter (Battery excluded, Karachi time)
+  const inventoryCost = useMemo(
+    () => getInventoryCost(products, timeFilter, customDate || null),
+    [products, timeFilter, customDate]
+  );
+
   const exportToExcel = useCallback(() => {
     if (selectedYearData.details.length === 0) {
       toast.error('No data available for the selected year');
@@ -832,13 +882,12 @@ const FinanceOverview = ({ darkMode }) => {
     
     const exportData = [];
     selectedYearData.details.forEach(inv => {
-      // ✅ Already non-battery items, but double-check
       const nonBatteryItems = getNonBatteryItems(inv.items);
       nonBatteryItems.forEach(item => {
         exportData.push({
           'Invoice #': inv.invoiceNo,
           'Customer': inv.customer,
-          'Date': new Date(inv.date).toLocaleDateString(),
+          'Date': formatDisplayDate(inv.date),
           'Item': item.service_name,
           'Type': item.isProduct ? 'Product' : 'Service',
           'Quantity': item.quantity,
@@ -872,13 +921,12 @@ const FinanceOverview = ({ darkMode }) => {
     doc.text(`Sales Report for Year ${selectedYear}`, 14, 10);
     const tableData = [];
     selectedYearData.details.forEach(inv => {
-      // ✅ Already non-battery items, but double-check
       const nonBatteryItems = getNonBatteryItems(inv.items);
       nonBatteryItems.forEach(item => {
         tableData.push([
           inv.invoiceNo,
           inv.customer,
-          new Date(inv.date).toLocaleDateString(),
+          formatDisplayDate(inv.date),
           item.service_name,
           item.isProduct ? 'Product' : 'Service',
           item.quantity,
@@ -984,7 +1032,6 @@ const FinanceOverview = ({ darkMode }) => {
           This Year
         </button>
         
-        {/* Custom Date Button */}
         <button
           onClick={toggleCustomDate}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -998,7 +1045,6 @@ const FinanceOverview = ({ darkMode }) => {
           📅 Custom Date
         </button>
         
-        {/* Custom Date Input */}
         {showCustomDate && (
           <div className="flex items-center gap-2">
             <input
@@ -1018,7 +1064,6 @@ const FinanceOverview = ({ darkMode }) => {
           </div>
         )}
         
-        {/* ✅ Ek hi global button - saare cards ek sath expand/collapse honge */}
         <button
           onClick={() => setShowAllDetails(!showAllDetails)}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 ${
@@ -1033,12 +1078,18 @@ const FinanceOverview = ({ darkMode }) => {
 
         <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
-          <span className="ml-2 text-green-500">(Battery Sales Excluded)</span>
+          <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+            darkMode 
+              ? 'bg-yellow-900/40 text-yellow-300' 
+              : 'bg-yellow-50 text-yellow-600'
+          }`}>
+            (Battery Sales Excluded)
+          </span>
         </span>
       </div>
 
-      {/* Dynamic Filtered Sales Card - ✅ Battery Excluded */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Dynamic Filtered Sales Card */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           gradient="from-blue-500 to-blue-600"
           icon={FiDollarSign}
@@ -1074,12 +1125,23 @@ const FinanceOverview = ({ darkMode }) => {
           ]}
           expanded={showAllDetails}
         />
+
+        {/* ✅ Inventory Purchased Card */}
+        <StatCard
+          gradient="from-orange-500 to-orange-600"
+          icon={FiPackage}
+          title={`${getFilterLabel()} Inventory Purchased`}
+          mainValue={`Rs. ${inventoryCost.toLocaleString()}`}
+          subLines={[
+            'Purchase price × quantity',
+            '(Battery excluded)'
+          ]}
+          expanded={showAllDetails}
+        />
       </div>
 
-      {/* ✅ Yeh poora block (Today/Week/Month Sales, Expenses, Profit, Discount) sirf "Show Details" dabane par nazar aayega */}
       {showAllDetails && (
         <>
-          {/* Today's Sales Card - ✅ Battery Excluded */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
               gradient="from-blue-500 to-blue-600"
@@ -1131,7 +1193,6 @@ const FinanceOverview = ({ darkMode }) => {
           {showWeekDetails && <InvoiceDetails title="This Week's Sales" data={weeklySales} darkMode={darkMode} onClose={() => setShowWeekDetails(false)} />}
           {showMonthDetails && <InvoiceDetails title="This Month's Sales" data={monthlySales} darkMode={darkMode} onClose={() => setShowMonthDetails(false)} />}
 
-          {/* Expense Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
               gradient="from-red-500 to-red-600"
@@ -1177,7 +1238,6 @@ const FinanceOverview = ({ darkMode }) => {
           {showWeekExpenses && <ExpenseDetails title="This Week's Expenses" expenses={weekExpenseDetails} darkMode={darkMode} onClose={() => setShowWeekExpenses(false)} />}
           {showMonthExpenses && <ExpenseDetails title="This Month's Expenses" expenses={monthExpenseDetails} darkMode={darkMode} onClose={() => setShowMonthExpenses(false)} />}
 
-          {/* Profit Cards - ✅ Battery Excluded */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
               gradient="from-green-500 to-green-600"
@@ -1216,7 +1276,6 @@ const FinanceOverview = ({ darkMode }) => {
             />
           </div>
 
-          {/* Discount Cards - ✅ Battery Excluded */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
               gradient="from-sky-400 to-sky-500"
@@ -1257,54 +1316,68 @@ const FinanceOverview = ({ darkMode }) => {
         </>
       )}
 
-      {/* Monthly Breakdown - ✅ Battery Excluded */}
+      {/* Monthly Breakdown */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <h3 className={`font-semibold mb-4 flex items-center gap-2 flex-wrap ${darkMode ? 'text-white' : 'text-gray-900'}`}>
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
-          <span className={`text-xs font-normal ml-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <span className={`text-xs font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             ({getFilterLabel()})
           </span>
-          <span className="text-xs font-normal ml-2 text-yellow-500">(Battery Excluded)</span>
+          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+            darkMode 
+              ? 'bg-yellow-900/40 text-yellow-300' 
+              : 'bg-yellow-50 text-yellow-600'
+          }`}>
+            (Battery Excluded)
+          </span>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className="text-sm text-gray-500">Revenue</p>
-            <p className="text-xl font-bold text-blue-500">Rs. {filteredSalesData.total.toLocaleString()}</p>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Revenue</p>
+            <p className={`text-xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {filteredSalesData.total.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className="text-sm text-gray-500">Expenses</p>
-            <p className="text-xl font-bold text-red-500">Rs. {filteredStats.expenses.toLocaleString()}</p>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expenses</p>
+            <p className={`text-xl font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {filteredStats.expenses.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className="text-sm text-gray-500">Discount Given</p>
-            <p className="text-xl font-bold text-sky-500">Rs. {filteredSalesData.discount.toLocaleString()}</p>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount Given</p>
+            <p className={`text-xl font-bold ${darkMode ? 'text-sky-400' : 'text-sky-500'}`}>Rs. {filteredSalesData.discount.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className="text-sm text-gray-500">Net Profit</p>
-            <p className={`text-xl font-bold ${filteredStats.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Net Profit</p>
+            <p className={`text-xl font-bold ${filteredStats.profit >= 0 ? (darkMode ? 'text-green-400' : 'text-green-500') : (darkMode ? 'text-red-400' : 'text-red-500')}`}>
               Rs. {filteredStats.profit.toLocaleString()}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Yearly Report Section with Pagination - ✅ Battery Excluded */}
+      {/* Yearly Report Section with Pagination */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <button onClick={() => setShowYearlyReport(!showYearlyReport)} className="w-full px-6 py-4 flex justify-between items-center hover:bg-red-50 dark:hover:bg-red-900/20 transition">
-          <div className="flex items-center gap-2">
+        <button onClick={() => setShowYearlyReport(!showYearlyReport)} className={`w-full px-6 py-4 flex justify-between items-center transition ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+          <div className="flex items-center gap-2 flex-wrap">
             <FiBarChart2 className="text-red-500 text-xl" />
-            <h3 className="text-lg font-semibold">📊 Yearly Sales Report</h3>
-            <span className="text-xs ml-2 text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 px-2 py-1 rounded">Battery Excluded</span>
+            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📊 Yearly Sales Report</h3>
+            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+              darkMode 
+                ? 'bg-yellow-900/40 text-yellow-300' 
+                : 'bg-yellow-50 text-yellow-600'
+            }`}>Battery Excluded</span>
           </div>
-          {showYearlyReport ? <FiChevronUp /> : <FiChevronDown />}
+          {showYearlyReport ? <FiChevronUp className={darkMode ? 'text-gray-300' : 'text-gray-700'} /> : <FiChevronDown className={darkMode ? 'text-gray-300' : 'text-gray-700'} />}
         </button>
         
         {showYearlyReport && (
-          <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+          <div className={`p-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
               <div className="flex gap-3 items-center">
-                <label className="text-sm font-medium">Select Year:</label>
-                <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}>
+                <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Select Year:</label>
+                <select 
+                  value={selectedYear} 
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))} 
+                  className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
+                >
                   {[2024, 2025, 2026, 2027].map(year => (<option key={year} value={year}>{year}</option>))}
                 </select>
               </div>
@@ -1316,87 +1389,90 @@ const FinanceOverview = ({ darkMode }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <p className="text-sm opacity-70">Total Sales</p>
-                <p className="text-2xl font-bold text-blue-500">Rs. {selectedYearData.total.toLocaleString()}</p>
-                <p className="text-xs text-yellow-500 mt-1">(Battery Excluded)</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Sales</p>
+                <p className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {selectedYearData.total.toLocaleString()}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>(Battery Excluded)</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <p className="text-sm opacity-70">Total Invoices</p>
-                <p className="text-2xl font-bold">{selectedYearData.count}</p>
-                <p className="text-xs text-yellow-500 mt-1">(Non-Battery Only)</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Invoices</p>
+                <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedYearData.count}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>(Non-Battery Only)</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <p className="text-sm opacity-70">Total Profit</p>
-                <p className="text-2xl font-bold text-green-500">Rs. {selectedYearData.profit.toLocaleString()}</p>
-                <p className="text-xs text-yellow-500 mt-1">(Battery Excluded)</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Profit</p>
+                <p className={`text-2xl font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {selectedYearData.profit.toLocaleString()}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>(Battery Excluded)</p>
               </div>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                 <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                  <tr>
-                    <th className="px-4 py-3 text-left">Date</th>
-                    <th className="px-4 py-3 text-left">Invoice</th>
-                    <th className="px-4 py-3 text-left">Customer</th>
-                    <th className="px-4 py-3 text-left">Item</th>
-                    <th className="px-4 py-3 text-left">Type</th>
-                    <th className="px-4 py-3 text-center">Qty</th>
-                    <th className="px-4 py-3 text-right">Purchase</th>
-                    <th className="px-4 py-3 text-right">Sell</th>
-                    <th className="px-4 py-3 text-right">Unit Profit</th>
-                    <th className="px-4 py-3 text-right">Total Profit</th>
+                  <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Invoice</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Customer</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Item</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Type</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase">Qty</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Purchase</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Sell</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Unit Profit</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase">Total Profit</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {currentItems.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className="px-4 py-8 text-center">No non-battery invoices found</td>
+                      <td colSpan="10" className={`px-4 py-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No non-battery invoices found</td>
                     </tr>
                   ) : (
                     currentItems.map((item, idx) => (
                       <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                        <td className="px-4 py-3 text-sm">{new Date(item.inv.date).toLocaleDateString()}</td>
-                        <td className="px-4 py-3 font-mono text-sm">{item.inv.invoiceNo}</td>
-                        <td className="px-4 py-3">{item.inv.customer}</td>
-                        <td className="px-4 py-3">{item.service_name}</td>
+                        <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDisplayDate(item.inv.date)}</td>
+                        <td className={`px-4 py-3 font-mono text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.inv.invoiceNo}</td>
+                        <td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.inv.customer}</td>
+                        <td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.service_name}</td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs ${item.isProduct ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            item.isProduct 
+                              ? darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700' 
+                              : darkMode ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-100 text-purple-700'
+                          }`}>
                             {item.isProduct ? 'Product' : 'Service'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center">{item.quantity}</td>
-                        <td className="px-4 py-3 text-right">{item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}</td>
-                        <td className="px-4 py-3 text-right">Rs. {item.price.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-green-500">+ Rs. {item.unitProfit.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-green-500">Rs. {(item.unitProfit * item.quantity).toLocaleString()}</td>
+                        <td className={`px-4 py-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.quantity}</td>
+                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}</td>
+                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Rs. {item.price.toLocaleString()}</td>
+                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-green-400' : 'text-green-500'}`}>+ Rs. {item.unitProfit.toLocaleString()}</td>
+                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {(item.unitProfit * item.quantity).toLocaleString()}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
-                <tfoot className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
+                <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
                   <tr>
                     <td colSpan="9" className="px-4 py-3 text-right font-bold">Total Profit:</td>
-                    <td className="px-4 py-3 text-right font-bold text-green-500">Rs. {selectedYearData.profit.toLocaleString()}</td>
+                    <td className={`px-4 py-3 text-right font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {selectedYearData.profit.toLocaleString()}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
 
-            {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="text-sm text-gray-500">
+              <div className={`flex justify-between items-center mt-6 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex-wrap gap-3`}>
+                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                   Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, totalItems)} of {totalItems} items
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={goToPrevPage}
                     disabled={currentPage === 1}
                     className={`px-3 py-1 rounded-lg flex items-center gap-1 transition ${
                       currentPage === 1
-                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        ? darkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
                     <FiChevronLeft /> Previous
@@ -1422,7 +1498,7 @@ const FinanceOverview = ({ darkMode }) => {
                           className={`w-8 h-8 rounded-lg transition ${
                             currentPage === pageNum
                               ? 'bg-red-500 text-white'
-                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                              : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
                         >
                           {pageNum}
@@ -1436,8 +1512,8 @@ const FinanceOverview = ({ darkMode }) => {
                     disabled={currentPage === totalPages}
                     className={`px-3 py-1 rounded-lg flex items-center gap-1 transition ${
                       currentPage === totalPages
-                        ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        ? darkMode ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
                     Next <FiChevronRight />
@@ -1449,7 +1525,11 @@ const FinanceOverview = ({ darkMode }) => {
         )}
       </div>
 
-      {error && (<div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-center"><p className="text-sm text-red-700">⚠️ {error}</p></div>)}
+      {error && (
+        <div className={`p-4 rounded-lg text-center ${darkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
+          <p className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-700'}`}>⚠️ {error}</p>
+        </div>
+      )}
     </div>
   );
 };

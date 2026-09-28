@@ -5,12 +5,21 @@ import {
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
   FiLogOut, FiCreditCard, FiClock, FiFile, FiBattery,
-  FiArchive, FiTruck, FiShoppingCart, FiBookOpen
+  FiArchive, FiTruck, FiBookOpen
 } from 'react-icons/fi';
 import { FaCar } from 'react-icons/fa';
 import { HiMenu, HiX } from 'react-icons/hi';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
+
+// ✅ Session clear + full reload. navigate() ki jagah reload isliye ke
+// Dashboard ke intervals/requests ek dum band ho jayein aur redirect loop na bane.
+const clearSessionAndGoToLogin = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('isLoggedIn');
+  window.location.href = '/';
+};
 
 const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => {
   const [logoExists, setLogoExists] = useState(false);
@@ -25,21 +34,38 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
 
-  // Battery Submenu
-  const batterySubmenu = [
-    { id: 'battery-overview', label: 'Overview', icon: FiTrendingUp, path: '/battery-overview' },
-    { id: 'battery-charts', label: 'Charts', icon: FiPieChart, path: '/battery-charts' },
-    { id: 'old-batteries', label: 'Old Batteries', icon: FiArchive, path: '/old-batteries' },
+  // ✅ Battery Submenu - Admin sees all, Employee sees only Old Batteries
+  const batterySubmenu = isAdmin 
+    ? [
+        { id: 'battery-overview', label: 'Overview', icon: FiTrendingUp, path: '/battery-overview' },
+        { id: 'battery-charts', label: 'Charts', icon: FiPieChart, path: '/battery-charts' },
+        { id: 'old-batteries', label: 'Old Batteries', icon: FiArchive, path: '/old-batteries' },
+      ]
+    : [
+        { id: 'old-batteries', label: 'Old Batteries', icon: FiArchive, path: '/old-batteries' },
+      ];
+
+  // ✅ Car Submenu - Admin sees all, Employee sees only Car Info & Car Sell (NOT Car Records)
+  const carSubmenu = isAdmin
+    ? [
+        { id: 'car-purchase', label: 'Car Info', icon: FiTruck, path: '/car-purchase' },
+        { id: 'car-sell', label: 'Car Sell', icon: FiTruck, path: '/car-sell' },
+        { id: 'car-records', label: 'Car Records', icon: FiBookOpen, path: '/car-records' },
+      ]
+    : [
+        { id: 'car-purchase', label: 'Car Info', icon: FiTruck, path: '/car-purchase' },
+        { id: 'car-sell', label: 'Car Sell', icon: FiTruck, path: '/car-sell' },
+      ];
+
+  // ✅ Finance Submenu - Admin only
+  const financeSubmenu = [
+    { id: 'finance-overview', label: 'Overview', icon: FiTrendingUp, path: '/finance' },
+    { id: 'finance-expenses', label: 'Expenses', icon: FiList, path: '/finance-expenses' },
+    { id: 'finance-charts', label: 'Charts', icon: FiPieChart, path: '/finance-charts' },
+    { id: 'finance-credit', label: 'Credit', icon: FiCreditCard, path: '/finance-credit' },
   ];
 
-  // Car Submenu
-  const carSubmenu = [
-    { id: 'car-purchase', label: 'Car Info', icon: FiTruck, path: '/car-purchase' },
-    { id: 'car-sell', label: 'Car Sell', icon: FiTruck, path: '/car-sell' },
-    { id: 'car-records', label: 'Car Records', icon: FiBookOpen, path: '/car-records' },
-  ];
-
-  // Admin menu items
+  // ✅ Admin menu items (full access)
   const adminMenuItems = [
     { id: 'all-data', label: 'Dashboard', icon: FiHome, path: '/dashboard' },
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
@@ -55,24 +81,16 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'users', label: 'Users', icon: FiUsers, path: '/users' },
   ];
 
-  // Employee menu items
+  // ✅ Employee menu items — Estimate Records hata diya
   const employeeMenuItems = [
     { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'battery', label: 'Battery', icon: FiBattery, hasSubmenu: true },
     { id: 'car', label: 'Car', icon: FaCar, hasSubmenu: true },
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
-    { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' },
+    // ❌ estimate-records removed for employees
     { id: 'reminders', label: 'Reminders', icon: FiBell, path: '/reminders', badge: reminderCount },
     { id: 'discarded', label: 'Discarded', icon: FiClock, path: '/discarded', badge: discardedCount },
-  ];
-
-  // Finance Submenu
-  const financeSubmenu = [
-    { id: 'finance-overview', label: 'Overview', icon: FiTrendingUp, path: '/finance' },
-    { id: 'finance-expenses', label: 'Expenses', icon: FiList, path: '/finance-expenses' },
-    { id: 'finance-charts', label: 'Charts', icon: FiPieChart, path: '/finance-charts' },
-    { id: 'finance-credit', label: 'Credit', icon: FiCreditCard, path: '/finance-credit' },
   ];
 
   const isFinanceActive = () => {
@@ -103,7 +121,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        navigate('/login');
+        clearSessionAndGoToLogin();
         return;
       }
       
@@ -115,8 +133,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     } catch (error) {
       console.error('Error fetching user:', error);
       if (error.response?.status === 401) {
-        localStorage.removeItem('token');
-        navigate('/login');
+        clearSessionAndGoToLogin();
       }
     }
   };
@@ -158,9 +175,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     } catch (error) {
       console.error('Logout error:', error);
     }
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+    clearSessionAndGoToLogin();
   };
 
   useEffect(() => {
@@ -212,23 +227,18 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     };
   }, []);
 
-  // ✅ Battery ka logic bilkul waisa hi hai jaisa pehle tha - koi change nahi
   const handleMenuClick = (item) => {
     if (item.hasSubmenu) {
       if (item.id === 'battery') {
-        // ✅ Battery par click → BatteryPage khule
-        setIsBatteryOpen(!isBatteryOpen); // Submenu toggle (open/close)
-        setActiveMenu('battery'); // Active menu set
-        navigate('/battery'); // ✅ BatteryPage.jsx route
+        setIsBatteryOpen(!isBatteryOpen);
+        setActiveMenu('battery');
+        navigate('/battery');
         if (isMobile) {
           setIsOpen(false);
         }
       } else if (item.id === 'car') {
-        // ✅ FIX: Car par click → CarPurchasePage khule aur activeMenu bhi
-        // submenu ke id ('car-purchase') se match kare, taake highlighting
-        // aur isCarActive() dono sahi kaam karein
-        setIsCarOpen(!isCarOpen); // Submenu toggle
-        setActiveMenu('car-purchase'); // ✅ 'car' ki jagah 'car-purchase'
+        setIsCarOpen(!isCarOpen);
+        setActiveMenu('car-purchase');
         navigate('/car-purchase');
         if (isMobile) {
           setIsOpen(false);
@@ -282,7 +292,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
             const isFinanceMenuItem = item.id === 'finance';
             const isBatteryMenuItem = item.id === 'battery';
             const isCarMenuItem = item.id === 'car';
-            // ✅ Active state - battery page active ho toh highlight ho
             const isActive = activeMenu === item.id || 
                            (isFinanceMenuItem && isFinanceActive()) ||
                            (isBatteryMenuItem && isBatteryActive()) ||
@@ -326,7 +335,6 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                       )}
                     </div>
                   )}
-                  {/* Badge show when sidebar is closed */}
                   {!isOpen && showBadge && (
                     <span className={`absolute -right-1 -top-1 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center ${
                       item.id === 'discarded' ? 'bg-yellow-500' : 
@@ -368,7 +376,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   </div>
                 )}
 
-                {/* Battery Submenu */}
+                {/* Battery Submenu - Filtered for employees */}
                 {isOpen && item.id === 'battery' && isBatteryOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {batterySubmenu.map((subItem) => {
@@ -399,7 +407,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   </div>
                 )}
 
-                {/* Car Submenu */}
+                {/* Car Submenu - Filtered for employees */}
                 {isOpen && item.id === 'car' && isCarOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
                     {carSubmenu.map((subItem) => {

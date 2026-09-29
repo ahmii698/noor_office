@@ -75,6 +75,19 @@ const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkM
   </div>
 ));
 
+// ✅ Battery filter function - Battery items ko detect karega
+const isBatteryItem = (item) => {
+  if (!item) return false;
+  return item.service_category === 'Battery' || 
+         item.service_name?.toLowerCase().includes('battery');
+};
+
+// ✅ Helper: Get non-battery items from invoice
+const getNonBatteryItems = (items) => {
+  if (!items || !Array.isArray(items)) return [];
+  return items.filter(item => !isBatteryItem(item));
+};
+
 // Helper: Get date range for filter
 const getDateRange = (filter, customDate = null) => {
   const now = new Date();
@@ -215,38 +228,72 @@ const Dashboard = () => {
     return filtered;
   }, [productsArray]);
 
-  const totalSales = useMemo(() => 
-    filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0),
-    [filteredInvoices]
-  );
+  // ✅ FIXED: Total Sales (Non-Battery Items only)
+  const totalSales = useMemo(() => {
+    let total = 0;
+    filteredInvoices.forEach(inv => {
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      if (nonBatteryItems.length === 0) return;
+
+      nonBatteryItems.forEach(item => {
+        const qty = parseInt(item.quantity) || 0;
+        const price = parseFloat(item.price) || 0;
+        total += price * qty;
+      });
+    });
+    return total;
+  }, [filteredInvoices]);
 
   const totalExpensesSum = useMemo(() => 
     filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
     [filteredExpenses]
   );
 
-  const totalDiscount = useMemo(() => 
-    filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.discount) || 0), 0),
-    [filteredInvoices]
-  );
-
-  const totalProfitCalc = useMemo(() => {
-    let profit = 0;
-    for (const inv of filteredInvoices) {
-      if (inv.items && inv.items.length > 0) {
-        for (const item of inv.items) {
-          const product = activeProducts.find(p => p.name === item.service_name);
-          if (product) {
-            const itemProfit = (parseFloat(item.price) - parseFloat(product.purchase_price)) * parseInt(item.quantity || 1);
-            profit += itemProfit;
-          } else {
-            profit += parseFloat(item.price) * parseInt(item.quantity || 1);
-          }
-        }
+  // ✅ FIXED: Total Discount (Only from invoices with non-battery items)
+  const totalDiscount = useMemo(() => {
+    let discount = 0;
+    filteredInvoices.forEach(inv => {
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      if (nonBatteryItems.length > 0) {
+        discount += parseFloat(inv.discount) || 0;
       }
-    }
-    return profit;
-  }, [filteredInvoices, activeProducts]);
+    });
+    return discount;
+  }, [filteredInvoices]);
+
+  // ✅ FIXED: Total Profit = Sales Profit - (Expenses + Discount)
+  const totalProfitCalc = useMemo(() => {
+    let grossProfit = 0;
+
+    // 1. Calculate Gross Profit from Non-Battery Items
+    filteredInvoices.forEach(inv => {
+      const nonBatteryItems = getNonBatteryItems(inv.items);
+      if (nonBatteryItems.length === 0) return;
+
+      nonBatteryItems.forEach(item => {
+        const qty = parseInt(item.quantity) || 0;
+        const price = parseFloat(item.price) || 0;
+
+        const product = activeProducts.find(p => p.name === item.service_name);
+        let purchasePrice = 0;
+
+        if (product) {
+          purchasePrice = parseFloat(product.purchase_price) || 0;
+        }
+
+        grossProfit += (price - purchasePrice) * qty;
+      });
+    });
+
+    // 2. Total Expenses for the filtered period
+    const totalExpenses = filteredExpenses.reduce(
+      (sum, exp) => sum + (parseFloat(exp.amount) || 0), 
+      0
+    );
+
+    // 3. Net Profit = Gross Profit - Expenses - Discount
+    return grossProfit - totalExpenses - totalDiscount;
+  }, [filteredInvoices, filteredExpenses, activeProducts, totalDiscount]);
 
   const profitMargin = useMemo(() => 
     totalSales > 0 ? (totalProfitCalc / totalSales) * 100 : 0,
@@ -286,17 +333,21 @@ const Dashboard = () => {
         const date = new Date(inv.invoice_date);
         const month = date.toLocaleString('default', { month: 'short' });
         if (monthly[month]) {
-          monthly[month].sales += parseFloat(inv.total_amount) || 0;
-          monthly[month].discount += parseFloat(inv.discount) || 0;
-          
-          if (inv.items && inv.items.length > 0) {
-            inv.items.forEach(item => {
+          const nonBatteryItems = getNonBatteryItems(inv.items);
+          if (nonBatteryItems.length > 0) {
+            monthly[month].discount += parseFloat(inv.discount) || 0;
+
+            nonBatteryItems.forEach(item => {
+              const qty = parseInt(item.quantity) || 0;
+              const price = parseFloat(item.price) || 0;
+              monthly[month].sales += price * qty;
+
               const product = activeProducts.find(p => p.name === item.service_name);
+              let purchasePrice = 0;
               if (product) {
-                monthly[month].profit += (parseFloat(item.price) - parseFloat(product.purchase_price)) * parseInt(item.quantity || 1);
-              } else {
-                monthly[month].profit += parseFloat(item.price) * parseInt(item.quantity || 1);
+                purchasePrice = parseFloat(product.purchase_price) || 0;
               }
+              monthly[month].profit += (price - purchasePrice) * qty;
             });
           }
         }
@@ -313,13 +364,17 @@ const Dashboard = () => {
       }
     });
     
-    return monthOrder.map(month => ({
-      month,
-      sales: monthly[month]?.sales || 0,
-      profit: monthly[month]?.profit || 0,
-      expenses: monthly[month]?.expenses || 0,
-      discount: monthly[month]?.discount || 0
-    }));
+    // Net Profit for chart = Gross Profit - Expenses - Discount
+    return monthOrder.map(month => {
+      const data = monthly[month];
+      return {
+        month,
+        sales: data.sales,
+        profit: data.profit - data.expenses - data.discount, // Net Profit
+        expenses: data.expenses,
+        discount: data.discount
+      };
+    });
   }, [filteredInvoices, filteredExpenses, activeProducts]);
 
   const productSalesData = useMemo(() => {
@@ -384,10 +439,10 @@ const Dashboard = () => {
     XLSX.utils.book_append_sheet(wb, ws3, 'Recent Invoices');
 
     const summaryData = [{
-      'Metric': 'Total Sales',
+      'Metric': 'Total Sales (Battery Excluded)',
       'Value': `Rs. ${totalSales.toLocaleString()}`
     }, {
-      'Metric': 'Total Profit',
+      'Metric': 'Total Profit (After Expenses & Discount)',
       'Value': `Rs. ${totalProfitCalc.toLocaleString()}`
     }, {
       'Metric': 'Profit Margin',
@@ -396,7 +451,7 @@ const Dashboard = () => {
       'Metric': 'Total Expenses',
       'Value': `Rs. ${totalExpensesSum.toLocaleString()}`
     }, {
-      'Metric': 'Total Discount',
+      'Metric': 'Total Discount (Battery Excluded)',
       'Value': `Rs. ${totalDiscount.toLocaleString()}`
     }, {
       'Metric': 'Active Products',
@@ -438,10 +493,10 @@ const Dashboard = () => {
     doc.text(`Filter: ${getFilterLabel()}`, 14, 28);
 
     doc.setFontSize(10);
-    doc.text(`Total Sales: Rs. ${totalSales.toLocaleString()}`, 14, 36);
-    doc.text(`Total Profit: Rs. ${totalProfitCalc.toLocaleString()} (${profitMargin.toFixed(1)}% margin)`, 14, 42);
+    doc.text(`Total Sales (Battery Excluded): Rs. ${totalSales.toLocaleString()}`, 14, 36);
+    doc.text(`Total Profit (Net): Rs. ${totalProfitCalc.toLocaleString()} (${profitMargin.toFixed(1)}% margin)`, 14, 42);
     doc.text(`Total Expenses: Rs. ${totalExpensesSum.toLocaleString()}`, 14, 48);
-    doc.text(`Total Discount: Rs. ${totalDiscount.toLocaleString()}`, 14, 54);
+    doc.text(`Total Discount (Battery Excluded): Rs. ${totalDiscount.toLocaleString()}`, 14, 54);
     doc.text(`Active Products: ${totalProductsCount} | Total Stock: ${totalStock} units`, 14, 60);
     doc.text(`Total Invoices: ${filteredInvoices.length}`, 14, 66);
 
@@ -449,7 +504,7 @@ const Dashboard = () => {
 
     doc.setFontSize(12);
     doc.setTextColor(59, 130, 246);
-    doc.text('Monthly Summary', 14, startY);
+    doc.text('Monthly Summary (Net Profit)', 14, startY);
     doc.setTextColor(0, 0, 0);
     startY += 6;
 
@@ -462,7 +517,7 @@ const Dashboard = () => {
     ]);
 
     doc.autoTable({
-      head: [['Month', 'Sales', 'Profit', 'Expenses', 'Discount']],
+      head: [['Month', 'Sales', 'Profit (Net)', 'Expenses', 'Discount']],
       body: monthlyTableData,
       startY: startY,
       styles: { fontSize: 8 },
@@ -1103,6 +1158,7 @@ const Dashboard = () => {
                   <StatsCard 
                     title="Total Sales" 
                     value={`Rs. ${totalSales.toLocaleString()}`} 
+                    subtitle="(Battery Sales Excluded)"
                     icon={FiDollarSign} 
                     color="from-red-500 to-red-600" 
                     darkMode={darkMode} 
@@ -1110,9 +1166,9 @@ const Dashboard = () => {
                   <StatsCard 
                     title="Total Profit" 
                     value={`Rs. ${totalProfitCalc.toLocaleString()}`} 
-                    subtitle={`Margin: ${profitMargin.toFixed(1)}%`} 
+                    subtitle="After Expenses & Discount (Battery Excluded)" 
                     icon={FiTrendingUp} 
-                    color="from-green-500 to-green-600" 
+                    color={totalProfitCalc >= 0 ? "from-green-500 to-green-600" : "from-red-500 to-red-600"} 
                     darkMode={darkMode} 
                   />
                   <StatsCard 
@@ -1133,6 +1189,7 @@ const Dashboard = () => {
                   <StatsCard 
                     title="Total Discount" 
                     value={`Rs. ${totalDiscount.toLocaleString()}`} 
+                    subtitle="(Battery Sales Excluded)"
                     icon={FiGift} 
                     color="from-sky-400 to-sky-500" 
                     darkMode={darkMode} 

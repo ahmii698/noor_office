@@ -148,44 +148,74 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   });
 };
 
-// ✅ Helper: Non-battery products ki purchase cost (Karachi date ke hisab se)
-// created_at (poora timestamp) pehle, phir date_added
-const getInventoryCost = (products, filter, customDate = null) => {
-  const nonBattery = (products || []).filter(p =>
-    p.category !== 'Battery' && !p.name?.toLowerCase().includes('battery')
+// ✅ Helper: Inventory Purchased (jo paisay actually nikal chuke hain)
+//  1) Cash purchase (vendor se link nahi): poori purchase_price × quantity
+//  2) Vendor/credit purchase: sirf wo paisay jo vendor ko diye gaye
+//     - khareedte waqt diya hua amount -> record ki date par
+//     - baad mein Pay Now se diye hue payments -> payment ki date par
+//  Battery excluded, sab Karachi date ke hisab se
+const getInventoryCost = (products, creditRecords, filter, customDate = null) => {
+  const range = filter !== 'all' ? getDateRange(filter, customDate) : null;
+  const inRange = (raw) => {
+    if (!range) return true;
+    if (!raw) return false;
+    return isInRange(toKarachiDateStr(raw), range);
+  };
+
+  // 1) Cash products (credit vendor se linked products yahan nahi ginay jayenge)
+  const cashProducts = (products || []).filter(p =>
+    p.category !== 'Battery' &&
+    !p.name?.toLowerCase().includes('battery') &&
+    !p.credit_vendor &&
+    !p.credit_vendor_id
   );
 
-  let list = nonBattery;
-  if (filter !== 'all') {
-    const range = getDateRange(filter, customDate);
-    if (range) {
-      list = nonBattery.filter(p => {
-        const raw = p.created_at || p.date_added;
-        if (!raw) return false;
-        return isInRange(toKarachiDateStr(raw), range);
-      });
+  const cashTotal = cashProducts
+    .filter(p => inRange(p.created_at || p.date_added))
+    .reduce(
+      (sum, p) => sum + (parseFloat(p.purchase_price) || 0) * (parseInt(p.quantity) || 0),
+      0
+    );
+
+  // 2) Credit purchases - sirf diye hue paisay
+  let creditPaidTotal = 0;
+  (creditRecords || []).forEach(rec => {
+    if (String(rec.products || '').toLowerCase().includes('battery')) return;
+
+    const payments = Array.isArray(rec.payments) ? rec.payments : [];
+    const paymentsSum = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    const paidTotal = parseFloat(rec.paid_amount) || 0;
+
+    // Khareedte waqt diya hua amount (agar payments list mein already hai to 0 banega)
+    const initialPaid = Math.max(0, paidTotal - paymentsSum);
+    if (initialPaid > 0 && inRange(rec.created_at)) {
+      creditPaidTotal += initialPaid;
     }
-  }
 
-  return list.reduce(
-    (sum, p) => sum + (parseFloat(p.purchase_price) || 0) * (parseInt(p.quantity) || 0),
-    0
-  );
+    payments.forEach(p => {
+      const amt = parseFloat(p.amount) || 0;
+      if (amt > 0 && inRange(p.date || p.payment_date || p.created_at)) {
+        creditPaidTotal += amt;
+      }
+    });
+  });
+
+  return cashTotal + creditPaidTotal;
 };
 
-// ✅ Collapsible Stat Card
-const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onClick, expanded }) => {
+// ✅ Collapsible Stat Card (compact prop = chhota card)
+const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onClick, expanded, compact = false }) => {
   return (
     <div
-      className={`bg-gradient-to-r ${gradient} rounded-2xl p-6 text-white shadow-lg transition-transform ${onClick ? 'cursor-pointer hover:scale-105' : ''}`}
+      className={`bg-gradient-to-r ${gradient} rounded-2xl ${compact ? 'p-4' : 'p-6'} text-white shadow-lg transition-transform min-w-0 ${onClick ? 'cursor-pointer hover:scale-105' : ''}`}
       onClick={onClick}
     >
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
-          <p className="text-sm opacity-90">{title}</p>
-          <p className="text-3xl font-bold mt-2">{mainValue}</p>
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <p className={`${compact ? 'text-xs' : 'text-sm'} opacity-90`}>{title}</p>
+          <p className={`${compact ? 'text-xl mt-1' : 'text-3xl mt-2'} font-bold break-words`}>{mainValue}</p>
         </div>
-        <Icon className="text-3xl opacity-50" />
+        <Icon className={`${compact ? 'text-xl' : 'text-3xl'} opacity-50 flex-shrink-0`} />
       </div>
 
       {subLines.length > 0 && (
@@ -374,6 +404,8 @@ const FinanceOverview = ({ darkMode }) => {
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  // ✅ Vendor/credit records (paid_amount + payments) - inventory purchased ke liye
+  const [creditRecords, setCreditRecords] = useState([]);
   
   const [filteredSalesData, setFilteredSalesData] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
   const [filteredExpenseData, setFilteredExpenseData] = useState([]);
@@ -546,6 +578,28 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, []);
 
+  // ✅ Credit vendor records (paid_amount + payments) - vendor ko diye hue paisay ke liye
+  const fetchCreditRecords = useCallback(async (signal) => {
+    try {
+      const response = await api.get('/credit/vendors', { signal });
+      const raw = response.data;
+
+      const list = Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw)
+        ? raw
+        : [];
+
+      setCreditRecords(list);
+      return list;
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching credit vendors:', err);
+      }
+      return [];
+    }
+  }, []);
+
   const fetchExpenses = useCallback(async (signal) => {
     try {
       const response = await api.get('/expenses', { signal });
@@ -587,7 +641,8 @@ const FinanceOverview = ({ darkMode }) => {
       const [productsList, expensesList, invoicesList] = await Promise.all([
         fetchProducts(abortController.signal),
         fetchExpenses(abortController.signal),
-        fetchInvoices(abortController.signal)
+        fetchInvoices(abortController.signal),
+        fetchCreditRecords(abortController.signal)
       ]);
       
       const productsMap = new Map();
@@ -601,7 +656,8 @@ const FinanceOverview = ({ darkMode }) => {
       setFilteredStats({
         expenses: filtered.expenseTotal,
         expenseCount: filtered.expenseCount,
-        profit: filtered.sales.profit - filtered.expenseTotal,
+        // ✅ Net Profit = Sales Profit - (Expenses + Discount Given)
+        profit: filtered.sales.profit - (filtered.expenseTotal + filtered.sales.discount),
         discount: filtered.sales.discount
       });
       
@@ -733,9 +789,10 @@ const FinanceOverview = ({ darkMode }) => {
       setWeekExpenseDetails(weekExpList);
       setMonthExpenseDetails(monthExpList);
       
-      const todayNetProfit = todayProfit - todayExp;
-      const weekNetProfit = weekProfit - weekExp;
-      const monthNetProfit = monthProfit - monthExp;
+      // ✅ Net Profit = Sales Profit - (Expenses + Discount Given)
+      const todayNetProfit = todayProfit - (todayExp + todayDiscount);
+      const weekNetProfit = weekProfit - (weekExp + weekDiscount);
+      const monthNetProfit = monthProfit - (monthExp + monthDiscount);
       
       setStats({
         todayExpenses: todayExp,
@@ -823,7 +880,7 @@ const FinanceOverview = ({ darkMode }) => {
     }
     
     return () => abortController.abort();
-  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, calculateFilteredData, timeFilter, customDate]);
+  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, fetchCreditRecords, calculateFilteredData, timeFilter, customDate]);
 
   useEffect(() => {
     const cleanup = loadAllData();
@@ -868,10 +925,10 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, [currentPage, totalPages]);
 
-  // ✅ Inventory purchase cost for the currently selected filter (Battery excluded, Karachi time)
+  // ✅ Inventory Purchased: cash purchases (poori cost) + vendor ko diye hue paisay (Battery excluded, Karachi time)
   const inventoryCost = useMemo(
-    () => getInventoryCost(products, timeFilter, customDate || null),
-    [products, timeFilter, customDate]
+    () => getInventoryCost(products, creditRecords, timeFilter, customDate || null),
+    [products, creditRecords, timeFilter, customDate]
   );
 
   const exportToExcel = useCallback(() => {
@@ -1088,9 +1145,10 @@ const FinanceOverview = ({ darkMode }) => {
         </span>
       </div>
 
-      {/* Dynamic Filtered Sales Card */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* ✅ Top 5 Cards - ek hi line mein (chhote): Sales, Expenses, Inventory Purchased, Discount Given, Profit */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
+          compact
           gradient="from-blue-500 to-blue-600"
           icon={FiDollarSign}
           title={`${getFilterLabel()} Sales`}
@@ -1104,6 +1162,7 @@ const FinanceOverview = ({ darkMode }) => {
         />
 
         <StatCard
+          compact
           gradient="from-red-500 to-red-600"
           icon={FiTrendingDown}
           title={`${getFilterLabel()} Expenses`}
@@ -1114,27 +1173,44 @@ const FinanceOverview = ({ darkMode }) => {
           expanded={showAllDetails}
         />
 
+        {/* ✅ 3rd: Inventory Purchased (cash cost + vendor ko diye hue paisay) */}
         <StatCard
-          gradient={filteredStats.profit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'}
-          icon={FiTrendingUp}
-          title={`${getFilterLabel()} Profit`}
-          mainValue={`Rs. ${filteredStats.profit.toLocaleString()}`}
+          compact
+          gradient="from-orange-500 to-orange-600"
+          icon={FiPackage}
+          title="Inventory Purchased"
+          mainValue={`Rs. ${inventoryCost.toLocaleString()}`}
           subLines={[
-            'After expenses',
+            'Cash purchases + paid to vendors',
+            '(Battery excluded)'
+          ]}
+          expanded={showAllDetails}
+        />
+
+        {/* ✅ 4th: Discount Given */}
+        <StatCard
+          compact
+          gradient="from-sky-400 to-sky-500"
+          icon={FiGift}
+          title="Discount Given"
+          mainValue={`Rs. ${filteredSalesData.discount.toLocaleString()}`}
+          subLines={[
+            'Given to customers',
             '(Battery sales excluded)'
           ]}
           expanded={showAllDetails}
         />
 
-        {/* ✅ Inventory Purchased Card */}
+        {/* ✅ 5th: Profit = Sales Profit - (Expenses + Discount) */}
         <StatCard
-          gradient="from-orange-500 to-orange-600"
-          icon={FiPackage}
-          title={`${getFilterLabel()} Inventory Purchased`}
-          mainValue={`Rs. ${inventoryCost.toLocaleString()}`}
+          compact
+          gradient={filteredStats.profit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'}
+          icon={FiTrendingUp}
+          title={`${getFilterLabel()} Profit`}
+          mainValue={`Rs. ${filteredStats.profit.toLocaleString()}`}
           subLines={[
-            'Purchase price × quantity',
-            '(Battery excluded)'
+            'After expenses & discount',
+            '(Battery sales excluded)'
           ]}
           expanded={showAllDetails}
         />
@@ -1245,7 +1321,7 @@ const FinanceOverview = ({ darkMode }) => {
               title="Today's Profit"
               mainValue={`Rs. ${stats.todayProfit?.toLocaleString() || 0}`}
               subLines={[
-                'After expenses',
+                'After expenses & discount',
                 '(Battery sales excluded)'
               ]}
               expanded={true}
@@ -1257,7 +1333,7 @@ const FinanceOverview = ({ darkMode }) => {
               title="This Week's Profit"
               mainValue={`Rs. ${stats.weekProfit?.toLocaleString() || 0}`}
               subLines={[
-                'After expenses',
+                'After expenses & discount',
                 '(Battery sales excluded)'
               ]}
               expanded={true}
@@ -1269,7 +1345,7 @@ const FinanceOverview = ({ darkMode }) => {
               title="This Month's Profit"
               mainValue={`Rs. ${stats.monthProfit?.toLocaleString() || 0}`}
               subLines={[
-                'After expenses',
+                'After expenses & discount',
                 '(Battery sales excluded)'
               ]}
               expanded={true}
@@ -1316,7 +1392,7 @@ const FinanceOverview = ({ darkMode }) => {
         </>
       )}
 
-      {/* Monthly Breakdown */}
+      {/* Monthly Breakdown - Net Profit = Sales Profit - (Expenses + Discount) */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className={`font-semibold mb-4 flex items-center gap-2 flex-wrap ${darkMode ? 'text-white' : 'text-gray-900'}`}>
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
@@ -1331,7 +1407,7 @@ const FinanceOverview = ({ darkMode }) => {
             (Battery Excluded)
           </span>
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Revenue</p>
             <p className={`text-xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {filteredSalesData.total.toLocaleString()}</p>
@@ -1342,7 +1418,7 @@ const FinanceOverview = ({ darkMode }) => {
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount Given</p>
-            <p className={`text-xl font-bold ${darkMode ? 'text-sky-400' : 'text-sky-500'}`}>Rs. {filteredSalesData.discount.toLocaleString()}</p>
+            <p className={`text-xl font-bold ${darkMode ? 'text-sky-400' : 'text-sky-500'}`}>Rs. {filteredStats.discount.toLocaleString()}</p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Net Profit</p>

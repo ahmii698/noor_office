@@ -3,9 +3,25 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { 
   FiUser, FiPhone, FiCalendar, FiClock, FiTool, FiPackage, 
-  FiCheckCircle, FiAlertCircle, FiX, FiArrowRight, FiLoader, FiMail
+  FiCheckCircle, FiAlertCircle, FiX, FiArrowRight, FiLoader, FiMail, FiLock
 } from 'react-icons/fi';
 import api from '../../services/api';
+
+// ✅ Local (Pakistan/system) time helpers - NO UTC conversion
+const pad = (n) => String(n).padStart(2, '0');
+
+const getLocalDate = (d = new Date()) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+const getLocalTime = (d = new Date()) =>
+  `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+// Display helpers (read-only UI)
+const displayDate = (d) =>
+  d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+const displayTime = (d) =>
+  d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
 const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
   const [customerDetails, setCustomerDetails] = useState(initialData || {
@@ -15,19 +31,16 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     carNumber: '',
     carModel: '',
     birthday: '',
-    date: new Date().toISOString().split('T')[0]
+    date: getLocalDate()
   });
   
-  // ✅ Invoice Date & Time states
-  const [invoiceDate, setInvoiceDate] = useState(() => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  });
-  
-  const [invoiceTime, setInvoiceTime] = useState(() => {
-    const now = new Date();
-    return now.toTimeString().slice(0, 5);
-  });
+  // ✅ LOCKED Date & Time - live clock, user change nahi kar sakta
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   
   const [customerHistory, setCustomerHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -53,33 +66,6 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
       setIsAdmin(false);
     }
   }, []);
-
-  // ✅ FORCE UPDATE - Always set current date when component mounts
-  useEffect(() => {
-    const today = new Date();
-    const currentDate = today.toISOString().split('T')[0];
-    setInvoiceDate(currentDate);
-    console.log('📅 Current date set to:', currentDate);
-  }, []);
-
-  // ✅ Update invoiceDate when initialData changes (for restored data)
-  useEffect(() => {
-    if (initialData?.date) {
-      const datePart = initialData.date.split('T')[0];
-      if (datePart) {
-        setInvoiceDate(datePart);
-      }
-    }
-  }, [initialData]);
-
-  // Format date for input field (YYYY-MM-DD)
-  const formatDateForInput = (date) => {
-    if (!date) return '';
-    if (date.includes('T')) {
-      return date.split('T')[0];
-    }
-    return date;
-  };
 
   // ✅ Format date from YYYY-MM-DD (or ISO datetime) to MM/DD/YYYY for display
   const formatToDisplay = (dateStr) => {
@@ -253,20 +239,18 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     searchCustomerHistory();
   }, [customerDetails.phone]);
 
-  // ✅ Handle submit with Date & Time - Name empty ho toh "Walk-in" set karo
+  // ✅ Handle submit - date & time AUTOMATIC us waqt ka jab bill ban raha hai
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // ✅ Pakistan Time mein date/time banao (NO UTC conversion)
-    // Directly string format mein bhejo "YYYY-MM-DD HH:MM:SS"
-    const dateTimeStr = `${invoiceDate} ${invoiceTime}:00`;
+    // ✅ Submit ke exact waqt ka time (user ka edit kiya hua nahi)
+    const submitNow = new Date();
+    const dateTimeStr = `${getLocalDate(submitNow)} ${getLocalTime(submitNow)}`; // "YYYY-MM-DD HH:MM:SS"
     
     // ✅ If name is empty, set it to "Walk-in"
     const customerName = customerDetails.name?.trim() || 'Walk-in';
     
-    console.log('📅 Invoice DateTime:', {
-      date: invoiceDate,
-      time: invoiceTime,
+    console.log('📅 Invoice DateTime (auto):', {
       full: dateTimeStr,
       name: customerName
     });
@@ -303,14 +287,14 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             </div>
             <p className="text-xs text-red-100 mt-1">All fields are optional - Just click Continue to proceed</p>
           </div>
+          {/* ✅ LOCKED Date (read-only, auto) */}
           <div className="text-white text-right">
-            <p className="text-xs opacity-80 flex items-center gap-1"><FiCalendar className="text-xs" /> Date</p>
-            <input
-              type="date"
-              value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-              className="px-3 py-1 rounded-lg bg-white/20 text-white border border-white/30 focus:outline-none focus:ring-2 focus:ring-white/50 w-36"
-            />
+            <p className="text-xs opacity-80 flex items-center justify-end gap-1">
+              <FiLock className="text-xs" /> Date (Auto)
+            </p>
+            <div className="px-3 py-1 rounded-lg bg-white/20 text-white border border-white/30 select-none cursor-not-allowed font-medium">
+              {displayDate(now)}
+            </div>
           </div>
         </div>
       </div>
@@ -330,9 +314,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 value={customerDetails.phone}
                 onChange={(e) => updateField('phone', e.target.value)}
                 placeholder="Enter phone number (auto-searches history)"
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-                ]}`}
+                }`}
               />
               {searching && (
                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -347,7 +331,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
           
           {/* ✅ Customer Name - Optional */}
           <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiUser className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
               Customer Name 
               <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
@@ -357,9 +341,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               value={customerDetails.name}
               onChange={(e) => updateField('name', e.target.value)}
               placeholder="Enter customer name (optional)"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
+              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-              ]}`}
+              }`}
             />
           </div>
           
@@ -376,9 +360,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 value={customerDetails.email}
                 onChange={(e) => updateField('email', e.target.value)}
                 placeholder="customer@example.com"
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-                ]}`}
+                }`}
               />
               <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
                 <FiClock className="text-xs" /> We'll send a service reminder after 6 months
@@ -388,7 +372,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
           
           {/* ✅ Car Number Plate - Optional */}
           <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiTool className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
               Car Number Plate 
               <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
@@ -398,15 +382,15 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               value={customerDetails.carNumber}
               onChange={(e) => updateField('carNumber', e.target.value)}
               placeholder="e.g., ABC-1234 (optional)"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
+              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-              ]}`}
+              }`}
             />
           </div>
           
           {/* ✅ Car Model - Optional */}
           <div>
-            <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiPackage className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
               Car Model 
               <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>(Optional)</span>
@@ -416,9 +400,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               value={customerDetails.carModel}
               onChange={(e) => updateField('carModel', e.target.value)}
               placeholder="e.g., Toyota Corolla 2020"
-              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
+              className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                 darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-              ]}`}
+              }`}
             />
           </div>
 
@@ -435,9 +419,9 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
                 value={customerDetails.birthday}
                 onChange={handleBirthdayChange}
                 placeholder="e.g. 01/15/1990"
-                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
+                className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${
                   darkMode ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500' : 'bg-gray-50 border-gray-300 text-gray-900'
-                ]} ${customerDetails.birthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`}
+                } ${customerDetails.birthday && !birthdayError ? 'border-green-500' : ''} ${birthdayError ? 'border-red-500' : ''}`}
                 maxLength={10}
                 inputMode="numeric"
               />
@@ -465,36 +449,35 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
             </p>
           </div>
 
-          {/* ✅ Invoice Date & Time - Two inputs side by side */}
+          {/* ✅ Invoice Date & Time - LOCKED (read-only, automatic) */}
           <div className="md:col-span-2">
             <label className={`block text-sm font-medium mb-2 flex items-center gap-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               <FiClock className={`text-sm ${darkMode ? 'text-red-400' : 'text-red-500'}`} /> 
               Invoice Date & Time
+              <span className={`text-xs flex items-center gap-1 px-2 py-0.5 rounded-full ${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                <FiLock className="text-xs" /> Locked - Automatic
+              </span>
             </label>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
-                    darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
-                  ]}`}
-                />
+              <div
+                className={`flex items-center justify-between w-full px-4 py-3 rounded-xl border select-none cursor-not-allowed ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-gray-300' : 'bg-gray-100 border-gray-300 text-gray-700'
+                }`}
+              >
+                <span>{displayDate(now)}</span>
+                <FiCalendar className="text-gray-400" />
               </div>
-              <div>
-                <input
-                  type="time"
-                  value={invoiceTime}
-                  onChange={(e) => setInvoiceTime(e.target.value)}
-                  className={`w-full px-4 py-3 rounded-xl border focus:ring-2 focus:ring-red-500 outline-none transition ${[
-                    darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-gray-50 border-gray-300 text-gray-900'
-                  ]}`}
-                />
+              <div
+                className={`flex items-center justify-between w-full px-4 py-3 rounded-xl border select-none cursor-not-allowed ${
+                  darkMode ? 'bg-gray-800 border-gray-700 text-gray-300' : 'bg-gray-100 border-gray-300 text-gray-700'
+                }`}
+              >
+                <span>{displayTime(now)}</span>
+                <FiClock className="text-gray-400" />
               </div>
             </div>
             <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
-              <FiClock className="text-xs" /> This date & time will be used for the invoice
+              <FiLock className="text-xs" /> Bill banne ke waqt ki date & time automatically lagegi, isay change nahi kiya ja sakta
             </p>
           </div>
         </div>
@@ -506,7 +489,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               <h4 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
                 <FiClock className="text-sm" /> Previous Visits ({customerHistory.length})
               </h4>
-              <button onClick={() => setShowHistory(false)} className={`text-xs ${darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'} flex items-center gap-1`}>
+              <button type="button" onClick={() => setShowHistory(false)} className={`text-xs ${darkMode ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-700'} flex items-center gap-1`}>
                 <FiX className="text-xs" /> Hide
               </button>
             </div>

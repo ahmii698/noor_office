@@ -62,6 +62,13 @@ const roundToTwo = (num) => {
   return Math.round(num * 100) / 100;
 };
 
+// ✅ Mileage popup sirf tab aaye jab service ka naam poora "oil change" ho
+// (oil cleaner, engine oil, oil filter etc. par popup NAHI aayega)
+const isExactOilChange = (name) => {
+  if (!name) return false;
+  return /^oil\s+change$/i.test(String(name).trim());
+};
+
 // Get user role from localStorage
 const getUserRole = () => {
   try {
@@ -704,10 +711,9 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
   };
 
   // Add to bill - WITH OIL CHANGE MODAL
+  // ✅ FIXED: Mileage popup sirf exact "oil change" service par aayega
   const addToBill = (item, type) => {
-    const isOilChange = item.name?.toLowerCase().includes('oil') || 
-                        item.name?.toLowerCase().includes('engine oil') ||
-                        item.name?.toLowerCase().includes('oil change');
+    const isOilChange = isExactOilChange(item.name);
 
     if (isOilChange && type === 'service') {
       setOilChangeService(item);

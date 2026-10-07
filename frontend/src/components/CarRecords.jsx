@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FiSearch, FiFileText, FiCalendar, FiUser, 
   FiTruck, FiPrinter, FiEye, FiDownload, FiX, FiRefreshCw,
-  FiClock, FiChevronDown, FiChevronUp
+  FiClock, FiChevronDown, FiChevronUp, FiTrash2
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -26,6 +26,10 @@ const CarRecords = ({ darkMode }) => {
   const [customDateRange, setCustomDateRange] = useState({ from: '', to: '' });
   const [specificDate, setSpecificDate] = useState('');
   const [showDateDropdown, setShowDateDropdown] = useState(false);
+
+  // ✅ Delete state
+  const [deleteTarget, setDeleteTarget] = useState(null); // record to delete
+  const [deleting, setDeleting] = useState(false);
 
   // ✅ Fetch records from API
   const fetchRecords = async () => {
@@ -109,6 +113,43 @@ const CarRecords = ({ darkMode }) => {
   useEffect(() => {
     fetchRecords();
   }, []);
+
+  // ✅ Delete record (database se bhi delete hoga)
+  const confirmDelete = (record) => {
+    setDeleteTarget(record);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      // purchase -> /car-purchases/{id}   |   sell -> /car-sells/{id}
+      const endpoint = deleteTarget.type === 'purchase'
+        ? `/car-purchases/${deleteTarget.id}`
+        : `/car-sells/${deleteTarget.id}`;
+
+      await api.delete(endpoint);
+
+      // UI se bhi remove karo
+      setRecords(prev => prev.filter(
+        r => !(r.type === deleteTarget.type && r.id === deleteTarget.id)
+      ));
+
+      // Agar details modal isi record ka khula hai to band kar do
+      if (selectedRecord && selectedRecord.type === deleteTarget.type && selectedRecord.id === deleteTarget.id) {
+        setIsModalOpen(false);
+        setSelectedRecord(null);
+      }
+
+      toast.success('Record deleted successfully');
+      setDeleteTarget(null);
+    } catch (error) {
+      console.error('Error deleting record:', error);
+      toast.error(error.response?.data?.message || 'Failed to delete record');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // ✅ Date Filter Functions
   const getDateRange = (filter) => {
@@ -225,6 +266,13 @@ const CarRecords = ({ darkMode }) => {
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentRecords = filteredRecords.slice(indexOfFirstItem, indexOfLastItem);
+
+  // ✅ Delete ke baad agar current page khali ho jaye to pichle page par chale jao
+  useEffect(() => {
+    if (currentPage > 1 && currentPage > totalPages) {
+      setCurrentPage(Math.max(totalPages, 1));
+    }
+  }, [totalPages, currentPage]);
 
   // ✅ Format functions
   const formatCurrency = (amount) => {
@@ -702,6 +750,14 @@ const CarRecords = ({ darkMode }) => {
                           >
                             <FiPrinter size={14} />
                           </button>
+                          {/* ✅ Delete button */}
+                          <button
+                            onClick={() => confirmDelete(record)}
+                            className="p-1.5 rounded bg-red-500 text-white hover:bg-red-600 transition"
+                            title="Delete"
+                          >
+                            <FiTrash2 size={14} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -869,13 +925,77 @@ const CarRecords = ({ darkMode }) => {
                 >
                   <FiPrinter /> Print
                 </button>
+                {/* ✅ Delete button in details modal */}
+                <button
+                  onClick={() => confirmDelete(selectedRecord)}
+                  className="flex-1 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition flex items-center justify-center gap-2"
+                >
+                  <FiTrash2 /> Delete
+                </button>
                 <button
                   onClick={() => { setIsModalOpen(false); setSelectedRecord(null); }}
-                  className="flex-1 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition flex items-center justify-center gap-2"
+                  className="flex-1 py-2 bg-gray-500 text-white rounded-xl hover:bg-gray-600 transition flex items-center justify-center gap-2"
                 >
                   <FiX /> Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60] p-4">
+          <div className={`${darkMode ? 'bg-gray-900 text-white border-gray-700' : 'bg-white text-gray-900 border-gray-200'} rounded-2xl shadow-2xl max-w-md w-full border p-6`}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
+                <FiTrash2 size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold">Delete Record?</h3>
+                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Yeh action undo nahi ho sakta
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-3 rounded-xl text-sm mb-5 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <p><strong>Type:</strong> {deleteTarget.type === 'purchase' ? 'Purchase' : 'Sell'}</p>
+              <p><strong>Name:</strong> {deleteTarget.name}</p>
+              <p><strong>Car:</strong> {deleteTarget.carMake} {deleteTarget.carModel}</p>
+              <p><strong>Reg No:</strong> {deleteTarget.regNo || 'N/A'}</p>
+              <p><strong>Amount:</strong> {formatCurrency(deleteTarget.sellingPrice)}</p>
+            </div>
+
+            <p className={`text-sm mb-5 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              Yeh record database se hamesha ke liye delete ho jayega. Kya aap sure hain?
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex-1 py-2 bg-gray-500 text-white rounded-xl hover:bg-gray-600 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <FiTrash2 /> Yes, Delete
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

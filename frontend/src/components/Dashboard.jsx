@@ -9,7 +9,7 @@ import {
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
   FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp, FiFile,
   FiBattery, FiArchive, FiTruck, FiBookOpen, FiDownload, 
-  FiFileText as FiFileIcon
+  FiFileText as FiFileIcon, FiRefreshCw
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -182,6 +182,10 @@ const Dashboard = () => {
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [chartType, setChartType] = useState('line');
   const [isLowStockOpen, setIsLowStockOpen] = useState(false);
+
+  // ✅ NEW: Refresh button states
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
@@ -593,9 +597,10 @@ const Dashboard = () => {
     toast.success('Exported to PDF!');
   };
 
-  const fetchAllData = useCallback(async () => {
+  // ✅ UPDATED: silent=true hone par full-page loader nahi dikhega (refresh button ke liye)
+  const fetchAllData = useCallback(async (silent = false) => {
     const abortController = new AbortController();
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [productsRes, expensesRes, invoicesRes, servicesRes] = await Promise.all([
         api.get('/products', { signal: abortController.signal }),
@@ -622,10 +627,13 @@ const Dashboard = () => {
       if (err.name !== 'AbortError') {
         console.error('Error fetching data:', err);
         toast.error('Failed to load data');
-        setProducts([]);
-        setExpenses([]);
-        setInvoices([]);
-        setServices([]);
+        // Silent refresh par purana data na uray, isliye sirf normal load par clear karo
+        if (!silent) {
+          setProducts([]);
+          setExpenses([]);
+          setInvoices([]);
+          setServices([]);
+        }
       }
     } finally {
       setLoading(false);
@@ -639,6 +647,19 @@ const Dashboard = () => {
       if (cleanup && typeof cleanup === 'function') cleanup();
     };
   }, [fetchAllData]);
+
+  // ✅ NEW: Refresh button handler - page reload kiye baghair data dobara load karta hai
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await fetchAllData(true);
+      // Key change hone se current page (Billing, Inventory, Records etc.) dobara mount hoga aur apna data fresh fetch karega
+      setRefreshKey(prev => prev + 1);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, fetchAllData]);
 
   useEffect(() => {
     if (darkMode) {
@@ -958,6 +979,19 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* ✅ NEW: Refresh Button */}
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                title="Refresh data"
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
+                  darkMode 
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                } ${refreshing ? 'opacity-70 cursor-not-allowed' : ''}`}
+              >
+                <FiRefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Refresh
+              </button>
               <button
                 onClick={exportToExcel}
                 disabled={!hasData}
@@ -1153,7 +1187,7 @@ const Dashboard = () => {
                   </button>
                 </div>
 
-                {/* STATS CARDS */}
+                {/* STATS CARDS - Order: Sales, Expenses, Discount, Profit, Active Products */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                   <StatsCard 
                     title="Total Sales" 
@@ -1161,6 +1195,21 @@ const Dashboard = () => {
                     subtitle="(Battery Sales Excluded)"
                     icon={FiDollarSign} 
                     color="from-red-500 to-red-600" 
+                    darkMode={darkMode} 
+                  />
+                  <StatsCard 
+                    title="Total Expenses" 
+                    value={`Rs. ${totalExpensesSum.toLocaleString()}`} 
+                    icon={FiShoppingCart} 
+                    color="from-blue-500 to-blue-600" 
+                    darkMode={darkMode} 
+                  />
+                  <StatsCard 
+                    title="Total Discount" 
+                    value={`Rs. ${totalDiscount.toLocaleString()}`} 
+                    subtitle="(Battery Sales Excluded)"
+                    icon={FiGift} 
+                    color="from-sky-400 to-sky-500" 
                     darkMode={darkMode} 
                   />
                   <StatsCard 
@@ -1172,26 +1221,11 @@ const Dashboard = () => {
                     darkMode={darkMode} 
                   />
                   <StatsCard 
-                    title="Total Expenses" 
-                    value={`Rs. ${totalExpensesSum.toLocaleString()}`} 
-                    icon={FiShoppingCart} 
-                    color="from-blue-500 to-blue-600" 
-                    darkMode={darkMode} 
-                  />
-                  <StatsCard 
                     title="Active Products" 
                     value={totalProductsCount} 
                     subtitle={`${totalStock} units in stock`} 
                     icon={FiPackage} 
                     color="from-purple-500 to-purple-600" 
-                    darkMode={darkMode} 
-                  />
-                  <StatsCard 
-                    title="Total Discount" 
-                    value={`Rs. ${totalDiscount.toLocaleString()}`} 
-                    subtitle="(Battery Sales Excluded)"
-                    icon={FiGift} 
-                    color="from-sky-400 to-sky-500" 
                     darkMode={darkMode} 
                   />
                 </div>
@@ -1415,7 +1449,8 @@ const Dashboard = () => {
             )}
 
             {/* Other Components with Suspense for lazy loading */}
-            <Suspense fallback={<LoadingFallback darkMode={darkMode} />}>
+            {/* ✅ key={refreshKey}: Refresh dabane par current page dobara mount hoga aur fresh data lega */}
+            <Suspense key={refreshKey} fallback={<LoadingFallback darkMode={darkMode} />}>
               {activeMenu === 'inventory' && (
                 <Inventory products={productsArray} darkMode={darkMode} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} />
               )}

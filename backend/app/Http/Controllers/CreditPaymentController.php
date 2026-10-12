@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CreditVendor;
-use App\Models\CreditPayment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -45,6 +43,73 @@ class CreditPaymentController extends Controller
     }
 
     /**
+     * ✅ NEW: Payment ko vendor ke saare records par FIFO (purana pehle) distribute karta hai.
+     * total_amount ko kabhi haath nahi lagata.
+     * Transaction caller ke paas hoti hai. Zyada payment par RuntimeException throw karta hai.
+     */
+    public function distributePayment($vendorId, $amount, $note, $createdBy)
+    {
+        $selected = DB::table('credit_vendors')->where('id', $vendorId)->first();
+
+        if (!$selected) {
+            throw new \RuntimeException('Vendor not found');
+        }
+
+        $records = DB::table('credit_vendors')
+            ->whereRaw('LOWER(vendor_name) = ?', [strtolower($selected->vendor_name)])
+            ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc')
+            ->lockForUpdate()
+            ->get();
+
+        $totalBalance = round((float) $records->sum('balance_amount'), 2);
+        $remaining = round((float) $amount, 2);
+
+        if ($remaining > $totalBalance) {
+            throw new \RuntimeException('Payment amount cannot exceed balance amount');
+        }
+
+        $applied = [];
+
+        foreach ($records as $record) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $balance = round((float) $record->balance_amount, 2);
+            if ($balance <= 0) {
+                continue;
+            }
+
+            $apply = round(min($balance, $remaining), 2);
+
+            DB::table('credit_payments')->insert([
+                'vendor_id' => $record->id,
+                'amount' => $apply,
+                'payment_date' => now(),
+                'note' => $note . ' (Inv #' . $record->invoice_number . ')',
+                'created_by' => $createdBy,
+            ]);
+
+            $newPaid = round((float) $record->paid_amount + $apply, 2);
+            $newBalance = round((float) $record->total_amount - $newPaid, 2);
+
+            DB::table('credit_vendors')
+                ->where('id', $record->id)
+                ->update([
+                    'paid_amount' => $newPaid,
+                    'balance_amount' => $newBalance,
+                    'updated_at' => now(),
+                ]);
+
+            $applied[] = ['record_id' => $record->id, 'amount' => $apply];
+            $remaining = round($remaining - $apply, 2);
+        }
+
+        return $applied;
+    }
+
+    /**
      * Make a payment
      * POST /api/credit/payments
      */
@@ -66,63 +131,29 @@ class CreditPaymentController extends Controller
         try {
             DB::beginTransaction();
 
-            $vendor = DB::table('credit_vendors')->where('id', $request->vendor_id)->first();
-
-            if (!$vendor) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Vendor not found',
-                ], 404);
-            }
-
-            if ($request->amount > $vendor->balance_amount) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Payment amount cannot exceed balance amount',
-                ], 422);
-            }
-
-            $createdBy = $this->getCreatedBy();
-
-            // ✅ Create payment
-            DB::table('credit_payments')->insert([
-                'vendor_id' => $vendor->id,
-                'amount' => $request->amount,
-                'payment_date' => now(),
-                'note' => $request->note ?? 'Payment made',
-                'created_by' => $createdBy,
-            ]);
-
-            // ✅ Update vendor balance
-            $newPaidAmount = $vendor->paid_amount + $request->amount;
-            $newBalanceAmount = $vendor->total_amount - $newPaidAmount;
-
-            DB::table('credit_vendors')
-                ->where('id', $vendor->id)
-                ->update([
-                    'paid_amount' => $newPaidAmount,
-                    'balance_amount' => $newBalanceAmount,
-                    'updated_at' => now(),
-                ]);
+            $applied = $this->distributePayment(
+                $request->vendor_id,
+                $request->amount,
+                $request->note ?? 'Payment made',
+                $this->getCreatedBy()
+            );
 
             DB::commit();
-
-            // ✅ Get updated vendor
-            $updatedVendor = DB::table('credit_vendors')->where('id', $vendor->id)->first();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Payment recorded successfully',
                 'data' => [
-                    'vendor' => [
-                        'id' => $updatedVendor->id,
-                        'name' => $updatedVendor->vendor_name,
-                        'paidAmount' => (float) $updatedVendor->paid_amount,
-                        'balanceAmount' => (float) $updatedVendor->balance_amount,
-                    ],
+                    'applied' => $applied,
                 ],
             ]);
 
+        } catch (\RuntimeException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error recording payment: ' . $e->getMessage());
@@ -196,12 +227,10 @@ class CreditPaymentController extends Controller
         try {
             $query = DB::table('credit_payments');
 
-            // Filter by vendor
             if ($request->has('vendor_id') && !empty($request->vendor_id)) {
                 $query->where('vendor_id', $request->vendor_id);
             }
 
-            // Filter by date range
             if ($request->has('from_date') && !empty($request->from_date)) {
                 $query->whereDate('payment_date', '>=', $request->from_date);
             }
@@ -209,13 +238,11 @@ class CreditPaymentController extends Controller
                 $query->whereDate('payment_date', '<=', $request->to_date);
             }
 
-            // Filter current month
             if ($request->has('current_month') && $request->current_month) {
                 $query->whereMonth('payment_date', now()->month)
                       ->whereYear('payment_date', now()->year);
             }
 
-            // Filter today
             if ($request->has('today') && $request->today) {
                 $query->whereDate('payment_date', now()->toDateString());
             }

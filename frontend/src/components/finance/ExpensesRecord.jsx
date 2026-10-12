@@ -574,6 +574,15 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
     return category;
   };
 
+  // ✅ Close modal helper
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingExpense(null);
+    setShowOtherInput(false);
+    setOtherSubCategory('');
+    setShowCategoryDropdown(false);
+  };
+
   const hasData = filteredExpenses.length > 0;
 
   return (
@@ -834,7 +843,7 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
                 if (customDateFrom && customDateTo) {
                   toast.success(`Showing records from ${customDateFrom} to ${customDateTo}`);
                 } else {
-                  toast.warning('Please select both From and To dates');
+                  toast.error('Please select both From and To dates');
                 }
               }}
               className="px-4 py-1.5 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition flex items-center gap-1 shadow-md"
@@ -991,235 +1000,241 @@ const ExpensesRecord = ({ expenses, onAddExpense, onUpdateExpense, darkMode, ref
         </table>
       </div>
 
-      {/* ✅ Add/Edit Modal with Category Dropdown */}
+      {/* ✅ Add/Edit Modal - Scrollable with fixed header & footer */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
+          <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            
+            {/* Fixed Header */}
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center flex-shrink-0`}>
               <h3 className="text-xl font-semibold">{editingExpense ? 'Edit Expense' : 'Add New Expense'}</h3>
-              <button onClick={() => { setIsModalOpen(false); setEditingExpense(null); setShowOtherInput(false); setOtherSubCategory(''); }} className="text-gray-500 hover:text-gray-700 text-2xl">
+              <button type="button" onClick={closeModal} className="text-gray-500 hover:text-gray-700 text-2xl">
                 <FiX />
               </button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Description *</label>
-                <input
-                  type="text"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                  placeholder="e.g., Shop Rent, Employee Salary"
-                  required
-                />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Amount * (Rs.)</label>
-                <input
-                  type="number"
-                  name="amount"
-                  value={formData.amount}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                  placeholder="Enter amount"
-                  min="0"
-                  step="0.01"
-                  required
-                />
-              </div>
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Payment Date *</label>
-                <input
-                  type="date"
-                  name="date"
-                  value={formData.date}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                  required
-                />
-              </div>
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
               
-              {/* ✅ Category Field with Dropdown */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Category *
-                </label>
+              {/* ✅ Scrollable Body */}
+              <div className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Description *</label>
+                  <input
+                    type="text"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                    placeholder="e.g., Shop Rent, Employee Salary"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Amount * (Rs.)</label>
+                  <input
+                    type="number"
+                    name="amount"
+                    value={formData.amount}
+                    onChange={handleInputChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                    placeholder="Enter amount"
+                    min="0"
+                    step="0.01"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Payment Date *</label>
+                  <input
+                    type="date"
+                    name="date"
+                    value={formData.date}
+                    onChange={handleInputChange}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                    required
+                  />
+                </div>
                 
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
-                  >
-                    <span>
-                      {showOtherInput && otherSubCategory ? `Other/${otherSubCategory}` : 
-                       formData.category || 'Select category...'}
-                    </span>
-                    <FiChevronDown className={`transition-transform ${showCategoryDropdown ? 'rotate-180' : ''}`} />
-                  </button>
+                {/* ✅ Category Field with Dropdown */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Category *
+                  </label>
                   
-                  {showCategoryDropdown && (
-                    <div className={`absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-                      <div className="p-2 space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowOtherInput(true);
-                            setFormData(prev => ({ ...prev, category: '' }));
-                            setShowCategoryDropdown(false);
-                          }}
-                          className={`w-full px-3 py-2 rounded-lg text-left text-sm transition border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${showOtherInput ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 flex items-center justify-between ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
+                    >
+                      <span>
+                        {showOtherInput && otherSubCategory ? `Other/${otherSubCategory}` : 
+                         formData.category || 'Select category...'}
+                      </span>
+                      <FiChevronDown className={`transition-transform ${showCategoryDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {showCategoryDropdown && (
+                      <div className={`absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-lg shadow-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                        <div className="p-2 space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowOtherInput(true);
+                              setFormData(prev => ({ ...prev, category: '' }));
+                              setShowCategoryDropdown(false);
+                            }}
+                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${showOtherInput ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                          >
+                            <span className="flex items-center gap-2">
+                              <FiFolderPlus className="text-sm text-purple-500" /> Other (New Sub-Category)
+                            </span>
+                          </button>
+                          
+                          {otherSubCategories.length > 0 && (
+                            <>
+                              <div className="text-xs font-semibold text-purple-400 px-3 py-1 border-t dark:border-gray-700">📂 Your Sub-Categories</div>
+                              {otherSubCategories.map(subCat => {
+                                const fullCat = `Other/${subCat}`;
+                                return (
+                                  <button
+                                    key={fullCat}
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData(prev => ({ ...prev, category: fullCat }));
+                                      setShowOtherInput(true);
+                                      setOtherSubCategory(subCat);
+                                      setShowCategoryDropdown(false);
+                                    }}
+                                    className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex items-center gap-2 ${formData.category === fullCat ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                                  >
+                                    <FiFolder className="text-purple-500 text-xs" />
+                                    Other/{subCat}
+                                  </button>
+                                );
+                              })}
+                            </>
+                          )}
+                          
+                          <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Other Expenses</div>
+                          {['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair'].map(cat => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => handleCategorySelect(cat)}
+                              className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                          
+                          <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Fixed Monthly</div>
+                          {['Rent', 'Utilities', 'Salary', 'Office', 'Staff'].map(cat => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => handleCategorySelect(cat)}
+                              className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {showOtherInput && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={otherSubCategory}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setOtherSubCategory(val);
+                          if (val.trim()) {
+                            setFormData(prev => ({ ...prev, category: `Other/${val.trim()}` }));
+                          }
+                        }}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
+                        placeholder="e.g., paana, water, tool, etc."
+                        autoFocus
+                      />
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        This will create a new sub-category under "Other"
+                      </p>
+                      {otherSubCategory && (
+                        <div className={`mt-1 text-xs ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                          Category will be: <strong>Other/{otherSubCategory}</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="border-t pt-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      name="isRecurring"
+                      checked={formData.isRecurring}
+                      onChange={handleInputChange}
+                      className="w-4 h-4 text-red-500 focus:ring-red-400"
+                    />
+                    <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      🔄 This is a recurring expense (Monthly Rent, Salary, etc.)
+                    </label>
+                  </div>
+                  
+                  {formData.isRecurring && (
+                    <div className="mt-3 pl-6 space-y-3 border-l-2 border-red-300">
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Recurring Type</label>
+                        <select
+                          name="recurringType"
+                          value={formData.recurringType}
+                          onChange={handleInputChange}
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
                         >
-                          <span className="flex items-center gap-2">
-                            <FiFolderPlus className="text-sm text-purple-500" /> Other (New Sub-Category)
-                          </span>
-                        </button>
-                        
-                        {otherSubCategories.length > 0 && (
-                          <>
-                            <div className="text-xs font-semibold text-purple-400 px-3 py-1 border-t dark:border-gray-700">📂 Your Sub-Categories</div>
-                            {otherSubCategories.map(subCat => {
-                              const fullCat = `Other/${subCat}`;
-                              return (
-                                <button
-                                  key={fullCat}
-                                  type="button"
-                                  onClick={() => {
-                                    setFormData(prev => ({ ...prev, category: fullCat }));
-                                    setShowOtherInput(true);
-                                    setOtherSubCategory(subCat);
-                                    setShowCategoryDropdown(false);
-                                  }}
-                                  className={`w-full px-3 py-2 rounded-lg text-left text-sm transition flex items-center gap-2 ${formData.category === fullCat ? 'bg-purple-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                                >
-                                  <FiFolder className="text-purple-500 text-xs" />
-                                  Other/{subCat}
-                                </button>
-                              );
-                            })}
-                          </>
-                        )}
-                        
-                        <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Other Expenses</div>
-                        {['General', 'Maintenance', 'Tea/Coffee', 'Stationery', 'Marketing', 'Repair'].map(cat => (
-                          <button
-                            key={cat}
-                            type="button"
-                            onClick={() => handleCategorySelect(cat)}
-                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
-                        
-                        <div className="text-xs font-semibold text-gray-400 px-3 py-1 border-t dark:border-gray-700">Fixed Monthly</div>
-                        {['Rent', 'Utilities', 'Salary', 'Office', 'Staff'].map(cat => (
-                          <button
-                            key={cat}
-                            type="button"
-                            onClick={() => handleCategorySelect(cat)}
-                            className={`w-full px-3 py-2 rounded-lg text-left text-sm transition ${formData.category === cat && !showOtherInput ? 'bg-red-500 text-white' : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                          >
-                            {cat}
-                          </button>
-                        ))}
+                          <option value="monthly">📅 Monthly</option>
+                          <option value="weekly">📆 Weekly</option>
+                          <option value="yearly">🗓️ Yearly</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Last Paid Date</label>
+                        <input
+                          type="date"
+                          name="lastPaidDate"
+                          value={formData.lastPaidDate}
+                          onChange={handleInputChange}
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Leave empty to use payment date</p>
+                      </div>
+                      
+                      <div>
+                        <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Next Payment Date</label>
+                        <input
+                          type="date"
+                          name="nextPaymentDate"
+                          value={formData.nextPaymentDate}
+                          onChange={handleInputChange}
+                          className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Leave empty to auto-calculate</p>
                       </div>
                     </div>
                   )}
                 </div>
-
-                {showOtherInput && (
-                  <div className="mt-2">
-                    <input
-                      type="text"
-                      placeholder="Enter sub-category name (e.g., paana, water, tool)"
-                      value={otherSubCategory}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setOtherSubCategory(val);
-                        if (val.trim()) {
-                          setFormData(prev => ({ ...prev, category: `Other/${val.trim()}` }));
-                        }
-                      }}
-                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300'}`}
-                      placeholder="e.g., paana, water, tool, etc."
-                      autoFocus
-                    />
-                    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      This will create a new sub-category under "Other"
-                    </p>
-                    {otherSubCategory && (
-                      <div className={`mt-1 text-xs ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                        Category will be: <strong>Other/{otherSubCategory}</strong>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
               
-              <div className="border-t pt-3">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    name="isRecurring"
-                    checked={formData.isRecurring}
-                    onChange={handleInputChange}
-                    className="w-4 h-4 text-red-500 focus:ring-red-400"
-                  />
-                  <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    🔄 This is a recurring expense (Monthly Rent, Salary, etc.)
-                  </label>
-                </div>
-                
-                {formData.isRecurring && (
-                  <div className="mt-3 pl-6 space-y-3 border-l-2 border-red-300">
-                    <div>
-                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Recurring Type</label>
-                      <select
-                        name="recurringType"
-                        value={formData.recurringType}
-                        onChange={handleInputChange}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                      >
-                        <option value="monthly">📅 Monthly</option>
-                        <option value="weekly">📆 Weekly</option>
-                        <option value="yearly">🗓️ Yearly</option>
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Last Paid Date</label>
-                      <input
-                        type="date"
-                        name="lastPaidDate"
-                        value={formData.lastPaidDate}
-                        onChange={handleInputChange}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Leave empty to use payment date</p>
-                    </div>
-                    
-                    <div>
-                      <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Next Payment Date</label>
-                      <input
-                        type="date"
-                        name="nextPaymentDate"
-                        value={formData.nextPaymentDate}
-                        onChange={handleInputChange}
-                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
-                      />
-                      <p className="text-xs text-gray-400 mt-1">Leave empty to auto-calculate</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex gap-3 pt-4">
+              {/* ✅ Fixed Footer Buttons (always visible) */}
+              <div className={`flex gap-3 px-6 py-4 border-t flex-shrink-0 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-white'}`}>
                 <button
                   type="button"
-                  onClick={() => { setIsModalOpen(false); setEditingExpense(null); setShowOtherInput(false); setOtherSubCategory(''); }}
+                  onClick={closeModal}
                   className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
                 >
                   Cancel

@@ -1,6 +1,6 @@
 // src/components/Dashboard.jsx
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { 
   FiMenu, FiChevronLeft, FiSun, FiMoon, FiLogOut, 
@@ -9,7 +9,7 @@ import {
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
   FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp, FiFile,
   FiBattery, FiArchive, FiTruck, FiBookOpen, FiDownload, 
-  FiFileText as FiFileIcon, FiRefreshCw
+  FiFileText as FiFileIcon, FiRefreshCw, FiClipboard
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -46,10 +46,58 @@ const BatteryCharts = lazy(() => import('./BatteryCharts'));
 // Old Batteries
 const OldBatteries = lazy(() => import('./OldBatteries'));
 
-// ✅ NEW: Car Pages
+// ✅ Car Pages
 const CarPurchase = lazy(() => import('./CarPurchase'));
 const CarSell = lazy(() => import('./CarSell'));
 const CarRecords = lazy(() => import('./CarRecords'));
+
+// ✅ NEW: Product Record (Admin only)
+const ProductRecord = lazy(() => import('./ProductRecord'));
+
+// ✅ NEW: URL <-> Menu mapping (URL hi activeMenu ka source hai)
+const PATH_TO_MENU = {
+  '/dashboard': 'all-data',
+  '/inventory': 'inventory',
+  '/product-record': 'product-record',
+  '/finance': 'finance-overview',
+  '/finance-expenses': 'finance-expenses',
+  '/finance-charts': 'finance-charts',
+  '/finance-credit': 'finance-credit',
+  '/finance-reports': 'finance-reports',
+  '/finance-reminders': 'finance-reminders',
+  '/billing': 'billing',
+  '/estimate': 'estimate',
+  '/estimate-records': 'estimate-records',
+  '/battery': 'battery',
+  '/battery-overview': 'battery-overview',
+  '/battery-charts': 'battery-charts',
+  '/old-batteries': 'old-batteries',
+  '/car-purchase': 'car-purchase',
+  '/car-sell': 'car-sell',
+  '/car-records': 'car-records',
+  '/records': 'record',
+  '/reminders': 'reminders',
+  '/users': 'users',
+  '/discarded': 'discarded',
+};
+
+const MENU_TO_PATH = Object.fromEntries(
+  Object.entries(PATH_TO_MENU).map(([path, menu]) => [menu, path])
+);
+
+const getStoredRole = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user'))?.role || null;
+  } catch {
+    return null;
+  }
+};
+
+const getMenuFromPath = (pathname, role) => {
+  const fallback = role === 'employee' ? 'billing' : 'all-data';
+  if (pathname === '/dashboard' || pathname === '/') return fallback;
+  return PATH_TO_MENU[pathname] || fallback;
+};
 
 // Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
@@ -83,9 +131,54 @@ const isBatteryItem = (item) => {
 };
 
 // ✅ Helper: Get non-battery items from invoice
+// (ab sirf Discount ke liye use hota hai: battery invoice ka trade-in discount dashboard discount mein nahi ginta)
 const getNonBatteryItems = (items) => {
   if (!items || !Array.isArray(items)) return [];
   return items.filter(item => !isBatteryItem(item));
+};
+
+// ✅ Inventory se bike hue saare items (battery bhi shamil).
+// Trade-in aur Old Battery Sale inventory ka maal nahi hain, isliye skip.
+// Sales, Profit aur Expense teeno isi se calculate hote hain.
+const getSoldInventoryItems = (items) => {
+  if (!items || !Array.isArray(items)) return [];
+  return items.filter(item =>
+    item &&
+    item.service_category !== 'Trade-in' &&
+    item.service_category !== 'Old Battery Sale'
+  );
+};
+
+// ✅ Sales mein har line shamil, sirf 'Trade-in' (customer se old battery khareedna) skip.
+// Old Battery Sale (purani battery bechna) bhi sales mein ginti hai.
+const getSalesItems = (items) => {
+  if (!items || !Array.isArray(items)) return [];
+  return items.filter(item => item && item.service_category !== 'Trade-in');
+};
+
+// ✅ Cash-basis profit per line:
+//  - Normal / Battery item      : (selling - purchase) x qty
+//  - Old Battery Sale           : poori selling price (iski cost pehle hi discount / trade-in mein cut chuki hai)
+//  - Trade-in (old battery kharidi, cash diya) : minus (kharidi hui raqam)
+const calcItemProfit = (item, purchaseMap) => {
+  const qty = parseInt(item.quantity) || 0;
+  const price = parseFloat(item.price) || 0;
+
+  if (item.service_category === 'Trade-in') return -(price * qty);
+  if (item.service_category === 'Old Battery Sale') return price * qty;
+
+  const purchasePrice = purchaseMap[item.service_name] || 0;
+  return (price - purchasePrice) * qty;
+};
+
+// ✅ Kya is invoice ka discount asal mein battery trade-in hai? (customer ki purani battery ki value)
+// BatteryPage trade-in ko discount field + note mein save karta hai. Ye "asli discount" nahi hota.
+const isTradeInInvoice = (inv) => {
+  const note = (inv?.discount_note || '').toLowerCase();
+  if (note.includes('trade-in') || note.includes('old battery purchase')) return true;
+
+  const items = Array.isArray(inv?.items) ? inv.items : [];
+  return items.length > 0 && items.every(it => it && it.service_category === 'Battery');
 };
 
 // Helper: Get date range for filter
@@ -150,26 +243,33 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   });
 };
 
+// Filter / chart type button definitions
+const TIME_FILTERS = [
+  { id: 'all', label: 'All Time' },
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'This Week' },
+  { id: 'month', label: 'This Month' },
+  { id: 'year', label: 'This Year' },
+];
+
+const CHART_TYPES = [
+  { id: 'line', label: 'Line' },
+  { id: 'bar', label: 'Bar' },
+  { id: 'area', label: 'Area' },
+  { id: 'composed', label: 'Composed' },
+];
+
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [userRole, setUserRole] = useState(null);
-  
-  const getDefaultMenu = () => {
-    const userData = localStorage.getItem('user');
-    let role = null;
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        role = user?.role;
-      } catch (e) {
-        console.error('Error parsing user:', e);
-        role = null;
-      }
-    }
-    return role === 'employee' ? 'billing' : 'all-data';
-  };
-  
-  const [activeMenu, setActiveMenu] = useState(getDefaultMenu());
+  const location = useLocation();
+
+  const [userRole, setUserRole] = useState(getStoredRole());
+
+  // ✅ activeMenu ab URL se nikalta hai (purana getDefaultMenu hata diya)
+  const [activeMenu, setActiveMenu] = useState(() =>
+    getMenuFromPath(location.pathname, getStoredRole())
+  );
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [darkMode, setDarkMode] = useState(() => {
@@ -183,7 +283,7 @@ const Dashboard = () => {
   const [chartType, setChartType] = useState('line');
   const [isLowStockOpen, setIsLowStockOpen] = useState(false);
 
-  // ✅ NEW: Refresh button states
+  // ✅ Refresh button states
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -191,23 +291,28 @@ const Dashboard = () => {
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
+  const [oldBatteries, setOldBatteries] = useState([]);
 
+  // ✅ URL badle to menu automatically sync ho.
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        setUserRole(user.role);
-        if (user.role === 'employee') {
-          setActiveMenu('billing');
-        } else {
-          setActiveMenu('all-data');
-        }
-      } catch (e) {
-        console.error('Error parsing user:', e);
-      }
+    const role = getStoredRole();
+    setUserRole(role);
+
+    // Employee admin-only page par na jaye
+    if (location.pathname === '/product-record' && role !== 'admin') {
+      navigate('/dashboard', { replace: true });
+      return;
     }
-  }, []);
+
+    setActiveMenu(getMenuFromPath(location.pathname, role));
+  }, [location.pathname, navigate]);
+
+  // ✅ Dashboard ke andar ke buttons ke liye (URL bhi badalta hai)
+  const goToMenu = useCallback((id) => {
+    const path = MENU_TO_PATH[id];
+    if (path) navigate(path);
+    else setActiveMenu(id);
+  }, [navigate]);
 
   const productsArray = useMemo(() => Array.isArray(products) ? products : [], [products]);
   const expensesArray = useMemo(() => Array.isArray(expenses) ? expenses : [], [expenses]);
@@ -232,14 +337,57 @@ const Dashboard = () => {
     return filtered;
   }, [productsArray]);
 
-  // ✅ FIXED: Total Sales (Non-Battery Items only)
+  // ✅ Har product ki ab tak ki total bikri hui quantity (saare invoices se, filter ke baghair)
+  // Kharidi hui quantity = abhi ki stock + ab tak bika hua maal
+  const soldQtyByProduct = useMemo(() => {
+    const map = {};
+    invoicesArray.forEach(inv => {
+      getSoldInventoryItems(inv.items).forEach(item => {
+        const key = item.service_name;
+        if (!key) return;
+        map[key] = (map[key] || 0) + (parseInt(item.quantity) || 0);
+      });
+    });
+    return map;
+  }, [invoicesArray]);
+
+  // ✅ Inventory purchase cost (purchase price x kharidi hui quantity) - date filter ke sath
+  const inventoryPurchases = useMemo(() => {
+    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
+
+    return productsArray
+      .map(p => {
+        const rawDate = p.date_added || p.created_at || null;
+        const purchasedQty = (parseInt(p.quantity) || 0) + (soldQtyByProduct[p.name] || 0);
+        const cost = (parseFloat(p.purchase_price) || 0) * purchasedQty;
+        return { product: p, date: rawDate ? new Date(rawDate) : null, cost };
+      })
+      .filter(entry => {
+        if (!range) return true;
+        if (!entry.date) return false;
+        return entry.date >= range.start && entry.date <= range.end;
+      });
+  }, [productsArray, soldQtyByProduct, timeFilter, customDate]);
+
+  const inventoryPurchaseTotal = useMemo(() =>
+    inventoryPurchases.reduce((sum, e) => sum + e.cost, 0),
+    [inventoryPurchases]
+  );
+
+  // Product name -> purchase price (profit calculation ke liye)
+  const purchaseMap = useMemo(() => {
+    const map = {};
+    activeProducts.forEach(p => {
+      map[p.name] = parseFloat(p.purchase_price) || 0;
+    });
+    return map;
+  }, [activeProducts]);
+
+  // ✅ Total Sales = battery sales + old battery sales bhi (Trade-in purchase lines skip)
   const totalSales = useMemo(() => {
     let total = 0;
     filteredInvoices.forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      if (nonBatteryItems.length === 0) return;
-
-      nonBatteryItems.forEach(item => {
+      getSalesItems(inv.items).forEach(item => {
         const qty = parseInt(item.quantity) || 0;
         const price = parseFloat(item.price) || 0;
         total += price * qty;
@@ -248,61 +396,77 @@ const Dashboard = () => {
     return total;
   }, [filteredInvoices]);
 
-  const totalExpensesSum = useMemo(() => 
+  // Manual expenses (jo Expenses page se add hue)
+  const manualExpensesSum = useMemo(() => 
     filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
     [filteredExpenses]
   );
 
-  // ✅ FIXED: Total Discount (Only from invoices with non-battery items)
-  const totalDiscount = useMemo(() => {
-    let discount = 0;
+  // ✅ Expenses card = Manual expenses + Inventory purchase cost
+  const totalExpensesSum = useMemo(() => 
+    manualExpensesSum + inventoryPurchaseTotal,
+    [manualExpensesSum, inventoryPurchaseTotal]
+  );
+
+  // ✅ Discount ko 2 hisson mein baanta:
+  //  - totalDiscount  : asli discount jo tumne customer ko diya (Discount card mein yehi dikhta hai)
+  //  - tradeInDiscount: battery bechte waqt old battery ki value (Discount card mein NAHI ginta, sirf profit mein cut hota hai)
+  const { totalDiscount, tradeInDiscount } = useMemo(() => {
+    let real = 0;
+    let tradeIn = 0;
     filteredInvoices.forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      if (nonBatteryItems.length > 0) {
-        discount += parseFloat(inv.discount) || 0;
-      }
+      const d = parseFloat(inv.discount) || 0;
+      if (isTradeInInvoice(inv)) tradeIn += d;
+      else real += d;
     });
-    return discount;
+    return { totalDiscount: real, tradeInDiscount: tradeIn };
   }, [filteredInvoices]);
 
-  // ✅ FIXED: Total Profit = Sales Profit - (Expenses + Discount)
+  // ✅ Total Profit (cash-basis):
+//   Sale ka profit - Discount (trade-in dene par) + Old Battery bechne par poori raqam
+//   - Trade-in Only mein khareedi hui old battery ki raqam - Manual Expenses
+  // Inventory purchase cost yahan minus NAHI hoti (profit pehle hi selling - purchase se nikalta hai)
   const totalProfitCalc = useMemo(() => {
     let grossProfit = 0;
 
-    // 1. Calculate Gross Profit from Non-Battery Items
     filteredInvoices.forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      if (nonBatteryItems.length === 0) return;
-
-      nonBatteryItems.forEach(item => {
-        const qty = parseInt(item.quantity) || 0;
-        const price = parseFloat(item.price) || 0;
-
-        const product = activeProducts.find(p => p.name === item.service_name);
-        let purchasePrice = 0;
-
-        if (product) {
-          purchasePrice = parseFloat(product.purchase_price) || 0;
-        }
-
-        grossProfit += (price - purchasePrice) * qty;
+      (inv.items && Array.isArray(inv.items) ? inv.items : []).forEach(item => {
+        if (!item) return;
+        grossProfit += calcItemProfit(item, purchaseMap);
       });
     });
 
-    // 2. Total Expenses for the filtered period
-    const totalExpenses = filteredExpenses.reduce(
-      (sum, exp) => sum + (parseFloat(exp.amount) || 0), 
-      0
-    );
-
-    // 3. Net Profit = Gross Profit - Expenses - Discount
-    return grossProfit - totalExpenses - totalDiscount;
-  }, [filteredInvoices, filteredExpenses, activeProducts, totalDiscount]);
+    return grossProfit - manualExpensesSum - totalDiscount - tradeInDiscount;
+  }, [filteredInvoices, manualExpensesSum, purchaseMap, totalDiscount, tradeInDiscount]);
 
   const profitMargin = useMemo(() => 
     totalSales > 0 ? (totalProfitCalc / totalSales) * 100 : 0,
     [totalSales, totalProfitCalc]
   );
+
+  // ✅ Old Batteries card ke stats (purchase date ke hisab se filter)
+  const oldBatteryStats = useMemo(() => {
+    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
+    const list = (Array.isArray(oldBatteries) ? oldBatteries : []).filter(b => {
+      if (!range) return true;
+      const d = new Date(b.purchase_date || b.created_at);
+      return !isNaN(d.getTime()) && d >= range.start && d <= range.end;
+    });
+
+    const inStock = list.filter(b => b.status !== 'sold');
+    const sold = list.filter(b => b.status === 'sold');
+    const n = (v) => parseFloat(v) || 0;
+
+    return {
+      total: list.length,
+      inStockCount: inStock.length,
+      soldCount: sold.length,
+      purchaseTotal: list.reduce((s, b) => s + n(b.trade_in_amount), 0),
+      stockValue: inStock.reduce((s, b) => s + n(b.trade_in_amount), 0),
+      soldRevenue: sold.reduce((s, b) => s + n(b.selling_price), 0),
+      resaleProfit: sold.reduce((s, b) => s + n(b.profit), 0)
+    };
+  }, [oldBatteries, timeFilter, customDate]);
 
   const totalProductsCount = useMemo(() => activeProducts.length, [activeProducts]);
   const totalStock = useMemo(() => 
@@ -329,31 +493,28 @@ const Dashboard = () => {
     const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     monthOrder.forEach(m => {
-      monthly[m] = { sales: 0, profit: 0, expenses: 0, discount: 0 };
+      monthly[m] = { sales: 0, profit: 0, expenses: 0, inventoryExpenses: 0, discount: 0, tradeIn: 0 };
     });
     
+    // ✅ battery + old battery sales monthly sales/profit mein shamil
     filteredInvoices.forEach(inv => {
       if (inv.invoice_date) {
         const date = new Date(inv.invoice_date);
         const month = date.toLocaleString('default', { month: 'short' });
         if (monthly[month]) {
-          const nonBatteryItems = getNonBatteryItems(inv.items);
-          if (nonBatteryItems.length > 0) {
-            monthly[month].discount += parseFloat(inv.discount) || 0;
+          const invDiscount = parseFloat(inv.discount) || 0;
+          if (isTradeInInvoice(inv)) monthly[month].tradeIn += invDiscount;
+          else monthly[month].discount += invDiscount;
 
-            nonBatteryItems.forEach(item => {
+          (inv.items && Array.isArray(inv.items) ? inv.items : []).forEach(item => {
+            if (!item) return;
+            if (item.service_category !== 'Trade-in') {
               const qty = parseInt(item.quantity) || 0;
               const price = parseFloat(item.price) || 0;
               monthly[month].sales += price * qty;
-
-              const product = activeProducts.find(p => p.name === item.service_name);
-              let purchasePrice = 0;
-              if (product) {
-                purchasePrice = parseFloat(product.purchase_price) || 0;
-              }
-              monthly[month].profit += (price - purchasePrice) * qty;
-            });
-          }
+            }
+            monthly[month].profit += calcItemProfit(item, purchaseMap);
+          });
         }
       }
     });
@@ -367,19 +528,29 @@ const Dashboard = () => {
         }
       }
     });
+
+    // ✅ Inventory purchase cost ko us mahine mein jodo jis mahine product add hua
+    inventoryPurchases.forEach(entry => {
+      if (!entry.date) return;
+      const month = entry.date.toLocaleString('default', { month: 'short' });
+      if (monthly[month]) {
+        monthly[month].inventoryExpenses += entry.cost;
+      }
+    });
     
-    // Net Profit for chart = Gross Profit - Expenses - Discount
     return monthOrder.map(month => {
       const data = monthly[month];
       return {
         month,
         sales: data.sales,
-        profit: data.profit - data.expenses - data.discount, // Net Profit
-        expenses: data.expenses,
+        // Net Profit = Gross Profit - Manual Expenses - Discount - Trade-in
+        profit: data.profit - data.expenses - data.discount - data.tradeIn,
+        // Chart par expenses = Manual + Inventory purchase
+        expenses: data.expenses + data.inventoryExpenses,
         discount: data.discount
       };
     });
-  }, [filteredInvoices, filteredExpenses, activeProducts]);
+  }, [filteredInvoices, filteredExpenses, purchaseMap, inventoryPurchases]);
 
   const productSalesData = useMemo(() => {
     const allProducts = activeProducts
@@ -443,7 +614,7 @@ const Dashboard = () => {
     XLSX.utils.book_append_sheet(wb, ws3, 'Recent Invoices');
 
     const summaryData = [{
-      'Metric': 'Total Sales (Battery Excluded)',
+      'Metric': 'Total Sales',
       'Value': `Rs. ${totalSales.toLocaleString()}`
     }, {
       'Metric': 'Total Profit (After Expenses & Discount)',
@@ -452,11 +623,23 @@ const Dashboard = () => {
       'Metric': 'Profit Margin',
       'Value': `${profitMargin.toFixed(1)}%`
     }, {
-      'Metric': 'Total Expenses',
+      'Metric': 'Total Expenses (Incl. Inventory Purchases)',
       'Value': `Rs. ${totalExpensesSum.toLocaleString()}`
     }, {
-      'Metric': 'Total Discount (Battery Excluded)',
+      'Metric': 'Manual Expenses',
+      'Value': `Rs. ${manualExpensesSum.toLocaleString()}`
+    }, {
+      'Metric': 'Inventory Purchases',
+      'Value': `Rs. ${inventoryPurchaseTotal.toLocaleString()}`
+    }, {
+      'Metric': 'Total Discount',
       'Value': `Rs. ${totalDiscount.toLocaleString()}`
+    }, {
+      'Metric': 'Old Batteries (Total / In Stock / Sold)',
+      'Value': `${oldBatteryStats.total} / ${oldBatteryStats.inStockCount} / ${oldBatteryStats.soldCount}`
+    }, {
+      'Metric': 'Old Batteries Purchase / Sold Revenue',
+      'Value': `Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()} / Rs. ${oldBatteryStats.soldRevenue.toLocaleString()}`
     }, {
       'Metric': 'Active Products',
       'Value': totalProductsCount
@@ -497,10 +680,10 @@ const Dashboard = () => {
     doc.text(`Filter: ${getFilterLabel()}`, 14, 28);
 
     doc.setFontSize(10);
-    doc.text(`Total Sales (Battery Excluded): Rs. ${totalSales.toLocaleString()}`, 14, 36);
+    doc.text(`Total Sales: Rs. ${totalSales.toLocaleString()}`, 14, 36);
     doc.text(`Total Profit (Net): Rs. ${totalProfitCalc.toLocaleString()} (${profitMargin.toFixed(1)}% margin)`, 14, 42);
-    doc.text(`Total Expenses: Rs. ${totalExpensesSum.toLocaleString()}`, 14, 48);
-    doc.text(`Total Discount (Battery Excluded): Rs. ${totalDiscount.toLocaleString()}`, 14, 54);
+    doc.text(`Total Expenses (Incl. Inventory): Rs. ${totalExpensesSum.toLocaleString()}  [Manual: Rs. ${manualExpensesSum.toLocaleString()} | Inventory: Rs. ${inventoryPurchaseTotal.toLocaleString()}]`, 14, 48);
+    doc.text(`Total Discount: Rs. ${totalDiscount.toLocaleString()}  |  Old Batteries: ${oldBatteryStats.total} (In Stock: ${oldBatteryStats.inStockCount}, Sold: ${oldBatteryStats.soldCount})`, 14, 54);
     doc.text(`Active Products: ${totalProductsCount} | Total Stock: ${totalStock} units`, 14, 60);
     doc.text(`Total Invoices: ${filteredInvoices.length}`, 14, 66);
 
@@ -597,16 +780,19 @@ const Dashboard = () => {
     toast.success('Exported to PDF!');
   };
 
-  // ✅ UPDATED: silent=true hone par full-page loader nahi dikhega (refresh button ke liye)
+  // ✅ silent=true hone par full-page loader nahi dikhega (refresh button ke liye)
   const fetchAllData = useCallback(async (silent = false) => {
     const abortController = new AbortController();
     if (!silent) setLoading(true);
     try {
-      const [productsRes, expensesRes, invoicesRes, servicesRes] = await Promise.all([
+      const [productsRes, expensesRes, invoicesRes, servicesRes, oldBatteriesRes] = await Promise.all([
         api.get('/products', { signal: abortController.signal }),
         api.get('/expenses', { signal: abortController.signal }),
         api.get('/invoices', { signal: abortController.signal }),
-        api.get('/services', { signal: abortController.signal })
+        api.get('/services', { signal: abortController.signal }),
+        // Old batteries fail ho to baqi dashboard na ruke
+        api.get('/old-batteries', { params: { status: 'all' }, signal: abortController.signal })
+          .catch(() => ({ data: [] }))
       ]);
       
       let productsData = [];
@@ -622,6 +808,11 @@ const Dashboard = () => {
       setExpenses(Array.isArray(expensesRes.data) ? expensesRes.data : []);
       setInvoices(Array.isArray(invoicesRes.data) ? invoicesRes.data : []);
       setServices(Array.isArray(servicesRes.data) ? servicesRes.data : []);
+
+      const oldData = Array.isArray(oldBatteriesRes.data)
+        ? oldBatteriesRes.data
+        : (Array.isArray(oldBatteriesRes.data?.data) ? oldBatteriesRes.data.data : []);
+      setOldBatteries(oldData);
       
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -633,6 +824,7 @@ const Dashboard = () => {
           setExpenses([]);
           setInvoices([]);
           setServices([]);
+          setOldBatteries([]);
         }
       }
     } finally {
@@ -648,7 +840,7 @@ const Dashboard = () => {
     };
   }, [fetchAllData]);
 
-  // ✅ NEW: Refresh button handler - page reload kiye baghair data dobara load karta hai
+  // ✅ Refresh button handler - page reload kiye baghair data dobara load karta hai
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -747,6 +939,7 @@ const Dashboard = () => {
     const titles = {
       'all-data': 'Complete Business Overview',
       inventory: 'Inventory Management',
+      'product-record': 'Product Record',
       'finance-overview': 'Finance Dashboard',
       'finance-expenses': 'Expenses Management',
       'finance-charts': 'Financial Charts & Analytics',
@@ -775,6 +968,7 @@ const Dashboard = () => {
     const descriptions = {
       'all-data': 'Everything at a glance - Sales, Expenses, Products, Invoices',
       inventory: 'Manage products, track purchases and sales',
+      'product-record': 'Sold products ka poora record - purchase, selling, discount aur profit',
       'finance-overview': 'View daily, weekly and monthly financial overview',
       'finance-expenses': 'Add, edit and manage all expenses',
       'finance-charts': 'Visualize financial data with interactive charts', 
@@ -803,6 +997,7 @@ const Dashboard = () => {
     const icons = {
       'all-data': <FiBarChart2 className="text-2xl" />,
       inventory: <FiPackage className="text-2xl" />,
+      'product-record': <FiClipboard className="text-2xl" />,
       'finance-overview': <FiDollarSign className="text-2xl" />,
       'finance-expenses': <FiFileText className="text-2xl" />,
       'finance-charts': <FiBarChart2 className="text-2xl" />,
@@ -936,6 +1131,28 @@ const Dashboard = () => {
 
   const hasData = filteredInvoices.length > 0 || filteredExpenses.length > 0 || activeProducts.length > 0;
 
+  // ✅ Product Record page par header ke Excel/PDF buttons us page ka export chalate hain
+  const isProductRecord = activeMenu === 'product-record';
+  const handleHeaderExcel = () => {
+    if (isProductRecord) window.dispatchEvent(new CustomEvent('product-record-export', { detail: 'excel' }));
+    else exportToExcel();
+  };
+  const handleHeaderPDF = () => {
+    if (isProductRecord) window.dispatchEvent(new CustomEvent('product-record-export', { detail: 'pdf' }));
+    else exportToPDF();
+  };
+  const exportDisabled = !isProductRecord && !hasData;
+
+  // Shared button style for filter / chart type buttons
+  const pillClass = (active) =>
+    `px-4 py-2 rounded-lg text-sm font-medium transition ${
+      active
+        ? 'bg-red-500 text-white shadow-md'
+        : darkMode
+          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+    }`;
+
   if (loading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -979,7 +1196,7 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* ✅ NEW: Refresh Button */}
+              {/* Refresh Button */}
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
@@ -993,24 +1210,24 @@ const Dashboard = () => {
                 <FiRefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Refresh
               </button>
               <button
-                onClick={exportToExcel}
-                disabled={!hasData}
+                onClick={handleHeaderExcel}
+                disabled={exportDisabled}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
                   darkMode 
                     ? 'bg-green-600 hover:bg-green-700 text-white' 
                     : 'bg-green-500 hover:bg-green-600 text-white'
-                } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${exportDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <FiFileIcon size={14} /> Excel
               </button>
               <button
-                onClick={exportToPDF}
-                disabled={!hasData}
+                onClick={handleHeaderPDF}
+                disabled={exportDisabled}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
                   darkMode 
                     ? 'bg-red-600 hover:bg-red-700 text-white' 
                     : 'bg-red-500 hover:bg-red-600 text-white'
-                } ${!hasData ? 'opacity-50 cursor-not-allowed' : ''}`}
+                } ${exportDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <FiDownload size={14} /> PDF
               </button>
@@ -1036,75 +1253,18 @@ const Dashboard = () => {
                     <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
                     <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Filter:</span>
                   </div>
-                  <button
-                    onClick={() => { setTimeFilter('all'); setShowCustomDate(false); }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      timeFilter === 'all' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    All Time
-                  </button>
-                  <button
-                    onClick={() => { setTimeFilter('today'); setShowCustomDate(false); }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      timeFilter === 'today' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Today
-                  </button>
-                  <button
-                    onClick={() => { setTimeFilter('week'); setShowCustomDate(false); }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      timeFilter === 'week' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    This Week
-                  </button>
-                  <button
-                    onClick={() => { setTimeFilter('month'); setShowCustomDate(false); }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      timeFilter === 'month' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    This Month
-                  </button>
-                  <button
-                    onClick={() => { setTimeFilter('year'); setShowCustomDate(false); }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      timeFilter === 'year' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    This Year
-                  </button>
+                  {TIME_FILTERS.map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => { setTimeFilter(f.id); setShowCustomDate(false); }}
+                      className={pillClass(timeFilter === f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                   <button
                     onClick={() => setShowCustomDate(!showCustomDate)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      timeFilter === 'custom' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
+                    className={pillClass(timeFilter === 'custom')}
                   >
                     📅 Custom Date
                   </button>
@@ -1137,62 +1297,23 @@ const Dashboard = () => {
                     <FiBarChart2 className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
                     <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Chart Type:</span>
                   </div>
-                  <button
-                    onClick={() => setChartType('line')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      chartType === 'line' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Line
-                  </button>
-                  <button
-                    onClick={() => setChartType('bar')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      chartType === 'bar' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Bar
-                  </button>
-                  <button
-                    onClick={() => setChartType('area')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      chartType === 'area' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Area
-                  </button>
-                  <button
-                    onClick={() => setChartType('composed')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                      chartType === 'composed' 
-                        ? 'bg-red-500 text-white shadow-md' 
-                        : darkMode 
-                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Composed
-                  </button>
+                  {CHART_TYPES.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => setChartType(c.id)}
+                      className={pillClass(chartType === c.id)}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
                 </div>
 
-                {/* STATS CARDS - Order: Sales, Expenses, Discount, Profit, Active Products */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                {/* STATS CARDS - Order: Sales, Expenses, Old Batteries, Discount, Profit, Active Products */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   <StatsCard 
                     title="Total Sales" 
                     value={`Rs. ${totalSales.toLocaleString()}`} 
-                    subtitle="(Battery Sales Excluded)"
+                    subtitle=""
                     icon={FiDollarSign} 
                     color="from-red-500 to-red-600" 
                     darkMode={darkMode} 
@@ -1200,14 +1321,23 @@ const Dashboard = () => {
                   <StatsCard 
                     title="Total Expenses" 
                     value={`Rs. ${totalExpensesSum.toLocaleString()}`} 
+                    subtitle={`Inventory: Rs. ${inventoryPurchaseTotal.toLocaleString()} + Other: Rs. ${manualExpensesSum.toLocaleString()}`}
                     icon={FiShoppingCart} 
                     color="from-blue-500 to-blue-600" 
                     darkMode={darkMode} 
                   />
                   <StatsCard 
+                    title="Old Batteries" 
+                    value={`${oldBatteryStats.total} ${oldBatteryStats.total === 1 ? 'battery' : 'batteries'}`} 
+                    subtitle={`In stock: ${oldBatteryStats.inStockCount} • Sold: ${oldBatteryStats.soldCount}`}
+                    icon={FiBattery} 
+                    color="from-teal-500 to-teal-600" 
+                    darkMode={darkMode} 
+                  />
+                  <StatsCard 
                     title="Total Discount" 
                     value={`Rs. ${totalDiscount.toLocaleString()}`} 
-                    subtitle="(Battery Sales Excluded)"
+                    subtitle=""
                     icon={FiGift} 
                     color="from-sky-400 to-sky-500" 
                     darkMode={darkMode} 
@@ -1215,7 +1345,7 @@ const Dashboard = () => {
                   <StatsCard 
                     title="Total Profit" 
                     value={`Rs. ${totalProfitCalc.toLocaleString()}`} 
-                    subtitle="After Expenses & Discount (Battery Excluded)" 
+                    subtitle="" 
                     icon={FiTrendingUp} 
                     color={totalProfitCalc >= 0 ? "from-green-500 to-green-600" : "from-red-500 to-red-600"} 
                     darkMode={darkMode} 
@@ -1305,7 +1435,7 @@ const Dashboard = () => {
                         ({getFilterLabel()})
                       </span>
                     </h3>
-                    <button onClick={() => setActiveMenu('record')} className="text-red-500 text-sm hover:text-red-600 flex items-center gap-1">
+                    <button onClick={() => goToMenu('record')} className="text-red-500 text-sm hover:text-red-600 flex items-center gap-1">
                       View All <FiArrowRight className="text-xs" />
                     </button>
                   </div>
@@ -1412,7 +1542,7 @@ const Dashboard = () => {
                                     {p.quantity} left
                                   </span>
                                   <button 
-                                    onClick={() => setActiveMenu('inventory')} 
+                                    onClick={() => goToMenu('inventory')} 
                                     className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition font-medium shadow-md flex items-center gap-2"
                                   >
                                     <FiPackage className="text-sm" /> Restock Now
@@ -1429,17 +1559,17 @@ const Dashboard = () => {
 
                 {/* Quick Actions */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <button onClick={() => setActiveMenu('billing')} className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-md flex items-center justify-center gap-2">
+                  <button onClick={() => goToMenu('billing')} className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-md flex items-center justify-center gap-2">
                     <FiFileText /> New Bill
                   </button>
-                  <button onClick={() => setActiveMenu('inventory')} className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-md flex items-center justify-center gap-2">
+                  <button onClick={() => goToMenu('inventory')} className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-md flex items-center justify-center gap-2">
                     <FiPackage /> Add Product
                   </button>
-                  <button onClick={() => setActiveMenu('record')} className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-md flex items-center justify-center gap-2">
+                  <button onClick={() => goToMenu('record')} className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition shadow-md flex items-center justify-center gap-2">
                     <FiShoppingCart /> View Records
                   </button>
                   <button 
-                    onClick={() => setActiveMenu('finance-expenses')} 
+                    onClick={() => goToMenu('finance-expenses')} 
                     className="w-full py-3 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600 transition shadow-md flex items-center justify-center gap-2"
                   >
                     <FiDollarSign /> Add Expense
@@ -1453,6 +1583,11 @@ const Dashboard = () => {
             <Suspense key={refreshKey} fallback={<LoadingFallback darkMode={darkMode} />}>
               {activeMenu === 'inventory' && (
                 <Inventory products={productsArray} darkMode={darkMode} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} />
+              )}
+
+              {/* ✅ NEW: Product Record - Admin only */}
+              {activeMenu === 'product-record' && userRole === 'admin' && (
+                <ProductRecord darkMode={darkMode} />
               )}
               
               {activeMenu === 'finance-overview' && userRole !== 'employee' && (

@@ -1,24 +1,11 @@
 // src/components/finance/FinanceOverview.jsx
-import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { FiCalendar, FiTrendingUp, FiDollarSign, FiPackage, FiBarChart2, FiChevronDown, FiChevronUp, FiDownload, FiFileText, FiLoader, FiClock, FiTrendingDown, FiChevronLeft, FiChevronRight, FiPercent, FiGift } from 'react-icons/fi';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { FiCalendar, FiTrendingUp, FiDollarSign, FiPackage, FiBarChart2, FiChevronDown, FiChevronUp, FiDownload, FiFileText, FiLoader, FiTrendingDown, FiChevronLeft, FiChevronRight, FiGift } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
-
-// Lazy load heavy components
-const StatsCards = lazy(() => import('./StatsCards'));
-const UpcomingPayments = lazy(() => import('./UpcomingPayments'));
-
-// Debounce function
-const debounce = (func, delay) => {
-  let timeoutId;
-  return (...args) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => func(...args), delay);
-  };
-};
 
 // ============================================================
 // 🕒 KARACHI TIMEZONE HELPERS (Asia/Karachi, UTC+5, no DST)
@@ -78,23 +65,112 @@ const formatDisplayDate = (value) => {
   return `${d}/${m}/${y}`;
 };
 
-// ✅ Battery filter function - Battery items ko detect karega
-const isBatteryItem = (item) => {
-  if (!item) return false;
-  return item.service_category === 'Battery' || 
-         item.service_name?.toLowerCase().includes('battery');
+// ============================================================
+// ✅ SALES / PROFIT LOGIC (Dashboard ke bilkul barabar)
+//  - Battery aur Old Battery Sale ab sales mein shamil
+//  - Trade-in (customer se old battery khareedna) sales mein nahi, uski raqam profit se minus
+//  - Battery bechte waqt old battery ki value (trade-in discount) asli Discount mein nahi ginti,
+//    magar profit se kat jati hai
+// ============================================================
+
+// Kya is invoice ka discount asal mein battery trade-in hai?
+const isTradeInInvoice = (inv) => {
+  const note = (inv?.discount_note || '').toLowerCase();
+  if (note.includes('trade-in') || note.includes('old battery purchase')) return true;
+
+  const items = Array.isArray(inv?.items) ? inv.items : [];
+  return items.length > 0 && items.every(it => it && it.service_category === 'Battery');
 };
 
-// ✅ Helper: Get non-battery items from invoice
-const getNonBatteryItems = (items) => {
+// Inventory se bike hue items (Trade-in aur Old Battery Sale inventory ka maal nahi)
+const getSoldInventoryItems = (items) => {
   if (!items || !Array.isArray(items)) return [];
-  return items.filter(item => !isBatteryItem(item));
+  return items.filter(item =>
+    item &&
+    item.service_category !== 'Trade-in' &&
+    item.service_category !== 'Old Battery Sale'
+  );
 };
 
-// ✅ Helper: Check if invoice has any non-battery items
-const hasNonBatteryItems = (items) => {
-  return getNonBatteryItems(items).length > 0;
+// Ek invoice line ko calculate karke annotate karta hai
+const buildLine = (item, productsMap) => {
+  const qty = parseInt(item.quantity) || 0;
+  const price = parseFloat(item.price) || 0;
+  const cat = item.service_category;
+
+  // Customer se old battery khareedi (cash diya) -> cost
+  if (cat === 'Trade-in') {
+    return {
+      ...item, kind: 'trade-in', qty, purchasePrice: price, sellPrice: 0,
+      isProduct: false, lineProfit: -(price * qty), unitProfit: -price,
+      salesValue: 0, soldQty: 0
+    };
+  }
+
+  // Purani battery bechi -> poori raqam (cost pehle hi cut chuki hai)
+  if (cat === 'Old Battery Sale') {
+    return {
+      ...item, kind: 'old-sale', qty, purchasePrice: 0, sellPrice: price,
+      isProduct: false, lineProfit: price * qty, unitProfit: price,
+      salesValue: price * qty, soldQty: qty
+    };
+  }
+
+  const product = productsMap.get(item.service_name);
+  const purchasePrice = product ? (parseFloat(product.purchase_price) || 0) : 0;
+  const lineProfit = (price - purchasePrice) * qty;
+
+  return {
+    ...item, kind: 'normal', qty, purchasePrice, sellPrice: price,
+    isProduct: !!product, lineProfit, unitProfit: qty > 0 ? lineProfit / qty : 0,
+    salesValue: price * qty, soldQty: qty
+  };
 };
+
+// Invoices ki list ka poora hisaab
+const aggregateInvoices = (invoicesList, productsMap) => {
+  let total = 0, items = 0, profit = 0, discount = 0, tradeIn = 0;
+  const details = [];
+
+  (invoicesList || []).forEach(inv => {
+    const rawItems = Array.isArray(inv.items) ? inv.items : [];
+    const lines = rawItems.filter(Boolean).map(it => buildLine(it, productsMap));
+
+    const invDiscountValue = parseFloat(inv.discount) || 0;
+    const tradeInInv = isTradeInInvoice(inv);
+    if (tradeInInv) tradeIn += invDiscountValue;
+    else discount += invDiscountValue;
+
+    if (lines.length === 0) return;
+
+    const invTotal = lines.reduce((s, l) => s + l.salesValue, 0);
+    const invProfit = lines.reduce((s, l) => s + l.lineProfit, 0);
+    const itemCount = lines.reduce((s, l) => s + l.soldQty, 0);
+
+    total += invTotal;
+    items += itemCount;
+    profit += invProfit;
+
+    details.push({
+      invoiceNo: inv.invoice_no,
+      customer: inv.customer_name,
+      date: inv.invoice_date,
+      total: invTotal,
+      profit: invProfit,
+      discount: tradeInInv ? 0 : invDiscountValue,
+      tradeIn: tradeInInv ? invDiscountValue : 0,
+      items: lines,
+      itemCount
+    });
+  });
+
+  return { total, items, count: details.length, profit, discount, tradeIn, details };
+};
+
+// Net Profit = Lines ka profit - Expenses - Asli Discount - Trade-in
+const netProfitOf = (agg, expenses = 0) => agg.profit - expenses - agg.discount - agg.tradeIn;
+
+const emptyAgg = { total: 0, items: 0, count: 0, profit: 0, discount: 0, tradeIn: 0, details: [] };
 
 // Helper: Get date range for filter (Karachi 'YYYY-MM-DD' strings)
 const getDateRange = (filter, customDate = null) => {
@@ -148,13 +224,13 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   });
 };
 
-// ✅ Helper: Inventory Purchased (jo paisay actually nikal chuke hain)
-//  1) Cash purchase (vendor se link nahi): poori purchase_price × quantity
+// ✅ Helper: Inventory Purchased (jo paisay actually nikal chuke hain) - ab BATTERY bhi shamil
+//  1) Cash purchase (vendor se link nahi): purchase_price × KHAREEDI HUI quantity
+//     Kharidi hui quantity = abhi ki stock + ab tak bika hua maal
 //  2) Vendor/credit purchase: sirf wo paisay jo vendor ko diye gaye
 //     - khareedte waqt diya hua amount -> record ki date par
 //     - baad mein Pay Now se diye hue payments -> payment ki date par
-//  Battery excluded, sab Karachi date ke hisab se
-const getInventoryCost = (products, creditRecords, filter, customDate = null) => {
+const getInventoryCost = (products, creditRecords, invoices, filter, customDate = null) => {
   const range = filter !== 'all' ? getDateRange(filter, customDate) : null;
   const inRange = (raw) => {
     if (!range) return true;
@@ -162,26 +238,29 @@ const getInventoryCost = (products, creditRecords, filter, customDate = null) =>
     return isInRange(toKarachiDateStr(raw), range);
   };
 
+  // Har product ka ab tak ka total bika hua maal (saare invoices se, date filter ke baghair)
+  const soldQtyByName = {};
+  (invoices || []).forEach(inv => {
+    getSoldInventoryItems(inv.items).forEach(item => {
+      const key = item.service_name;
+      if (!key) return;
+      soldQtyByName[key] = (soldQtyByName[key] || 0) + (parseInt(item.quantity) || 0);
+    });
+  });
+
   // 1) Cash products (credit vendor se linked products yahan nahi ginay jayenge)
-  const cashProducts = (products || []).filter(p =>
-    p.category !== 'Battery' &&
-    !p.name?.toLowerCase().includes('battery') &&
-    !p.credit_vendor &&
-    !p.credit_vendor_id
-  );
+  const cashProducts = (products || []).filter(p => !p.credit_vendor && !p.credit_vendor_id);
 
   const cashTotal = cashProducts
     .filter(p => inRange(p.created_at || p.date_added))
-    .reduce(
-      (sum, p) => sum + (parseFloat(p.purchase_price) || 0) * (parseInt(p.quantity) || 0),
-      0
-    );
+    .reduce((sum, p) => {
+      const purchasedQty = (parseInt(p.quantity) || 0) + (soldQtyByName[p.name] || 0);
+      return sum + (parseFloat(p.purchase_price) || 0) * purchasedQty;
+    }, 0);
 
   // 2) Credit purchases - sirf diye hue paisay
   let creditPaidTotal = 0;
   (creditRecords || []).forEach(rec => {
-    if (String(rec.products || '').toLowerCase().includes('battery')) return;
-
     const payments = Array.isArray(rec.payments) ? rec.payments : [];
     const paymentsSum = payments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
     const paidTotal = parseFloat(rec.paid_amount) || 0;
@@ -202,6 +281,32 @@ const getInventoryCost = (products, creditRecords, filter, customDate = null) =>
 
   return cashTotal + creditPaidTotal;
 };
+
+// Display helpers for table rows
+const typeLabel = (item) => {
+  if (item.kind === 'old-sale') return 'Old Battery Sale';
+  if (item.kind === 'trade-in') return 'Old Battery Purchase';
+  return item.isProduct ? 'Product' : 'Service';
+};
+
+const formatProfit = (v) => `${v < 0 ? '- ' : '+ '}Rs. ${Math.abs(v).toLocaleString()}`;
+
+const TypeBadge = ({ item, darkMode }) => {
+  let cls;
+  if (item.kind === 'old-sale' || item.kind === 'trade-in') {
+    cls = darkMode ? 'bg-amber-900/40 text-amber-300' : 'bg-amber-100 text-amber-700';
+  } else if (item.isProduct) {
+    cls = darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700';
+  } else {
+    cls = darkMode ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-100 text-purple-700';
+  }
+  return <span className={`px-2 py-1 rounded text-xs ${cls}`}>{typeLabel(item)}</span>;
+};
+
+const profitColor = (v, darkMode) =>
+  v >= 0
+    ? (darkMode ? 'text-green-400' : 'text-green-500')
+    : (darkMode ? 'text-red-400' : 'text-red-500');
 
 // ✅ Collapsible Stat Card (compact prop = chhota card)
 const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onClick, expanded, compact = false }) => {
@@ -233,34 +338,27 @@ const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onCli
   );
 };
 
-// Memoized Invoice Details Component - ✅ Battery filtered out
+// Memoized Invoice Details Component
 const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   const allItems = useMemo(() => {
     const items = [];
     (data?.details || []).forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      nonBatteryItems.forEach(item => {
+      inv.items.forEach(item => {
         items.push({ ...item, inv });
       });
     });
     return items;
   }, [data?.details]);
 
-  if (!data?.details || data.details.length === 0) {
+  if (!data?.details || data.details.length === 0 || allItems.length === 0) {
     return (
       <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'} text-center`}>
         <p>No sales data available</p>
       </div>
     );
   }
-  
-  if (allItems.length === 0) {
-    return (
-      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'} text-center`}>
-        <p>No non-battery sales data available</p>
-      </div>
-    );
-  }
+
+  const deductions = (data.discount || 0) + (data.tradeIn || 0);
   
   return (
     <div className="mt-4 space-y-3">
@@ -286,36 +384,44 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
             {allItems.map((item, idx) => (
               <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
                 <td className={`px-3 py-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.service_name}</td>
-                <td className="px-3 py-2">
-                  <span className={`px-2 py-1 rounded text-xs ${
-                    item.isProduct 
-                      ? darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700' 
-                      : darkMode ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-100 text-purple-700'
-                  }`}>
-                    {item.isProduct ? 'Product' : 'Service'}
-                  </span>
-                </td>
+                <td className="px-3 py-2"><TypeBadge item={item} darkMode={darkMode} /></td>
                 <td className={`px-3 py-2 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   {item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}
                 </td>
-                <td className={`px-3 py-2 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Rs. {item.price.toLocaleString()}</td>
-                <td className={`px-3 py-2 text-center font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.quantity}</td>
-                <td className={`px-3 py-2 text-right font-semibold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>
-                  + Rs. {item.unitProfit.toLocaleString()}
+                <td className={`px-3 py-2 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {item.sellPrice > 0 ? `Rs. ${item.sellPrice.toLocaleString()}` : '-'}
                 </td>
-                <td className={`px-3 py-2 text-right font-semibold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>
-                  Rs. {(item.unitProfit * item.quantity).toLocaleString()}
+                <td className={`px-3 py-2 text-center font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.qty}</td>
+                <td className={`px-3 py-2 text-right font-semibold ${profitColor(item.unitProfit, darkMode)}`}>
+                  {formatProfit(item.unitProfit)}
+                </td>
+                <td className={`px-3 py-2 text-right font-semibold ${profitColor(item.lineProfit, darkMode)}`}>
+                  {formatProfit(item.lineProfit)}
                 </td>
                 <td className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.inv.customer}</td>
-               </tr>
+              </tr>
             ))}
           </tbody>
           <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
             <tr>
               <td colSpan="6" className="px-3 py-2 text-right font-bold">Total:</td>
-              <td className={`px-3 py-2 text-right font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {data.profit.toLocaleString()}</td>
+              <td className={`px-3 py-2 text-right font-bold ${profitColor(data.profit, darkMode)}`}>Rs. {data.profit.toLocaleString()}</td>
               <td></td>
-             </tr>
+            </tr>
+            {deductions > 0 && (
+              <>
+                <tr>
+                  <td colSpan="6" className="px-3 py-2 text-right font-bold">Less: Discount / Trade-in:</td>
+                  <td className={`px-3 py-2 text-right font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>- Rs. {deductions.toLocaleString()}</td>
+                  <td></td>
+                </tr>
+                <tr>
+                  <td colSpan="6" className="px-3 py-2 text-right font-bold">Net:</td>
+                  <td className={`px-3 py-2 text-right font-bold ${profitColor(data.profit - deductions, darkMode)}`}>Rs. {(data.profit - deductions).toLocaleString()}</td>
+                  <td></td>
+                </tr>
+              </>
+            )}
           </tfoot>
         </table>
       </div>
@@ -352,7 +458,7 @@ const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
               <th className="px-3 py-2 text-left">Category</th>
               <th className="px-3 py-2 text-left">Date</th>
               <th className="px-3 py-2 text-right">Amount</th>
-             </tr>
+            </tr>
           </thead>
           <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             {expenses.map((exp, idx) => (
@@ -365,20 +471,28 @@ const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
                 </td>
                 <td className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDisplayDate(exp.date || exp.expense_date)}</td>
                 <td className={`px-3 py-2 text-right font-semibold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {exp.amount.toLocaleString()}</td>
-               </tr>
+              </tr>
             ))}
           </tbody>
           <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
             <tr>
               <td colSpan="3" className="px-3 py-2 text-right font-bold">Total:</td>
               <td className={`px-3 py-2 text-right font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {totalAmount.toLocaleString()}</td>
-             </tr>
+            </tr>
           </tfoot>
         </table>
       </div>
     </div>
   );
 });
+
+const TIME_FILTERS = [
+  { id: 'all', label: 'All Time' },
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'This Week' },
+  { id: 'month', label: 'This Month' },
+  { id: 'year', label: 'This Year' },
+];
 
 const FinanceOverview = ({ darkMode }) => {
   const [timeFilter, setTimeFilter] = useState('all');
@@ -407,7 +521,7 @@ const FinanceOverview = ({ darkMode }) => {
   // ✅ Vendor/credit records (paid_amount + payments) - inventory purchased ke liye
   const [creditRecords, setCreditRecords] = useState([]);
   
-  const [filteredSalesData, setFilteredSalesData] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
+  const [filteredSalesData, setFilteredSalesData] = useState(emptyAgg);
   const [filteredExpenseData, setFilteredExpenseData] = useState([]);
   const [filteredStats, setFilteredStats] = useState({
     expenses: 0,
@@ -416,10 +530,10 @@ const FinanceOverview = ({ darkMode }) => {
     discount: 0
   });
   
-  const [todaySales, setTodaySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
-  const [weeklySales, setWeeklySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
-  const [monthlySales, setMonthlySales] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
-  const [selectedYearData, setSelectedYearData] = useState({ total: 0, items: 0, count: 0, profit: 0, discount: 0, details: [] });
+  const [todaySales, setTodaySales] = useState(emptyAgg);
+  const [weeklySales, setWeeklySales] = useState(emptyAgg);
+  const [monthlySales, setMonthlySales] = useState(emptyAgg);
+  const [selectedYearData, setSelectedYearData] = useState(emptyAgg);
   
   const [todayExpenseDetails, setTodayExpenseDetails] = useState([]);
   const [weekExpenseDetails, setWeekExpenseDetails] = useState([]);
@@ -471,68 +585,23 @@ const FinanceOverview = ({ darkMode }) => {
     setShowCustomDate(false);
   };
 
+  const pillClass = (active) =>
+    `px-4 py-2 rounded-lg text-sm font-medium transition ${
+      active
+        ? 'bg-red-500 text-white shadow-md'
+        : darkMode
+          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+    }`;
+
   const calculateFilteredData = useCallback((invoicesList, expensesList, productsMap) => {
     const filteredInvoices = filterInvoicesByDate(invoicesList, timeFilter, customDate || null);
     const filteredExpenses = filterExpensesByDate(expensesList, timeFilter, customDate || null);
     
-    let total = 0, items = 0, profit = 0, discount = 0, details = [];
-    
-    filteredInvoices.forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      
-      if (nonBatteryItems.length === 0) {
-        return;
-      }
-      
-      let invTotal = 0;
-      let invProfit = 0;
-      let itemCount = 0;
-      let invDiscount = parseFloat(inv.discount) || 0;
-      
-      nonBatteryItems.forEach(item => {
-        const itemQty = parseInt(item.quantity) || 0;
-        const itemPrice = parseFloat(item.price) || 0;
-        itemCount += itemQty;
-        invTotal += itemPrice * itemQty;
-        
-        let itemProfit = 0;
-        let purchasePrice = 0;
-        
-        const product = productsMap.get(item.service_name);
-        
-        if (product) {
-          purchasePrice = parseFloat(product.purchase_price) || 0;
-          itemProfit = (itemPrice - purchasePrice) * itemQty;
-        } else {
-          itemProfit = itemPrice * itemQty;
-          purchasePrice = 0;
-        }
-        
-        invProfit += itemProfit;
-        item.purchasePrice = purchasePrice;
-        item.isProduct = !!product;
-        item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
-      });
-      
-      total += invTotal;
-      items += itemCount;
-      profit += invProfit;
-      discount += invDiscount;
-      
-      details.push({
-        invoiceNo: inv.invoice_no,
-        customer: inv.customer_name,
-        date: inv.invoice_date,
-        total: invTotal,
-        profit: invProfit,
-        discount: invDiscount,
-        items: nonBatteryItems,
-        itemCount: itemCount
-      });
-    });
+    const sales = aggregateInvoices(filteredInvoices, productsMap);
     
     let expenseTotal = 0;
-    let expenseList = [];
+    const expenseList = [];
     filteredExpenses.forEach(exp => {
       const amount = parseFloat(exp.amount) || 0;
       expenseTotal += amount;
@@ -546,7 +615,7 @@ const FinanceOverview = ({ darkMode }) => {
     });
     
     return {
-      sales: { total, items, count: details.length, profit, discount, details },
+      sales,
       expenses: expenseList,
       expenseTotal: expenseTotal,
       expenseCount: expenseList.length
@@ -554,7 +623,6 @@ const FinanceOverview = ({ darkMode }) => {
   }, [timeFilter, customDate]);
 
   // ✅ Products API response shape ko safely handle karega
-  // (seedha array, { data: [...] }, { products: [...] } - teeno cases)
   const fetchProducts = useCallback(async (signal) => {
     try {
       const response = await api.get('/products', { signal });
@@ -650,14 +718,16 @@ const FinanceOverview = ({ darkMode }) => {
         productsMap.set(p.name, p);
       });
       
+      // ----- Selected filter (All Time / Today / ...) -----
       const filtered = calculateFilteredData(invoicesList, expensesList, productsMap);
       setFilteredSalesData(filtered.sales);
       setFilteredExpenseData(filtered.expenses);
       setFilteredStats({
         expenses: filtered.expenseTotal,
         expenseCount: filtered.expenseCount,
-        // ✅ Net Profit = Sales Profit - (Expenses + Discount Given)
-        profit: filtered.sales.profit - (filtered.expenseTotal + filtered.sales.discount),
+        // ✅ Net Profit = Sales Profit - (Expenses + Asli Discount + Trade-in)
+        // (inventory purchase yahan minus nahi hoti - profit already sale - purchase se nikal raha hai)
+        profit: netProfitOf(filtered.sales, filtered.expenseTotal),
         discount: filtered.sales.discount
       });
       
@@ -665,90 +735,22 @@ const FinanceOverview = ({ darkMode }) => {
       const todayStr = getKarachiToday();
       const weekStartStr = getWeekStartStr();
       const monthStartStr = getMonthStartStr();
+
+      const dayOf = (inv) => toKarachiDateStr(inv.invoice_date);
+
+      const todayAgg = aggregateInvoices(
+        invoicesList.filter(inv => dayOf(inv) === todayStr), productsMap
+      );
+      const weekAgg = aggregateInvoices(
+        invoicesList.filter(inv => { const d = dayOf(inv); return d && d >= weekStartStr && d <= todayStr; }), productsMap
+      );
+      const monthAgg = aggregateInvoices(
+        invoicesList.filter(inv => { const d = dayOf(inv); return d && d >= monthStartStr && d <= todayStr; }), productsMap
+      );
       
-      let todayTotal = 0, todayItems = 0, todayProfit = 0, todayDiscount = 0, todayDetails = [];
-      let weekTotal = 0, weekItems = 0, weekProfit = 0, weekDiscount = 0, weekDetails = [];
-      let monthTotal = 0, monthItems = 0, monthProfit = 0, monthDiscount = 0, monthDetails = [];
-      
-      invoicesList.forEach(inv => {
-        if (!inv.invoice_date) return;
-        
-        const nonBatteryItems = getNonBatteryItems(inv.items);
-        if (nonBatteryItems.length === 0) return;
-        
-        const invDay = toKarachiDateStr(inv.invoice_date);
-        if (!invDay) return;
-        const isToday = invDay === todayStr;
-        const isThisWeek = invDay >= weekStartStr && invDay <= todayStr;
-        const isThisMonth = invDay >= monthStartStr && invDay <= todayStr;
-        
-        let invTotal = 0;
-        let invProfit = 0;
-        let itemCount = 0;
-        let invDiscount = parseFloat(inv.discount) || 0;
-        
-        nonBatteryItems.forEach(item => {
-          const itemQty = parseInt(item.quantity) || 0;
-          const itemPrice = parseFloat(item.price) || 0;
-          itemCount += itemQty;
-          invTotal += itemPrice * itemQty;
-          
-          let itemProfit = 0;
-          let purchasePrice = 0;
-          
-          const product = productsMap.get(item.service_name);
-          
-          if (product) {
-            purchasePrice = parseFloat(product.purchase_price) || 0;
-            itemProfit = (itemPrice - purchasePrice) * itemQty;
-          } else {
-            itemProfit = itemPrice * itemQty;
-            purchasePrice = 0;
-          }
-          
-          invProfit += itemProfit;
-          item.purchasePrice = purchasePrice;
-          item.isProduct = !!product;
-          item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
-        });
-        
-        const detailItem = {
-          invoiceNo: inv.invoice_no,
-          customer: inv.customer_name,
-          date: inv.invoice_date,
-          total: invTotal,
-          profit: invProfit,
-          discount: invDiscount,
-          items: nonBatteryItems,
-          itemCount: itemCount
-        };
-        
-        if (isToday) {
-          todayTotal += invTotal;
-          todayItems += itemCount;
-          todayProfit += invProfit;
-          todayDiscount += invDiscount;
-          todayDetails.push(detailItem);
-        }
-        if (isThisWeek) {
-          weekTotal += invTotal;
-          weekItems += itemCount;
-          weekProfit += invProfit;
-          weekDiscount += invDiscount;
-          weekDetails.push(detailItem);
-        }
-        if (isThisMonth) {
-          monthTotal += invTotal;
-          monthItems += itemCount;
-          monthProfit += invProfit;
-          monthDiscount += invDiscount;
-          monthDetails.push(detailItem);
-        }
-      });
-      
-      setTodaySales({ total: todayTotal, items: todayItems, count: todayDetails.length, profit: todayProfit, discount: todayDiscount, details: todayDetails });
-      setWeeklySales({ total: weekTotal, items: weekItems, count: weekDetails.length, profit: weekProfit, discount: weekDiscount, details: weekDetails });
-      setMonthlySales({ total: monthTotal, items: monthItems, count: monthDetails.length, profit: monthProfit, discount: monthDiscount, details: monthDetails });
+      setTodaySales(todayAgg);
+      setWeeklySales(weekAgg);
+      setMonthlySales(monthAgg);
       
       let todayExp = 0, todayExpCount = 0, todayExpList = [];
       let weekExp = 0, weekExpCount = 0, weekExpList = [];
@@ -789,11 +791,6 @@ const FinanceOverview = ({ darkMode }) => {
       setWeekExpenseDetails(weekExpList);
       setMonthExpenseDetails(monthExpList);
       
-      // ✅ Net Profit = Sales Profit - (Expenses + Discount Given)
-      const todayNetProfit = todayProfit - (todayExp + todayDiscount);
-      const weekNetProfit = weekProfit - (weekExp + weekDiscount);
-      const monthNetProfit = monthProfit - (monthExp + monthDiscount);
-      
       setStats({
         todayExpenses: todayExp,
         todayExpenseCount: todayExpCount,
@@ -801,73 +798,22 @@ const FinanceOverview = ({ darkMode }) => {
         weekExpenseCount: weekExpCount,
         monthExpenses: monthExp,
         monthExpenseCount: monthExpCount,
-        todayProfit: todayNetProfit,
-        weekProfit: weekNetProfit,
-        monthProfit: monthNetProfit,
-        todayDiscount: todayDiscount,
-        weekDiscount: weekDiscount,
-        monthDiscount: monthDiscount
+        todayProfit: netProfitOf(todayAgg, todayExp),
+        weekProfit: netProfitOf(weekAgg, weekExp),
+        monthProfit: netProfitOf(monthAgg, monthExp),
+        todayDiscount: todayAgg.discount,
+        weekDiscount: weekAgg.discount,
+        monthDiscount: monthAgg.discount
       });
       
-      const year = selectedYear;
+      // ----- Selected year -----
       const yearInvoices = invoicesList.filter(inv => {
         if (!inv.invoice_date) return false;
-        return toKarachiDateStr(inv.invoice_date).slice(0, 4) === String(year);
+        return toKarachiDateStr(inv.invoice_date).slice(0, 4) === String(selectedYear);
       });
       
-      let yearlyTotal = 0, yearlyItems = 0, yearlyProfit = 0, yearlyDiscount = 0, yearlyDetails = [];
-      
-      yearInvoices.forEach(inv => {
-        const nonBatteryItems = getNonBatteryItems(inv.items);
-        if (nonBatteryItems.length === 0) return;
-        
-        let invTotal = 0;
-        let invProfit = 0;
-        let itemCount = 0;
-        let invDiscount = parseFloat(inv.discount) || 0;
-        
-        nonBatteryItems.forEach(item => {
-          const itemQty = parseInt(item.quantity) || 0;
-          const itemPrice = parseFloat(item.price) || 0;
-          itemCount += itemQty;
-          invTotal += itemPrice * itemQty;
-          
-          let itemProfit = 0;
-          let purchasePrice = 0;
-          
-          const product = productsMap.get(item.service_name);
-          
-          if (product) {
-            purchasePrice = parseFloat(product.purchase_price) || 0;
-            itemProfit = (itemPrice - purchasePrice) * itemQty;
-          } else {
-            itemProfit = itemPrice * itemQty;
-            purchasePrice = 0;
-          }
-          
-          invProfit += itemProfit;
-          item.purchasePrice = purchasePrice;
-          item.isProduct = !!product;
-          item.unitProfit = itemQty > 0 ? itemProfit / itemQty : 0;
-        });
-        
-        yearlyTotal += invTotal;
-        yearlyItems += itemCount;
-        yearlyProfit += invProfit;
-        yearlyDiscount += invDiscount;
-        yearlyDetails.push({
-          invoiceNo: inv.invoice_no,
-          customer: inv.customer_name,
-          date: inv.invoice_date,
-          total: invTotal,
-          profit: invProfit,
-          discount: invDiscount,
-          items: nonBatteryItems,
-          itemCount: itemCount
-        });
-      });
-      
-      setSelectedYearData({ total: yearlyTotal, items: yearlyItems, count: yearInvoices.length, profit: yearlyProfit, discount: yearlyDiscount, details: yearlyDetails });
+      const yearAgg = aggregateInvoices(yearInvoices, productsMap);
+      setSelectedYearData({ ...yearAgg, count: yearInvoices.length });
       setCurrentPage(1);
       
     } catch (err) {
@@ -892,13 +838,15 @@ const FinanceOverview = ({ darkMode }) => {
   const flattenedItems = useMemo(() => {
     const items = [];
     selectedYearData.details.forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      nonBatteryItems.forEach(item => {
+      inv.items.forEach(item => {
         items.push({ ...item, inv });
       });
     });
     return items;
   }, [selectedYearData.details]);
+
+  const yearDeductions = (selectedYearData.discount || 0) + (selectedYearData.tradeIn || 0);
+  const yearNetProfit = selectedYearData.profit - yearDeductions;
 
   const totalItems = flattenedItems.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
@@ -925,80 +873,74 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, [currentPage, totalPages]);
 
-  // ✅ Inventory Purchased: cash purchases (poori cost) + vendor ko diye hue paisay (Battery excluded, Karachi time)
+  // ✅ Inventory Purchased: cash purchases (khareedi hui poori quantity ki cost) + vendor ko diye hue paisay
+  // (Battery bhi shamil, Karachi time)
   const inventoryCost = useMemo(
-    () => getInventoryCost(products, creditRecords, timeFilter, customDate || null),
-    [products, creditRecords, timeFilter, customDate]
+    () => getInventoryCost(products, creditRecords, invoices, timeFilter, customDate || null),
+    [products, creditRecords, invoices, timeFilter, customDate]
+  );
+
+  // ✅ Expenses card = Manual expenses + Inventory Purchased
+  const totalExpensesWithInventory = useMemo(
+    () => filteredStats.expenses + inventoryCost,
+    [filteredStats.expenses, inventoryCost]
   );
 
   const exportToExcel = useCallback(() => {
-    if (selectedYearData.details.length === 0) {
+    if (flattenedItems.length === 0) {
       toast.error('No data available for the selected year');
       return;
     }
     
-    const exportData = [];
-    selectedYearData.details.forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      nonBatteryItems.forEach(item => {
-        exportData.push({
-          'Invoice #': inv.invoiceNo,
-          'Customer': inv.customer,
-          'Date': formatDisplayDate(inv.date),
-          'Item': item.service_name,
-          'Type': item.isProduct ? 'Product' : 'Service',
-          'Quantity': item.quantity,
-          'Purchase Price': item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : 'N/A',
-          'Selling Price': `Rs. ${item.price.toLocaleString()}`,
-          'Unit Profit': `Rs. ${item.unitProfit.toLocaleString()}`,
-          'Total Profit': `Rs. ${(item.unitProfit * item.quantity).toLocaleString()}`
-        });
-      });
+    const exportData = flattenedItems.map(item => ({
+      'Invoice #': item.inv.invoiceNo,
+      'Customer': item.inv.customer,
+      'Date': formatDisplayDate(item.inv.date),
+      'Item': item.service_name,
+      'Type': typeLabel(item),
+      'Quantity': item.qty,
+      'Purchase Price': item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : 'N/A',
+      'Selling Price': item.sellPrice > 0 ? `Rs. ${item.sellPrice.toLocaleString()}` : 'N/A',
+      'Unit Profit': `Rs. ${item.unitProfit.toLocaleString()}`,
+      'Total Profit': `Rs. ${item.lineProfit.toLocaleString()}`
+    }));
+
+    exportData.push({
+      'Invoice #': 'TOTAL (After Discount & Trade-in)',
+      'Customer': '', 'Date': '', 'Item': '', 'Type': '', 'Quantity': '',
+      'Purchase Price': '', 'Selling Price': '', 'Unit Profit': '',
+      'Total Profit': `Rs. ${yearNetProfit.toLocaleString()}`
     });
-    
-    if (exportData.length === 0) {
-      toast.error('No non-battery data available for export');
-      return;
-    }
     
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Year_${selectedYear}_Report`);
     XLSX.writeFile(wb, `Year_${selectedYear}_Sales_Report.xlsx`);
     toast.success(`Exported to Excel for year ${selectedYear}`);
-  }, [selectedYearData, selectedYear]);
+  }, [flattenedItems, selectedYear, yearNetProfit]);
 
   const exportToPDF = useCallback(() => {
-    if (selectedYearData.details.length === 0) {
+    if (flattenedItems.length === 0) {
       toast.error('No data available for the selected year');
       return;
     }
     
     const doc = new jsPDF('landscape');
     doc.text(`Sales Report for Year ${selectedYear}`, 14, 10);
-    const tableData = [];
-    selectedYearData.details.forEach(inv => {
-      const nonBatteryItems = getNonBatteryItems(inv.items);
-      nonBatteryItems.forEach(item => {
-        tableData.push([
-          inv.invoiceNo,
-          inv.customer,
-          formatDisplayDate(inv.date),
-          item.service_name,
-          item.isProduct ? 'Product' : 'Service',
-          item.quantity,
-          item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-',
-          `Rs. ${item.price.toLocaleString()}`,
-          `Rs. ${item.unitProfit.toLocaleString()}`,
-          `Rs. ${(item.unitProfit * item.quantity).toLocaleString()}`
-        ]);
-      });
-    });
-    
-    if (tableData.length === 0) {
-      toast.error('No non-battery data available for export');
-      return;
-    }
+    const tableData = flattenedItems.map(item => [
+      item.inv.invoiceNo,
+      item.inv.customer,
+      formatDisplayDate(item.inv.date),
+      item.service_name,
+      typeLabel(item),
+      item.qty,
+      item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-',
+      item.sellPrice > 0 ? `Rs. ${item.sellPrice.toLocaleString()}` : '-',
+      `Rs. ${item.unitProfit.toLocaleString()}`,
+      `Rs. ${item.lineProfit.toLocaleString()}`
+    ]);
+
+    tableData.push(['TOTAL (After Discount & Trade-in)', '', '', '', '', '', '', '', '', `Rs. ${yearNetProfit.toLocaleString()}`]);
     
     doc.autoTable({
       head: [['Invoice', 'Customer', 'Date', 'Item', 'Type', 'Qty', 'Purchase', 'Sell', 'Unit Profit', 'Total Profit']],
@@ -1007,7 +949,7 @@ const FinanceOverview = ({ darkMode }) => {
     });
     doc.save(`Year_${selectedYear}_Sales_Report.pdf`);
     toast.success(`Exported to PDF for year ${selectedYear}`);
-  }, [selectedYearData, selectedYear]);
+  }, [flattenedItems, selectedYear, yearNetProfit]);
 
   if (loading) {
     return (
@@ -1028,77 +970,18 @@ const FinanceOverview = ({ darkMode }) => {
           <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
           <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Filter:</span>
         </div>
-        <button
-          onClick={() => { setTimeFilter('all'); setShowCustomDate(false); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-            timeFilter === 'all' 
-              ? 'bg-red-500 text-white shadow-md' 
-              : darkMode 
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          All Time
-        </button>
-        <button
-          onClick={() => { setTimeFilter('today'); setShowCustomDate(false); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-            timeFilter === 'today' 
-              ? 'bg-red-500 text-white shadow-md' 
-              : darkMode 
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          Today
-        </button>
-        <button
-          onClick={() => { setTimeFilter('week'); setShowCustomDate(false); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-            timeFilter === 'week' 
-              ? 'bg-red-500 text-white shadow-md' 
-              : darkMode 
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          This Week
-        </button>
-        <button
-          onClick={() => { setTimeFilter('month'); setShowCustomDate(false); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-            timeFilter === 'month' 
-              ? 'bg-red-500 text-white shadow-md' 
-              : darkMode 
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          This Month
-        </button>
-        <button
-          onClick={() => { setTimeFilter('year'); setShowCustomDate(false); }}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-            timeFilter === 'year' 
-              ? 'bg-red-500 text-white shadow-md' 
-              : darkMode 
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          This Year
-        </button>
+
+        {TIME_FILTERS.map(f => (
+          <button
+            key={f.id}
+            onClick={() => { setTimeFilter(f.id); setShowCustomDate(false); }}
+            className={pillClass(timeFilter === f.id)}
+          >
+            {f.label}
+          </button>
+        ))}
         
-        <button
-          onClick={toggleCustomDate}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-            timeFilter === 'custom' 
-              ? 'bg-red-500 text-white shadow-md' 
-              : darkMode 
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
+        <button onClick={toggleCustomDate} className={pillClass(timeFilter === 'custom')}>
           📅 Custom Date
         </button>
         
@@ -1135,13 +1018,6 @@ const FinanceOverview = ({ darkMode }) => {
 
         <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
-          <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
-            darkMode 
-              ? 'bg-yellow-900/40 text-yellow-300' 
-              : 'bg-yellow-50 text-yellow-600'
-          }`}>
-            (Battery Sales Excluded)
-          </span>
         </span>
       </div>
 
@@ -1155,25 +1031,26 @@ const FinanceOverview = ({ darkMode }) => {
           mainValue={`Rs. ${filteredSalesData.total.toLocaleString()}`}
           subLines={[
             `${filteredSalesData.items} items sold`,
-            `Profit: Rs. ${filteredSalesData.profit.toLocaleString()}`,
-            '(Battery sales excluded)'
+            `Profit: Rs. ${filteredSalesData.profit.toLocaleString()}`
           ]}
           expanded={showAllDetails}
         />
 
+        {/* ✅ 2nd: Expenses = Manual expenses + Inventory Purchased (battery bhi) */}
         <StatCard
           compact
           gradient="from-red-500 to-red-600"
           icon={FiTrendingDown}
           title={`${getFilterLabel()} Expenses`}
-          mainValue={`Rs. ${filteredStats.expenses.toLocaleString()}`}
+          mainValue={`Rs. ${totalExpensesWithInventory.toLocaleString()}`}
           subLines={[
-            `${filteredStats.expenseCount} transactions`
+            `Inventory: Rs. ${inventoryCost.toLocaleString()}`,
+            `Other: Rs. ${filteredStats.expenses.toLocaleString()} (${filteredStats.expenseCount} transactions)`
           ]}
           expanded={showAllDetails}
         />
 
-        {/* ✅ 3rd: Inventory Purchased (cash cost + vendor ko diye hue paisay) */}
+        {/* ✅ 3rd: Inventory Purchased (khareedi hui poori quantity + vendor ko diye hue paisay) */}
         <StatCard
           compact
           gradient="from-orange-500 to-orange-600"
@@ -1181,13 +1058,12 @@ const FinanceOverview = ({ darkMode }) => {
           title="Inventory Purchased"
           mainValue={`Rs. ${inventoryCost.toLocaleString()}`}
           subLines={[
-            'Cash purchases + paid to vendors',
-            '(Battery excluded)'
+            'Total khareedi (bika hua + bacha hua)'
           ]}
           expanded={showAllDetails}
         />
 
-        {/* ✅ 4th: Discount Given */}
+        {/* ✅ 4th: Discount Given (sirf asli discount, trade-in nahi) */}
         <StatCard
           compact
           gradient="from-sky-400 to-sky-500"
@@ -1195,13 +1071,12 @@ const FinanceOverview = ({ darkMode }) => {
           title="Discount Given"
           mainValue={`Rs. ${filteredSalesData.discount.toLocaleString()}`}
           subLines={[
-            'Given to customers',
-            '(Battery sales excluded)'
+            'Given to customers'
           ]}
           expanded={showAllDetails}
         />
 
-        {/* ✅ 5th: Profit = Sales Profit - (Expenses + Discount) */}
+        {/* ✅ 5th: Profit = Sales Profit - (Expenses + Discount + Trade-in) */}
         <StatCard
           compact
           gradient={filteredStats.profit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'}
@@ -1209,8 +1084,7 @@ const FinanceOverview = ({ darkMode }) => {
           title={`${getFilterLabel()} Profit`}
           mainValue={`Rs. ${filteredStats.profit.toLocaleString()}`}
           subLines={[
-            'After expenses & discount',
-            '(Battery sales excluded)'
+            'After expenses, discount & trade-in'
           ]}
           expanded={showAllDetails}
         />
@@ -1228,8 +1102,7 @@ const FinanceOverview = ({ darkMode }) => {
               subLines={[
                 `${todaySales.items} items sold`,
                 `Profit: Rs. ${todaySales.profit.toLocaleString()}`,
-                'Click for details',
-                '(Battery sales excluded)'
+                'Click for details'
               ]}
               expanded={true}
             />
@@ -1243,8 +1116,7 @@ const FinanceOverview = ({ darkMode }) => {
               subLines={[
                 `${weeklySales.items} items sold`,
                 `Profit: Rs. ${weeklySales.profit.toLocaleString()}`,
-                'Click for details',
-                '(Battery sales excluded)'
+                'Click for details'
               ]}
               expanded={true}
             />
@@ -1258,8 +1130,7 @@ const FinanceOverview = ({ darkMode }) => {
               subLines={[
                 `${monthlySales.items} items sold`,
                 `Profit: Rs. ${monthlySales.profit.toLocaleString()}`,
-                'Click for details',
-                '(Battery sales excluded)'
+                'Click for details'
               ]}
               expanded={true}
             />
@@ -1320,10 +1191,7 @@ const FinanceOverview = ({ darkMode }) => {
               icon={FiTrendingUp}
               title="Today's Profit"
               mainValue={`Rs. ${stats.todayProfit?.toLocaleString() || 0}`}
-              subLines={[
-                'After expenses & discount',
-                '(Battery sales excluded)'
-              ]}
+              subLines={['After expenses, discount & trade-in']}
               expanded={true}
             />
 
@@ -1332,10 +1200,7 @@ const FinanceOverview = ({ darkMode }) => {
               icon={FiTrendingUp}
               title="This Week's Profit"
               mainValue={`Rs. ${stats.weekProfit?.toLocaleString() || 0}`}
-              subLines={[
-                'After expenses & discount',
-                '(Battery sales excluded)'
-              ]}
+              subLines={['After expenses, discount & trade-in']}
               expanded={true}
             />
 
@@ -1344,10 +1209,7 @@ const FinanceOverview = ({ darkMode }) => {
               icon={FiTrendingUp}
               title="This Month's Profit"
               mainValue={`Rs. ${stats.monthProfit?.toLocaleString() || 0}`}
-              subLines={[
-                'After expenses & discount',
-                '(Battery sales excluded)'
-              ]}
+              subLines={['After expenses, discount & trade-in']}
               expanded={true}
             />
           </div>
@@ -1358,10 +1220,7 @@ const FinanceOverview = ({ darkMode }) => {
               icon={FiGift}
               title="Today's Discount"
               mainValue={`Rs. ${stats.todayDiscount?.toLocaleString() || 0}`}
-              subLines={[
-                'Given today',
-                '(Battery sales excluded)'
-              ]}
+              subLines={['Given today']}
               expanded={true}
             />
 
@@ -1370,10 +1229,7 @@ const FinanceOverview = ({ darkMode }) => {
               icon={FiGift}
               title="This Week's Discount"
               mainValue={`Rs. ${stats.weekDiscount?.toLocaleString() || 0}`}
-              subLines={[
-                'Given this week',
-                '(Battery sales excluded)'
-              ]}
+              subLines={['Given this week']}
               expanded={true}
             />
 
@@ -1382,29 +1238,19 @@ const FinanceOverview = ({ darkMode }) => {
               icon={FiGift}
               title="This Month's Discount"
               mainValue={`Rs. ${stats.monthDiscount?.toLocaleString() || 0}`}
-              subLines={[
-                'Given this month',
-                '(Battery sales excluded)'
-              ]}
+              subLines={['Given this month']}
               expanded={true}
             />
           </div>
         </>
       )}
 
-      {/* Monthly Breakdown - Net Profit = Sales Profit - (Expenses + Discount) */}
+      {/* Monthly Breakdown - Net Profit = Sales Profit - (Expenses + Discount + Trade-in) */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className={`font-semibold mb-4 flex items-center gap-2 flex-wrap ${darkMode ? 'text-white' : 'text-gray-900'}`}>
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
           <span className={`text-xs font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
             ({getFilterLabel()})
-          </span>
-          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-            darkMode 
-              ? 'bg-yellow-900/40 text-yellow-300' 
-              : 'bg-yellow-50 text-yellow-600'
-          }`}>
-            (Battery Excluded)
           </span>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1412,9 +1258,13 @@ const FinanceOverview = ({ darkMode }) => {
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Sales</p>
             <p className={`text-xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {filteredSalesData.total.toLocaleString()}</p>
           </div>
+          {/* ✅ Expenses = Manual expenses + Inventory Purchased */}
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expenses</p>
-            <p className={`text-xl font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {filteredStats.expenses.toLocaleString()}</p>
+            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expenses (incl. Inventory)</p>
+            <p className={`text-xl font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {totalExpensesWithInventory.toLocaleString()}</p>
+            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Inventory: Rs. {inventoryCost.toLocaleString()} + Other: Rs. {filteredStats.expenses.toLocaleString()}
+            </p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount Given</p>
@@ -1435,11 +1285,6 @@ const FinanceOverview = ({ darkMode }) => {
           <div className="flex items-center gap-2 flex-wrap">
             <FiBarChart2 className="text-red-500 text-xl" />
             <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📊 Yearly Sales Report</h3>
-            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-              darkMode 
-                ? 'bg-yellow-900/40 text-yellow-300' 
-                : 'bg-yellow-50 text-yellow-600'
-            }`}>Battery Excluded</span>
           </div>
           {showYearlyReport ? <FiChevronUp className={darkMode ? 'text-gray-300' : 'text-gray-700'} /> : <FiChevronDown className={darkMode ? 'text-gray-300' : 'text-gray-700'} />}
         </button>
@@ -1467,17 +1312,15 @@ const FinanceOverview = ({ darkMode }) => {
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Sales</p>
                 <p className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {selectedYearData.total.toLocaleString()}</p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>(Battery Excluded)</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Invoices</p>
                 <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedYearData.count}</p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>(Non-Battery Only)</p>
               </div>
               <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Profit</p>
-                <p className={`text-2xl font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {selectedYearData.profit.toLocaleString()}</p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-400' : 'text-yellow-500'}`}>(Battery Excluded)</p>
+                <p className={`text-2xl font-bold ${profitColor(yearNetProfit, darkMode)}`}>Rs. {yearNetProfit.toLocaleString()}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>(After discount & trade-in)</p>
               </div>
             </div>
 
@@ -1500,7 +1343,7 @@ const FinanceOverview = ({ darkMode }) => {
                 <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {currentItems.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className={`px-4 py-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No non-battery invoices found</td>
+                      <td colSpan="10" className={`px-4 py-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No invoices found</td>
                     </tr>
                   ) : (
                     currentItems.map((item, idx) => (
@@ -1509,20 +1352,12 @@ const FinanceOverview = ({ darkMode }) => {
                         <td className={`px-4 py-3 font-mono text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.inv.invoiceNo}</td>
                         <td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.inv.customer}</td>
                         <td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.service_name}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            item.isProduct 
-                              ? darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700' 
-                              : darkMode ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-100 text-purple-700'
-                          }`}>
-                            {item.isProduct ? 'Product' : 'Service'}
-                          </span>
-                        </td>
-                        <td className={`px-4 py-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.quantity}</td>
+                        <td className="px-4 py-3"><TypeBadge item={item} darkMode={darkMode} /></td>
+                        <td className={`px-4 py-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.qty}</td>
                         <td className={`px-4 py-3 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}</td>
-                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Rs. {item.price.toLocaleString()}</td>
-                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-green-400' : 'text-green-500'}`}>+ Rs. {item.unitProfit.toLocaleString()}</td>
-                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {(item.unitProfit * item.quantity).toLocaleString()}</td>
+                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.sellPrice > 0 ? `Rs. ${item.sellPrice.toLocaleString()}` : '-'}</td>
+                        <td className={`px-4 py-3 text-right ${profitColor(item.unitProfit, darkMode)}`}>{formatProfit(item.unitProfit)}</td>
+                        <td className={`px-4 py-3 text-right ${profitColor(item.lineProfit, darkMode)}`}>{formatProfit(item.lineProfit)}</td>
                       </tr>
                     ))
                   )}
@@ -1530,8 +1365,20 @@ const FinanceOverview = ({ darkMode }) => {
                 <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
                   <tr>
                     <td colSpan="9" className="px-4 py-3 text-right font-bold">Total Profit:</td>
-                    <td className={`px-4 py-3 text-right font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {selectedYearData.profit.toLocaleString()}</td>
+                    <td className={`px-4 py-3 text-right font-bold ${profitColor(selectedYearData.profit, darkMode)}`}>Rs. {selectedYearData.profit.toLocaleString()}</td>
                   </tr>
+                  {yearDeductions > 0 && (
+                    <>
+                      <tr>
+                        <td colSpan="9" className="px-4 py-3 text-right font-bold">Less: Discount / Trade-in:</td>
+                        <td className={`px-4 py-3 text-right font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>- Rs. {yearDeductions.toLocaleString()}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan="9" className="px-4 py-3 text-right font-bold">Net Profit:</td>
+                        <td className={`px-4 py-3 text-right font-bold ${profitColor(yearNetProfit, darkMode)}`}>Rs. {yearNetProfit.toLocaleString()}</td>
+                      </tr>
+                    </>
+                  )}
                 </tfoot>
               </table>
             </div>

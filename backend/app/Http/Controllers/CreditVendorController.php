@@ -172,19 +172,20 @@ class CreditVendorController extends Controller
             ], 422);
         }
 
+        $paidAmount = $request->paid_amount ?? 0;
+        $totalAmount = $request->total_amount;
+        $balanceAmount = $totalAmount - $paidAmount;
+
+        // ✅ FIXED: check transaction se pehle (pehle transaction khuli reh jati thi)
+        if ($paidAmount > $totalAmount) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Paid amount cannot exceed total amount',
+            ], 422);
+        }
+
         try {
             DB::beginTransaction();
-
-            $paidAmount = $request->paid_amount ?? 0;
-            $totalAmount = $request->total_amount;
-            $balanceAmount = $totalAmount - $paidAmount;
-
-            if ($paidAmount > $totalAmount) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Paid amount cannot exceed total amount',
-                ], 422);
-            }
 
             $productsString = $request->products;
             if (empty($productsString) && !empty($request->product_ids)) {
@@ -289,7 +290,11 @@ class CreditVendorController extends Controller
     }
 
     /**
-     * ✅ FIXED: Update vendor with payment record
+     * ✅ FIXED: Update vendor
+     * - total_amount / paid_amount / stock_quantity frontend se ab IGNORE hote hain
+     *   (frontend grouped totals bhejta tha jo ek record par overwrite ho jate the)
+     * - new_payment vendor ke saare records par FIFO distribute hoti hai
+     * - vendor_name badle to us vendor ke saare records rename hote hain
      * PUT /api/credit/vendors/{id}
      */
     public function update(Request $request, $id)
@@ -308,7 +313,7 @@ class CreditVendorController extends Controller
                 'vendor_name' => 'sometimes|required|string|max:255',
                 'products' => 'sometimes|required|string',
                 'invoice_number' => 'sometimes|required|string|max:100|unique:credit_vendors,invoice_number,' . $id,
-                'total_amount' => 'sometimes|required|numeric|min:0',
+                'total_amount' => 'nullable|numeric|min:0',
                 'paid_amount' => 'nullable|numeric|min:0',
                 'stock_quantity' => 'nullable|integer|min:0',
                 'new_payment' => 'nullable|numeric|min:0',
@@ -324,74 +329,37 @@ class CreditVendorController extends Controller
 
             DB::beginTransaction();
 
+            // Sirf is record ki safe fields
             $updateData = [];
-            
-            if ($request->has('vendor_name')) {
-                $updateData['vendor_name'] = $request->vendor_name;
-            }
             if ($request->has('products')) {
                 $updateData['products'] = $request->products;
             }
             if ($request->has('invoice_number')) {
                 $updateData['invoice_number'] = $request->invoice_number;
             }
-            if ($request->has('stock_quantity')) {
-                $updateData['stock_quantity'] = $request->stock_quantity;
-            }
-            if ($request->has('total_amount')) {
-                $updateData['total_amount'] = $request->total_amount;
-            }
-
-            $newPayment = $request->input('new_payment', 0);
-            $currentPaidAmount = $vendor->paid_amount;
-            $totalAmount = $request->has('total_amount') ? $request->total_amount : $vendor->total_amount;
-
-            if ($newPayment > 0) {
-                $newPaidAmount = $currentPaidAmount + $newPayment;
-                $newBalance = $totalAmount - $newPaidAmount;
-                
-                if ($newPaidAmount > $totalAmount) {
-                    DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Paid amount cannot exceed total amount',
-                    ], 422);
-                }
-                
-                $updateData['paid_amount'] = $newPaidAmount;
-                $updateData['balance_amount'] = $newBalance;
-            } elseif ($request->has('paid_amount')) {
-                $paidAmount = $request->paid_amount;
-                $balanceAmount = $totalAmount - $paidAmount;
-                
-                if ($paidAmount > $totalAmount) {
-                    DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Paid amount cannot exceed total amount',
-                    ], 422);
-                }
-                
-                $updateData['paid_amount'] = $paidAmount;
-                $updateData['balance_amount'] = $balanceAmount;
-            }
-
             $updateData['updated_at'] = now();
 
             DB::table('credit_vendors')->where('id', $id)->update($updateData);
 
-            $createdBy = $this->getCreatedBy();
+            // Vendor ka naam badla to saare records rename karo (warna grouping toot jati hai)
+            if ($request->has('vendor_name') && $request->vendor_name !== $vendor->vendor_name) {
+                DB::table('credit_vendors')
+                    ->whereRaw('LOWER(vendor_name) = ?', [strtolower($vendor->vendor_name)])
+                    ->update([
+                        'vendor_name' => $request->vendor_name,
+                        'updated_at' => now(),
+                    ]);
+            }
 
-            // ✅ Create payment record if new payment was made
+            // ✅ Payment FIFO distribute
+            $newPayment = (float) $request->input('new_payment', 0);
             if ($newPayment > 0) {
-                $paymentNote = $request->input('payment_note', 'Payment via edit');
-                DB::table('credit_payments')->insert([
-                    'vendor_id' => $id,
-                    'amount' => $newPayment,
-                    'payment_date' => now(),
-                    'note' => $paymentNote,
-                    'created_by' => $createdBy,
-                ]);
+                app(CreditPaymentController::class)->distributePayment(
+                    $id,
+                    $newPayment,
+                    $request->input('payment_note', 'Payment via edit'),
+                    $this->getCreatedBy()
+                );
             }
 
             DB::commit();
@@ -408,6 +376,12 @@ class CreditVendorController extends Controller
                 'payment_amount' => $newPayment,
             ]);
 
+        } catch (\RuntimeException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error updating vendor: ' . $e->getMessage());

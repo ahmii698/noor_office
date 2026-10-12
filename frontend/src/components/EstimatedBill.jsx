@@ -332,7 +332,7 @@ const EstimatedBill = ({ darkMode }) => {
     toast.success('Exported to PDF!');
   };
 
-  // ✅ PRINT ESTIMATE
+  // ✅ PRINT ESTIMATE (same design as EstimateRecords)
   const printEstimate = () => {
     if (estimateData.items.length === 0) {
       toast.error('No items to print');
@@ -350,137 +350,78 @@ const EstimatedBill = ({ darkMode }) => {
 
       const currentTime = getCurrentTime();
       const formattedDate = new Date(estimateData.date).toLocaleDateString('en-GB');
-      
+
+      const nameVal = estimateData.name || '';
+      const policyVal = estimateType === 'insurance' ? (estimateData.policyNumber || '') : '';
+      const colorVal = estimateData.color || '';
+      const vinVal = estimateData.vin || '';
+      const makeVal = estimateData.make || '';
+      const modelVal = estimateData.model || '';
+      const engineVal = estimateData.engineNo || '';
+      const regNoVal = estimateData.regNo || '';
+      const addressVal = estimateType === 'insurance' ? (estimateData.address || '') : '';
+      const hasAnyValue = nameVal || policyVal || colorVal || vinVal || makeVal || modelVal || engineVal || regNoVal || addressVal;
+
+      const itemsHtml = estimateData.items.map((item, idx) => {
+        const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+        return `
+          <tr>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb;">${item.name}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity || 1}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: right;">${formatCurrency(parseFloat(item.price) || 0)}</td>
+            <td style="padding: 8px 10px; border: 1px solid #e5e7eb; text-align: right; font-weight:600;">${formatCurrency(itemTotal)}</td>
+          </tr>
+        `;
+      }).join('');
+
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Estimate</title>
+            <title>Estimate ${estimateData.estimateNo}</title>
             <meta charset="UTF-8">
             <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
-              body { 
-                font-family: 'Segoe UI', Arial, sans-serif; 
-                margin: 0; 
-                padding: 20px; 
-                background: #f0f0f0; 
-              }
-              .print-actions { display: none !important; }
-              .estimate-container { 
-                max-width: 800px; 
-                margin: 0 auto; 
-                background: white; 
-                border-radius: 12px; 
-                box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
-                overflow: hidden;
-                position: relative;
-              }
-              .header { 
-                background: white; 
-                padding: 20px 30px; 
-                border-bottom: 3px solid #dc2626; 
-                display: flex; 
-                align-items: center; 
-                gap: 20px;
-                position: relative;
-                z-index: 1;
-              }
-              .header-logo { 
-                width: 70px; 
-                height: 70px; 
-                border-radius: 50%; 
-                object-fit: cover; 
-                border: 3px solid #dc2626; 
-                flex-shrink: 0; 
-              }
-              .header-text { 
-                flex: 1; 
-                text-align: center; 
-              }
-              .header-text .shop-name { 
-                font-size: 24px; 
-                font-weight: bold; 
-                color: #1f2937; 
-                letter-spacing: 1px; 
-              }
-              .header-text .subtitle { 
-                font-size: 13px; 
-                color: #6b7280; 
-              }
-              .content { 
-                padding: 30px; 
-                position: relative; 
-                z-index: 1;
-                background: transparent;
-              }
-              
-              .date-time-bar {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 10px 20px;
-                margin-bottom: 20px;
-                background: #f8f9fa;
-                border-radius: 8px;
-                border: 1px solid #e5e7eb;
-                font-size: 15px;
-                font-weight: 600;
-              }
-              .date-time-bar .label {
-                color: #6b7280;
-                font-weight: 400;
-              }
-              .date-time-bar .value {
-                color: #1f2937;
-              }
-              
-              .info-grid { 
-                display: grid; 
-                grid-template-columns: 1fr 1fr; 
-                gap: 6px 20px; 
-                margin-bottom: 25px;
-                padding: 15px 20px;
-                background: #fafafa;
-                border-radius: 8px;
-                border: 1px solid #e5e7eb;
-              }
-              .info-item {
-                display: flex;
-                padding: 3px 0;
-                font-size: 13px;
-              }
-              .info-item .label {
-                font-weight: 600;
-                color: #4b5563;
-                min-width: 80px;
-              }
-              .info-item .value {
-                color: #1f2937;
-                font-weight: 500;
-              }
-
-              table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin: 20px 0;
-                background: white;
-              }
-              th, td { 
-                border: 1px solid #e5e7eb; 
-                padding: 10px 14px; 
-                text-align: left; 
-                font-size: 13px; 
-              }
-              th { 
-                background: #1f2937; 
-                color: white; 
-                font-weight: 600; 
+              body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f0f0f0; }
+              .estimate-container { max-width: 800px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; position: relative; }
+              .watermark {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) rotate(-35deg);
+                font-size: 160px;
+                font-weight: 900;
+                color: rgba(220, 38, 38, 0.15);
+                letter-spacing: 35px;
+                pointer-events: none;
+                white-space: nowrap;
+                z-index: 0;
+                font-family: 'Segoe UI', Arial, sans-serif;
                 text-transform: uppercase;
-                font-size: 11px;
-                letter-spacing: 0.5px;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
               }
+              .header { background: white; padding: 20px 30px; border-bottom: 3px solid #dc2626; display: flex; align-items: center; gap: 20px; position: relative; z-index: 1; }
+              .header-logo { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #dc2626; flex-shrink: 0; }
+              .header-text { flex: 1; text-align: center; }
+              .header-text .shop-name { font-size: 24px; font-weight: bold; color: #1f2937; letter-spacing: 1px; }
+              .header-text .subtitle { font-size: 13px; color: #6b7280; }
+              .content { padding: 30px; position: relative; z-index: 1; background: transparent; }
+
+              .date-time-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; margin-bottom: 20px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e5e7eb; font-size: 15px; font-weight: 600; }
+              .date-time-bar .label { color: #6b7280; font-weight: 400; }
+              .date-time-bar .value { color: #1f2937; }
+
+              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; margin-bottom: 25px; padding: 12px 20px; background: #fafafa; border-radius: 8px; border: 1px solid #e5e7eb; }
+              .info-item { display: flex; padding: 3px 0; font-size: 13px; }
+              .info-item .label { font-weight: 600; color: #4b5563; min-width: 90px; }
+              .info-item .value { color: #1f2937; font-weight: 500; }
+
+              table { width: 100%; border-collapse: collapse; margin: 20px 0; background: white; }
+              th, td { border: 1px solid #e5e7eb; padding: 10px 14px; text-align: left; font-size: 13px; }
+              th { background: #1f2937; color: white; font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
               th:nth-child(1) { text-align: center; width: 50px; }
-              th:nth-child(2) { text-align: left; }
               th:nth-child(3) { text-align: center; width: 70px; }
               th:nth-child(4) { text-align: right; width: 120px; }
               th:nth-child(5) { text-align: right; width: 120px; }
@@ -488,63 +429,21 @@ const EstimatedBill = ({ darkMode }) => {
               td:nth-child(3) { text-align: center; }
               td:nth-child(4) { text-align: right; }
               td:nth-child(5) { text-align: right; }
-              .total-row { 
-                margin-top: 20px; 
-                padding-top: 15px; 
-                border-top: 2px solid #dc2626;
-                text-align: right;
-                font-size: 20px;
-                font-weight: 800;
-                color: #dc2626;
-                background: white;
-              }
-              
-              .company-footer { 
-                margin-top: 30px; 
-                padding-top: 15px; 
-                border-top: 2px solid #dc2626;
-                text-align: center;
-                font-size: 13px;
-                color: #1f2937;
-                background: white;
-              }
-              .company-footer .address { 
-                font-weight: 700; 
-                font-size: 14px;
-                color: #1f2937;
-                margin-bottom: 6px;
-              }
-              .company-footer .phone {
-                font-weight: 600;
-                font-size: 13px;
-                margin-bottom: 4px;
-              }
-              .company-footer .social { 
-                margin-top: 4px;
-                font-weight: 500;
-                font-size: 12px;
-                color: #4b5563;
-              }
-              .notes-section {
-                margin-top: 20px;
-                padding: 12px 16px;
-                background: #f8f9fa;
-                border-radius: 8px;
-                border-left: 4px solid #dc2626;
-              }
-              .notes-section strong { font-size: 12px; color: #6b7280; }
-              .notes-section p { font-size: 13px; color: #1f2937; margin-top: 4px; }
-              @media print { 
-                body { background: white; padding: 0; } 
-                .estimate-container { box-shadow: none; border-radius: 0; }
-                .no-print { display: none !important; }
-                .info-grid { background: #fafafa; }
-                .date-time-bar { background: #f8f9fa; }
-              }
+              .total-row { margin-top: 20px; padding-top: 15px; border-top: 2px solid #dc2626; text-align: right; font-size: 20px; font-weight: 800; color: #dc2626; background: white; }
+              .company-footer { margin-top: 30px; padding-top: 15px; border-top: 2px solid #dc2626; text-align: center; font-size: 13px; color: #1f2937; background: white; }
+              .company-footer .address { font-weight: 700; font-size: 14px; color: #1f2937; margin-bottom: 6px; }
+              .company-footer .phone { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+              .company-footer .social { margin-top: 4px; font-weight: 500; font-size: 12px; color: #4b5563; }
+              .print-actions { text-align: center; margin-top: 20px; padding: 15px; background: white; border-radius: 12px; max-width: 800px; margin-left: auto; margin-right: auto; }
+              .print-btn, .close-btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; margin: 0 8px; }
+              .print-btn { background: #dc2626; color: white; }
+              .close-btn { background: #6b7280; color: white; }
+              @media print { body { background: white; padding: 0; } .estimate-container { box-shadow: none; border-radius: 0; } .print-actions { display: none; } .watermark { color: rgba(220, 38, 38, 0.20) !important; } }
             </style>
           </head>
           <body>
             <div class="estimate-container">
+              <div class="watermark">ESTIMATE</div>
               <div class="header">
                 <img src="${logo}" alt="Noorani Logo" class="header-logo" />
                 <div class="header-text">
@@ -559,78 +458,28 @@ const EstimatedBill = ({ darkMode }) => {
                 </div>
 
                 <div class="info-grid">
-                  <div class="info-item">
-                    <span class="label">Name</span>
-                    <span class="value">${estimateData.name || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Color</span>
-                    <span class="value">${estimateData.color || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">VIN</span>
-                    <span class="value">${estimateData.vin || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Make</span>
-                    <span class="value">${estimateData.make || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Model</span>
-                    <span class="value">${estimateData.model || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Reg No</span>
-                    <span class="value">${estimateData.regNo || 'N/A'}</span>
-                  </div>
-                  <div class="info-item">
-                    <span class="label">Engine No</span>
-                    <span class="value">${estimateData.engineNo || 'N/A'}</span>
-                  </div>
+                  ${nameVal ? `<div class="info-item"><span class="label">Name</span><span class="value">${nameVal}</span></div>` : ''}
+                  ${policyVal ? `<div class="info-item"><span class="label">Policy</span><span class="value">${policyVal}</span></div>` : ''}
+                  ${colorVal ? `<div class="info-item"><span class="label">Color</span><span class="value">${colorVal}</span></div>` : ''}
+                  ${vinVal ? `<div class="info-item"><span class="label">VIN</span><span class="value">${vinVal}</span></div>` : ''}
+                  ${makeVal ? `<div class="info-item"><span class="label">Make</span><span class="value">${makeVal}</span></div>` : ''}
+                  ${modelVal ? `<div class="info-item"><span class="label">Model</span><span class="value">${modelVal}</span></div>` : ''}
+                  ${engineVal ? `<div class="info-item"><span class="label">Engine</span><span class="value">${engineVal}</span></div>` : ''}
+                  ${regNoVal ? `<div class="info-item"><span class="label">Reg No</span><span class="value">${regNoVal}</span></div>` : ''}
+                  ${addressVal ? `<div class="info-item" style="grid-column: span 2;"><span class="label">Address</span><span class="value">${addressVal}</span></div>` : ''}
+                  ${!hasAnyValue ? `<div class="info-item" style="grid-column: span 2; text-align:center; color:#9ca3af;">No details available</div>` : ''}
                 </div>
 
                 <table>
                   <thead>
-                    <tr>
-                      <th style="text-align:center;">#</th>
-                      <th style="text-align:left;">Item</th>
-                      <th style="text-align:center;">Qty</th>
-                      <th style="text-align:right;">Price</th>
-                      <th style="text-align:right;">Total</th>
-                    </tr>
+                    <tr><th style="text-align:center;">#</th><th style="text-align:left;">Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Total</th></tr>
                   </thead>
-                  <tbody>
-                    ${estimateData.items.length === 0 ? `
-                      <tr>
-                        <td colspan="5" style="text-align:center;padding:30px;color:#9ca3af;">
-                          No items added
-                        </td>
-                      </tr>
-                    ` : estimateData.items.map((item, idx) => {
-                      const itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
-                      return `
-                        <tr>
-                          <td style="text-align:center;">${idx + 1}</td>
-                          <td>${item.name}</td>
-                          <td style="text-align:center;">${item.quantity || 1}</td>
-                          <td style="text-align:right;">${formatCurrency(item.price)}</td>
-                          <td style="text-align:right;font-weight:600;">${formatCurrency(itemTotal)}</td>
-                        </tr>
-                      `;
-                    }).join('')}
-                  </tbody>
+                  <tbody>${itemsHtml}</tbody>
                 </table>
 
-                <div class="total-row">
-                  Total: ${formatCurrency(total)}
-                </div>
+                <div class="total-row">Total: ${formatCurrency(total)}</div>
 
-                ${estimateData.notes ? `
-                  <div class="notes-section">
-                    <strong>Notes:</strong>
-                    <p>${estimateData.notes}</p>
-                  </div>
-                ` : ''}
+                ${estimateData.notes ? `<div style="margin-top:20px;padding:12px 16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #dc2626;"><strong style="font-size:12px;color:#6b7280;">Notes:</strong><p style="font-size:13px;color:#1f2937;margin-top:4px;">${estimateData.notes}</p></div>` : ''}
 
                 <div class="company-footer">
                   <div class="address">🏪 Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi</div>
@@ -638,6 +487,10 @@ const EstimatedBill = ({ darkMode }) => {
                   <div class="social">📘 Facebook: Noorani.Car.Ac | 📷 Instagram: nooranicarac</div>
                 </div>
               </div>
+            </div>
+            <div class="print-actions">
+              <button class="print-btn" onclick="window.print()">🖨️ Print Bill</button>
+              <button class="close-btn" onclick="window.close()">✖ Close</button>
             </div>
           </body>
         </html>

@@ -15,24 +15,33 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// ✅ Helper function to format date in Pakistan Time (UTC+5)
+// ✅ FIXED: Helper to format date/time in Pakistan Time (Asia/Karachi, UTC+5)
+// Pehle yahan manual +5 ghante add ho rahe the AUR timeZone: 'Asia/Karachi' bhi tha,
+// is liye 10 ghante extra dikhte the. Ab sirf timeZone conversion hoti hai.
 const formatPakistanTime = (dateString) => {
   if (!dateString) return { date: 'N/A', time: '' };
   
   try {
-    const date = new Date(dateString);
+    let value = dateString;
+
+    // Backend (Laravel) timezone ke baghair string bhejta hai (e.g. "2026-10-08 23:25:23")
+    // jo pehle se Karachi local time hota hai. Isay Karachi (+05:00) maan lo,
+    // warna dobara +5 ho jata hai.
+    if (typeof value === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)) {
+      value = value.replace(' ', 'T') + '+05:00';
+    }
+
+    const date = new Date(value);
     if (isNaN(date.getTime())) return { date: 'N/A', time: '' };
     
-    const pakistanTime = new Date(date.getTime() + (5 * 60 * 60 * 1000));
-    
-    const formattedDate = pakistanTime.toLocaleDateString('en-GB', {
+    const formattedDate = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       timeZone: 'Asia/Karachi'
     });
     
-    const formattedTime = pakistanTime.toLocaleTimeString('en-US', {
+    const formattedTime = date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -45,6 +54,46 @@ const formatPakistanTime = (dateString) => {
     console.error('Date parse error:', e);
     return { date: 'N/A', time: '' };
   }
+};
+
+// ✅ Ek record ke products (naam + quantity) nikalta hai.
+// Agar record mein links nahi hain (purana data) to products string + stock_quantity use hoti hai.
+const getRecordItems = (record) => {
+  if (record?.items && record.items.length > 0) return record.items;
+  if (record?.products) {
+    return [{ name: record.products, quantity: record.stockQuantity || 0 }];
+  }
+  return [];
+};
+
+// ✅ "Royal Musk × 5, Mughal × 10" string (Excel / PDF ke liye)
+const formatItemsText = (items) => {
+  if (!items || items.length === 0) return 'N/A';
+  return items
+    .map(i => (i.quantity > 0 ? `${i.name} × ${i.quantity}` : i.name))
+    .join(', ');
+};
+
+// ✅ Products ko chips ki shakal mein dikhata hai (main table ke liye)
+const ProductChips = ({ items, darkMode }) => {
+  if (!items || items.length === 0) return <span>N/A</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {items.map((item, idx) => (
+        <span
+          key={idx}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
+            darkMode
+              ? 'bg-red-900/30 text-red-200 border-red-800'
+              : 'bg-red-50 text-red-700 border-red-200'
+          }`}
+        >
+          {item.name}
+          {item.quantity > 0 && <span className="font-bold">× {item.quantity}</span>}
+        </span>
+      ))}
+    </div>
+  );
 };
 
 // ✅ Memoized Stats Card Component
@@ -98,6 +147,7 @@ const Credit = ({ darkMode }) => {
   const paySubmitRef = useRef(null);
 
   // ✅ FIXED: Group vendors by name with proper payments merging & SORTING (NEWEST FIRST)
+  // ✅ UPDATED: har record ke saath uske products ki quantity (items) bhi jama hoti hai
   const groupVendorsByName = (vendorsList) => {
     const grouped = {};
     
@@ -131,6 +181,15 @@ const Credit = ({ darkMode }) => {
       grouped[key].paidAmount += parseFloat(vendor.paid_amount) || 0;
       grouped[key].balanceAmount += parseFloat(vendor.balance_amount) || 0;
       grouped[key].stockQuantity += parseInt(vendor.stock_quantity) || 0;
+
+      // ✅ is record ke products + quantity (credit_product_links se)
+      const recordItems = Array.isArray(vendor.productsList)
+        ? vendor.productsList.map(p => ({
+            name: p.name,
+            quantity: parseInt(p.pivot_quantity) || 0,
+            price: parseFloat(p.pivot_purchase_price) || 0
+          }))
+        : [];
       
       grouped[key].records.push({
         id: vendor.id,
@@ -139,7 +198,9 @@ const Credit = ({ darkMode }) => {
         paidAmount: parseFloat(vendor.paid_amount) || 0,
         balanceAmount: parseFloat(vendor.balance_amount) || 0,
         createdAt: vendor.created_at,
-        products: vendor.products
+        products: vendor.products,
+        stockQuantity: parseInt(vendor.stock_quantity) || 0,
+        items: recordItems
       });
       
       if (vendor.payments && Array.isArray(vendor.payments)) {
@@ -160,6 +221,23 @@ const Credit = ({ darkMode }) => {
       if (vendor.productsList) {
         grouped[key].productsList = [...grouped[key].productsList, ...vendor.productsList];
       }
+    });
+
+    // ✅ vendor ke saare orders ke products ek jagah jama (same product ki quantity add)
+    Object.values(grouped).forEach(group => {
+      const summaryMap = {};
+      group.records.forEach(record => {
+        getRecordItems(record).forEach(item => {
+          const itemKey = (item.name || '').toLowerCase().trim();
+          if (!summaryMap[itemKey]) {
+            summaryMap[itemKey] = { name: item.name, quantity: 0 };
+          }
+          summaryMap[itemKey].quantity += item.quantity || 0;
+        });
+      });
+      group.productSummary = Object.values(summaryMap);
+      const summaryQty = group.productSummary.reduce((sum, i) => sum + (i.quantity || 0), 0);
+      group.totalQty = summaryQty > 0 ? summaryQty : group.stockQuantity;
     });
     
     return Object.values(grouped).sort((a, b) => {
@@ -201,6 +279,8 @@ const Credit = ({ darkMode }) => {
           payments: vendor.payments || [],
           productsList: vendor.productsList || [],
           records: vendor.records || [],
+          productSummary: vendor.productSummary || [],
+          totalQty: vendor.totalQty || 0,
         }));
         
         setVendors(mappedVendors);
@@ -258,12 +338,16 @@ const Credit = ({ darkMode }) => {
     const latestProductsMatch = vendor?.products?.toLowerCase().includes(term);
     const latestInvoiceMatch = vendor?.invoiceNumber?.toLowerCase().includes(term);
 
+    const summaryMatch = vendor?.productSummary?.some(item =>
+      item?.name?.toLowerCase().includes(term)
+    );
+
     const recordsMatch = vendor?.records?.some(record =>
       record?.products?.toLowerCase().includes(term) ||
       record?.invoiceNumber?.toLowerCase().includes(term)
     );
 
-    return nameMatch || latestProductsMatch || latestInvoiceMatch || recordsMatch;
+    return nameMatch || latestProductsMatch || latestInvoiceMatch || summaryMatch || recordsMatch;
   });
 
   const totalPages = Math.ceil(filteredVendors.length / itemsPerPage);
@@ -417,7 +501,8 @@ const Credit = ({ darkMode }) => {
     e.preventDefault();
     
     if (isSubmitting) {
-      toast.warning('Please wait, payment is being processed...');
+      // ✅ FIXED: react-hot-toast mein toast.warning nahi hota, isliye plain toast()
+      toast('Please wait, payment is being processed...', { icon: '⚠️' });
       return;
     }
     
@@ -475,7 +560,8 @@ const Credit = ({ darkMode }) => {
     e.preventDefault();
     
     if (isPaying) {
-      toast.warning('Please wait, payment is being processed...');
+      // ✅ FIXED: toast.warning -> plain toast()
+      toast('Please wait, payment is being processed...', { icon: '⚠️' });
       return;
     }
     
@@ -546,18 +632,22 @@ const Credit = ({ darkMode }) => {
       return;
     }
 
-    const ws = XLSX.utils.json_to_sheet(vendors.map(v => ({
-      'Vendor Name': v.name || 'N/A',
-      'Products': v.products || 'N/A',
-      'Total Orders': v.records?.length || 0,
-      'Total Amount (Rs.)': (v.totalAmount || 0).toLocaleString(),
-      'Total Paid (Rs.)': (v.paidAmount || 0).toLocaleString(),
-      'Balance (Rs.)': (v.balanceAmount || 0).toLocaleString(),
-      'Stock Quantity': v.stockQuantity || 0,
-      'Status': (v.balanceAmount || 0) > 0 ? 'Due' : 'Paid',
-      'Created By': v.createdBy || 'System',
-      'Created At': v.createdAt ? new Date(v.createdAt).toLocaleString() : 'N/A'
-    })));
+    const ws = XLSX.utils.json_to_sheet(vendors.map(v => {
+      // ✅ FIXED: Created At ab Karachi time mein
+      const created = v.createdAt ? formatPakistanTime(v.createdAt) : null;
+      return {
+        'Vendor Name': v.name || 'N/A',
+        'Products': formatItemsText(v.productSummary),
+        'Total Orders': v.records?.length || 0,
+        'Total Amount (Rs.)': (v.totalAmount || 0).toLocaleString(),
+        'Total Paid (Rs.)': (v.paidAmount || 0).toLocaleString(),
+        'Balance (Rs.)': (v.balanceAmount || 0).toLocaleString(),
+        'Stock Quantity': v.totalQty || v.stockQuantity || 0,
+        'Status': (v.balanceAmount || 0) > 0 ? 'Due' : 'Paid',
+        'Created By': v.createdBy || 'System',
+        'Created At': created ? `${created.date} ${created.time}` : 'N/A'
+      };
+    }));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Vendors');
@@ -606,7 +696,9 @@ const Credit = ({ darkMode }) => {
     doc.text('Credit Management Report', 14, 15);
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
+    // ✅ FIXED: Generated time ab Karachi time mein
+    const generated = formatPakistanTime(new Date().toISOString());
+    doc.text(`Generated: ${generated.date} ${generated.time}`, 14, 22);
 
     // Summary
     const totalAmount = vendors.reduce((sum, v) => sum + (v.totalAmount || 0), 0);
@@ -618,8 +710,9 @@ const Credit = ({ darkMode }) => {
 
     const tableData = vendors.map(v => [
       v.name || 'N/A',
-      v.products || 'N/A',
+      formatItemsText(v.productSummary),
       v.records?.length || 0,
+      v.totalQty || v.stockQuantity || 0,
       `Rs. ${(v.totalAmount || 0).toLocaleString()}`,
       `Rs. ${(v.paidAmount || 0).toLocaleString()}`,
       `Rs. ${(v.balanceAmount || 0).toLocaleString()}`,
@@ -627,19 +720,20 @@ const Credit = ({ darkMode }) => {
     ]);
 
     doc.autoTable({
-      head: [['Vendor Name', 'Products', 'Orders', 'Total', 'Paid', 'Balance', 'Status']],
+      head: [['Vendor Name', 'Products', 'Orders', 'Qty', 'Total', 'Paid', 'Balance', 'Status']],
       body: tableData,
       startY: 36,
       styles: { fontSize: 7 },
       headStyles: { fillColor: [220, 38, 38] },
       columnStyles: {
         0: { cellWidth: 30 },
-        1: { cellWidth: 35 },
+        1: { cellWidth: 55 },
         2: { cellWidth: 12 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 15 }
+        3: { cellWidth: 12 },
+        4: { cellWidth: 22 },
+        5: { cellWidth: 22 },
+        6: { cellWidth: 22 },
+        7: { cellWidth: 15 }
       }
     });
 
@@ -780,6 +874,7 @@ const Credit = ({ darkMode }) => {
                 <tr>
                   <th>Vendor Name</th>
                   <th>Products</th>
+                  <th>Total Qty</th>
                   <th>Total Orders</th>
                   <th>Total Amount</th>
                   <th>Total Paid</th>
@@ -790,7 +885,7 @@ const Credit = ({ darkMode }) => {
               <tbody>
                 {currentVendors.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="credit-empty">
+                    <td colSpan="8" className="credit-empty">
                       <FiInbox className="credit-empty-icon" />
                       <p>No vendors found</p>
                       <p className="credit-empty-sub">Click "Add Vendor" to create your first credit record</p>
@@ -807,7 +902,10 @@ const Credit = ({ darkMode }) => {
                             {vendor?.name || 'N/A'}
                           </div>
                         </td>
-                        <td className="credit-cell-truncate">{vendor?.products || 'N/A'}</td>
+                        <td>
+                          <ProductChips items={vendor?.productSummary} darkMode={darkMode} />
+                        </td>
+                        <td className="text-center font-semibold">{vendor?.totalQty || 0}</td>
                         <td className="text-center">{totalOrders}</td>
                         <td className="credit-amount-total">Rs.{(vendor?.totalAmount || 0).toLocaleString()}</td>
                         <td className="credit-amount-paid">Rs.{(vendor?.paidAmount || 0).toLocaleString()}</td>
@@ -948,38 +1046,54 @@ const Credit = ({ darkMode }) => {
                           <th>#</th>
                           <th>Invoice #</th>
                           <th>Date</th>
+                          <th>Product</th>
+                          <th className="credit-text-right">Qty</th>
                           <th className="credit-text-right">Total</th>
                           <th className="credit-text-right">Paid</th>
                           <th className="credit-text-right">Balance</th>
-                          <th>Products</th>
                         </tr>
                       </thead>
                       <tbody>
                         {[...selectedVendor.records]
                           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-                          .map((record, idx) => (
-                            <tr key={record.id || idx}>
-                              <td>{idx + 1}</td>
-                              <td>{record.invoiceNumber || 'N/A'}</td>
-                              <td>{record.createdAt ? new Date(record.createdAt).toLocaleDateString() : 'N/A'}</td>
-                              <td className="credit-text-right credit-amount-total">Rs.{record.totalAmount.toLocaleString()}</td>
-                              <td className="credit-text-right credit-amount-paid">Rs.{record.paidAmount.toLocaleString()}</td>
-                              <td className="credit-text-right">
-                                <span className={`credit-balance ${record.balanceAmount > 0 ? 'due' : 'paid'}`}>
-                                  Rs.{record.balanceAmount.toLocaleString()}
-                                </span>
-                              </td>
-                              <td className="credit-cell-truncate">{record.products || 'N/A'}</td>
-                            </tr>
-                          ))}
+                          .map((record, idx) => {
+                            const items = getRecordItems(record);
+                            const rows = items.length > 0 ? items : [{ name: 'N/A', quantity: 0 }];
+                            return rows.map((item, itemIdx) => {
+                              const isFirst = itemIdx === 0;
+                              return (
+                                <tr key={`${record.id || idx}-${itemIdx}`}>
+                                  <td>{isFirst ? idx + 1 : ''}</td>
+                                  <td>{isFirst ? (record.invoiceNumber || 'N/A') : ''}</td>
+                                  {/* ✅ FIXED: ab Karachi time ke hisaab se date */}
+                                  <td>{isFirst ? (record.createdAt ? formatPakistanTime(record.createdAt).date : 'N/A') : ''}</td>
+                                  <td className="font-medium">{item.name || 'N/A'}</td>
+                                  <td className="credit-text-right font-semibold">{item.quantity || 0}</td>
+                                  <td className="credit-text-right credit-amount-total">
+                                    {isFirst ? `Rs.${record.totalAmount.toLocaleString()}` : ''}
+                                  </td>
+                                  <td className="credit-text-right credit-amount-paid">
+                                    {isFirst ? `Rs.${record.paidAmount.toLocaleString()}` : ''}
+                                  </td>
+                                  <td className="credit-text-right">
+                                    {isFirst && (
+                                      <span className={`credit-balance ${record.balanceAmount > 0 ? 'due' : 'paid'}`}>
+                                        Rs.{record.balanceAmount.toLocaleString()}
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })}
                       </tbody>
                       <tfoot className={darkMode ? 'dark' : ''}>
                         <tr>
-                          <td colSpan="3" className="credit-text-right credit-total-label">Total:</td>
+                          <td colSpan="4" className="credit-text-right credit-total-label">Total:</td>
+                          <td className="credit-text-right credit-total-amount">{selectedVendor?.totalQty || 0}</td>
                           <td className="credit-text-right credit-total-amount">Rs.{selectedVendor?.totalAmount?.toLocaleString() || 0}</td>
                           <td className="credit-text-right credit-total-amount">Rs.{selectedVendor?.paidAmount?.toLocaleString() || 0}</td>
                           <td className="credit-text-right credit-total-amount">Rs.{selectedVendor?.balanceAmount?.toLocaleString() || 0}</td>
-                          <td></td>
                         </tr>
                       </tfoot>
                     </table>
@@ -1150,7 +1264,18 @@ const Credit = ({ darkMode }) => {
               </div>
               <div className="credit-form-group">
                 <label className={`credit-form-label ${darkMode ? 'dark' : ''}`}>Stock Quantity</label>
-                <input type="number" name="stockQuantity" min="0" defaultValue={selectedVendor?.stockQuantity || 0} className={`credit-form-input ${darkMode ? 'dark' : ''}`} />
+                <input 
+                  type="number" 
+                  name="stockQuantity" 
+                  min="0" 
+                  defaultValue={selectedVendor?.totalQty || selectedVendor?.stockQuantity || 0} 
+                  className={`credit-form-input ${darkMode ? 'dark' : ''}`} 
+                  readOnly
+                  style={{ backgroundColor: darkMode ? '#374151' : '#f3f4f6', cursor: 'not-allowed' }}
+                />
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Total stock purchased from this vendor (cannot be changed)
+                </p>
               </div>
               <div className="credit-form-group">
                 <label className={`credit-form-label ${darkMode ? 'dark' : ''}`}>Invoice Number *</label>

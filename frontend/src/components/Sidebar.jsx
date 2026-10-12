@@ -4,48 +4,82 @@ import {
   FiPackage, FiDollarSign, FiFileText, FiBarChart2, 
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
-  FiLogOut, FiCreditCard, FiClock, FiFile, FiBattery,
-  FiArchive, FiTruck, FiBookOpen
+  FiLogOut, FiCreditCard, FiClock, FiFile,
+  FiArchive, FiTruck, FiBookOpen, FiClipboard
 } from 'react-icons/fi';
 import { FaCar } from 'react-icons/fa';
 import { HiMenu, HiX } from 'react-icons/hi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../services/api';
 
-// ✅ Session clear + full reload. navigate() ki jagah reload isliye ke
-// Dashboard ke intervals/requests ek dum band ho jayein aur redirect loop na bane.
-const clearSessionAndGoToLogin = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  localStorage.removeItem('isLoggedIn');
-  window.location.href = '/';
+// ✅ Module-level cache: Sidebar dobara mount ho to data dobara fetch na ho
+let cachedUser = null;
+let cachedCounts = { reminder: 0, discarded: 0 };
+let cachedCountsAt = 0;
+const COUNTS_TTL = 20000; // 20 seconds
+
+// ✅ localStorage se user padho (flicker / loading se bachne ke liye)
+const getStoredUser = () => {
+  if (cachedUser) return cachedUser;
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
 };
 
+const checkIsAdmin = (u) => !!u && (u.is_admin === true || u.is_admin === 1 || u.role === 'admin');
+
 const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => {
+  const initialUser = getStoredUser();
+
   const [logoExists, setLogoExists] = useState(false);
   const [isFinanceOpen, setIsFinanceOpen] = useState(false);
-  const [isBatteryOpen, setIsBatteryOpen] = useState(false);
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [isCarOpen, setIsCarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  const [reminderCount, setReminderCount] = useState(0);
-  const [discardedCount, setDiscardedCount] = useState(0);
+  const [reminderCount, setReminderCount] = useState(cachedCounts.reminder);
+  const [discardedCount, setDiscardedCount] = useState(cachedCounts.discarded);
   const [estimateCount, setEstimateCount] = useState(0);
-  const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const navigate = useNavigate();
+  const [user, setUser] = useState(initialUser);
+  const [isAdmin, setIsAdmin] = useState(checkIsAdmin(initialUser));
 
-  // ✅ Battery Submenu - Admin sees all, Employee sees only Old Batteries
-  const batterySubmenu = isAdmin 
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // ✅ 401 par soft redirect (full page reload nahi)
+  const clearSessionAndGoToLogin = () => {
+    cachedUser = null;
+    cachedCounts = { reminder: 0, discarded: 0 };
+    cachedCountsAt = 0;
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('isLoggedIn');
+    navigate('/', { replace: true });
+  };
+
+  // ✅ Same page par dobara click ho to navigate na karo
+  const goTo = (path) => {
+    if (path && location.pathname !== path) {
+      navigate(path);
+    }
+  };
+
+  // ✅ Inventory Submenu - click par hi dikhega (Finance ki tarah)
+  // Admin: Overview + Battery Record/Sale + Product/Sale Record | Employee: Overview + Battery Record/Sale
+  const inventorySubmenu = isAdmin
     ? [
-        { id: 'battery-overview', label: 'Overview', icon: FiTrendingUp, path: '/battery-overview' },
-        { id: 'battery-charts', label: 'Charts', icon: FiPieChart, path: '/battery-charts' },
-        { id: 'old-batteries', label: 'Old Batteries', icon: FiArchive, path: '/old-batteries' },
+        { id: 'inventory', label: 'Overview', icon: FiList, path: '/inventory' },
+        { id: 'old-batteries', label: 'Battery Record/Sale', icon: FiArchive, path: '/old-batteries' },
+        { id: 'product-record', label: 'Product/Sale Record', icon: FiClipboard, path: '/product-record' },
       ]
     : [
-        { id: 'old-batteries', label: 'Old Batteries', icon: FiArchive, path: '/old-batteries' },
+        { id: 'inventory', label: 'Overview', icon: FiList, path: '/inventory' },
+        { id: 'old-batteries', label: 'Battery Record/Sale', icon: FiArchive, path: '/old-batteries' },
       ];
 
-  // ✅ Car Submenu - Admin sees all, Employee sees only Car Info & Car Sell (NOT Car Records)
+  // ✅ Car Submenu - Admin sees all, Employee sees only Car Info & Car Sell
   const carSubmenu = isAdmin
     ? [
         { id: 'car-purchase', label: 'Car Info', icon: FiTruck, path: '/car-purchase' },
@@ -68,10 +102,9 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   // ✅ Admin menu items (full access)
   const adminMenuItems = [
     { id: 'all-data', label: 'Dashboard', icon: FiHome, path: '/dashboard' },
-    { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
+    { id: 'inventory', label: 'Inventory', icon: FiPackage, hasSubmenu: true }, // 👈 submenu: Overview, Battery Record/Sale, Product/Sale Record
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
-    { id: 'battery', label: 'Battery', icon: FiBattery, hasSubmenu: true },
     { id: 'car', label: 'Car', icon: FaCar, hasSubmenu: true },
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
     { id: 'estimate-records', label: 'Estimate Records', icon: FiArchive, path: '/estimate-records' },
@@ -81,11 +114,10 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     { id: 'users', label: 'Users', icon: FiUsers, path: '/users' },
   ];
 
-  // ✅ Employee menu items — Estimate Records hata diya
+  // ✅ Employee menu items — Product Record & Estimate Records removed
   const employeeMenuItems = [
-    { id: 'inventory', label: 'Inventory', icon: FiPackage, path: '/inventory' },
+    { id: 'inventory', label: 'Inventory', icon: FiPackage, hasSubmenu: true }, // 👈 submenu: Overview, Battery Record/Sale (Product/Sale Record sirf admin)
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
-    { id: 'battery', label: 'Battery', icon: FiBattery, hasSubmenu: true },
     { id: 'car', label: 'Car', icon: FaCar, hasSubmenu: true },
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
     // ❌ estimate-records removed for employees
@@ -97,38 +129,38 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     return financeSubmenu.some(item => item.id === activeMenu);
   };
 
-  const isBatteryActive = () => {
-    return batterySubmenu.some(item => item.id === activeMenu);
+  const isInventoryActive = () => {
+    return inventorySubmenu.some(item => item.id === activeMenu);
   };
 
   const isCarActive = () => {
     return carSubmenu.some(item => item.id === activeMenu);
   };
 
+  // ✅ activeMenu (URL se sync hota hai) badle to related submenu khul jaye
   useEffect(() => {
-    if (isFinanceActive()) {
-      setIsFinanceOpen(true);
-    }
-    if (isBatteryActive()) {
-      setIsBatteryOpen(true);
-    }
-    if (isCarActive()) {
-      setIsCarOpen(true);
-    }
+    if (isFinanceActive()) setIsFinanceOpen(true);
+    if (isInventoryActive()) setIsInventoryOpen(true);
+    if (isCarActive()) setIsCarOpen(true);
   }, [activeMenu]);
 
+  // ✅ Fetch user — cache ho to dobara API call nahi
   const fetchUserData = async () => {
+    if (cachedUser) {
+      setUser(cachedUser);
+      setIsAdmin(checkIsAdmin(cachedUser));
+      return;
+    }
+
     try {
       const token = localStorage.getItem('token');
-      if (!token) {
-        clearSessionAndGoToLogin();
-        return;
-      }
-      
+      if (!token) return;
+
       const response = await api.get('/me');
       if (response.data?.user) {
-        setUser(response.data.user);
-        setIsAdmin(response.data.user.is_admin || response.data.user.role === 'admin');
+        cachedUser = response.data.user;
+        setUser(cachedUser);
+        setIsAdmin(checkIsAdmin(cachedUser));
       }
     } catch (error) {
       console.error('Error fetching user:', error);
@@ -138,27 +170,32 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     }
   };
 
+  // ✅ Reminder count
   const fetchReminderCount = async () => {
     try {
       const birthdayRes = await api.get('/birthday-reminders/today');
       const birthdayCount = birthdayRes.data.birthday_customers?.length || 0;
-      
+
       const serviceRes = await api.get('/service-reminders/all');
       const tuningCount = serviceRes.data.tuning?.length || 0;
       const oilChangeCount = serviceRes.data.oil_change?.length || 0;
-      
+
       const total = birthdayCount + tuningCount + oilChangeCount;
+      cachedCounts.reminder = total;
       setReminderCount(total);
     } catch (error) {
       console.error('Error fetching reminder count:', error);
     }
   };
 
+  // ✅ Discarded count
   const fetchDiscardedCount = async () => {
     try {
       const response = await api.get('/saved-carts/count');
       if (response.data?.success) {
-        setDiscardedCount(response.data.count || 0);
+        const count = response.data.count || 0;
+        cachedCounts.discarded = count;
+        setDiscardedCount(count);
       }
     } catch (error) {
       console.error('Error fetching discarded count:', error);
@@ -178,21 +215,19 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     clearSessionAndGoToLogin();
   };
 
+  // ✅ Resize handler
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 1024);
-      if (window.innerWidth < 1024 && isOpen) {
-        setIsOpen(false);
-      }
-      if (window.innerWidth >= 1024 && !isOpen) {
-        setIsOpen(true);
-      }
+      if (window.innerWidth < 1024 && isOpen) setIsOpen(false);
+      if (window.innerWidth >= 1024 && !isOpen) setIsOpen(true);
     };
-    
+
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [isOpen, setIsOpen]);
 
+  // ✅ Logo check — sirf ek baar
   useEffect(() => {
     const img = new Image();
     img.src = '/logo.jpg';
@@ -200,25 +235,27 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
     img.onerror = () => setLogoExists(false);
   }, []);
 
+  // ✅ MAIN useEffect — cache ke saath, intervals hamesha sahi se chalte hain
   useEffect(() => {
     fetchUserData();
-    fetchReminderCount();
-    fetchDiscardedCount();
     fetchEstimateCount();
-    
+
+    // Sirf tab fetch karo jab cache purana ho (page badalne par dobara API calls nahi)
+    if (Date.now() - cachedCountsAt > COUNTS_TTL) {
+      cachedCountsAt = Date.now();
+      fetchReminderCount();
+      fetchDiscardedCount();
+    }
+
     const reminderInterval = setInterval(fetchReminderCount, 60000);
     const discardedInterval = setInterval(fetchDiscardedCount, 30000);
-    
-    const handleReminderUpdate = () => {
-      fetchReminderCount();
-    };
+
+    const handleReminderUpdate = () => fetchReminderCount();
     window.addEventListener('reminder-update', handleReminderUpdate);
-    
-    const handleDiscardedUpdate = () => {
-      fetchDiscardedCount();
-    };
+
+    const handleDiscardedUpdate = () => fetchDiscardedCount();
     window.addEventListener('discarded-update', handleDiscardedUpdate);
-    
+
     return () => {
       clearInterval(reminderInterval);
       clearInterval(discardedInterval);
@@ -229,40 +266,32 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
 
   const handleMenuClick = (item) => {
     if (item.hasSubmenu) {
-      if (item.id === 'battery') {
-        setIsBatteryOpen(!isBatteryOpen);
-        setActiveMenu('battery');
-        navigate('/battery');
-        if (isMobile) {
-          setIsOpen(false);
-        }
-      } else if (item.id === 'car') {
+      if (item.id === 'car') {
         setIsCarOpen(!isCarOpen);
         setActiveMenu('car-purchase');
-        navigate('/car-purchase');
-        if (isMobile) {
-          setIsOpen(false);
+        goTo('/car-purchase');
+        if (isMobile) setIsOpen(false);
+      } else if (item.id === 'inventory') {
+        setIsInventoryOpen(!isInventoryOpen);
+        if (!isInventoryOpen && !isInventoryActive()) {
+          setActiveMenu('inventory');
+          goTo('/inventory');
         }
       } else if (item.id === 'finance') {
         setIsFinanceOpen(!isFinanceOpen);
         if (!isFinanceOpen && !isFinanceActive()) {
           setActiveMenu('finance-overview');
+          goTo('/finance'); // ✅ NEW: URL bhi badlo, warna URL aur menu sync se bahar ho jate hain
         }
       }
     } else {
       setActiveMenu(item.id);
-      if (item.path) {
-        navigate(item.path);
-      }
-      if (isMobile) {
-        setIsOpen(false);
-      }
+      goTo(item.path);
+      if (isMobile) setIsOpen(false);
     }
   };
 
-  const toggleSidebar = () => {
-    setIsOpen(!isOpen);
-  };
+  const toggleSidebar = () => setIsOpen(!isOpen);
 
   const allMenuItems = isAdmin ? adminMenuItems : employeeMenuItems;
 
@@ -290,18 +319,18 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
           {allMenuItems.map((item) => {
             const Icon = item.icon;
             const isFinanceMenuItem = item.id === 'finance';
-            const isBatteryMenuItem = item.id === 'battery';
+            const isInventoryMenuItem = item.id === 'inventory';
             const isCarMenuItem = item.id === 'car';
             const isActive = activeMenu === item.id || 
                            (isFinanceMenuItem && isFinanceActive()) ||
-                           (isBatteryMenuItem && isBatteryActive()) ||
-                           (isCarMenuItem && isCarActive()) ||
-                           (isBatteryMenuItem && activeMenu === 'battery');
+                           (isInventoryMenuItem && isInventoryActive()) ||
+                           (isCarMenuItem && isCarActive());
             const showBadge = item.badge > 0;
-            
+
             return (
               <div key={item.id} className="relative">
                 <button
+                  type="button"
                   onClick={() => handleMenuClick(item)}
                   className={`w-full flex items-center justify-between gap-4 px-4 py-3 rounded-xl mb-1 transition-all duration-300 ${
                     isActive
@@ -328,8 +357,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                       )}
                       {item.hasSubmenu && (
                         <span>
+                          {item.id === 'inventory' && (isInventoryOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />)}
                           {item.id === 'finance' && (isFinanceOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />)}
-                          {item.id === 'battery' && (isBatteryOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />)}
                           {item.id === 'car' && (isCarOpen ? <FiChevronUp className="text-sm" /> : <FiChevronDown className="text-sm" />)}
                         </span>
                       )}
@@ -344,23 +373,20 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                     </span>
                   )}
                 </button>
-                
-                {/* Finance Submenu - Admin only */}
-                {isOpen && isAdmin && item.id === 'finance' && isFinanceOpen && (
+
+                {/* Inventory Submenu - click par khulta hai */}
+                {isOpen && item.id === 'inventory' && isInventoryOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
-                    {financeSubmenu.map((subItem) => {
+                    {inventorySubmenu.map((subItem) => {
                       const SubIcon = subItem.icon;
                       return (
                         <button
+                          type="button"
                           key={subItem.id}
                           onClick={() => {
                             setActiveMenu(subItem.id);
-                            if (subItem.path) {
-                              navigate(subItem.path);
-                            }
-                            if (isMobile) {
-                              setIsOpen(false);
-                            }
+                            goTo(subItem.path);
+                            if (isMobile) setIsOpen(false);
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-300 ${
                             activeMenu === subItem.id
@@ -376,22 +402,19 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   </div>
                 )}
 
-                {/* Battery Submenu - Filtered for employees */}
-                {isOpen && item.id === 'battery' && isBatteryOpen && (
+                {/* Finance Submenu - Admin only */}
+                {isOpen && isAdmin && item.id === 'finance' && isFinanceOpen && (
                   <div className="ml-8 mt-1 mb-2 space-y-1">
-                    {batterySubmenu.map((subItem) => {
+                    {financeSubmenu.map((subItem) => {
                       const SubIcon = subItem.icon;
                       return (
                         <button
+                          type="button"
                           key={subItem.id}
                           onClick={() => {
                             setActiveMenu(subItem.id);
-                            if (subItem.path) {
-                              navigate(subItem.path);
-                            }
-                            if (isMobile) {
-                              setIsOpen(false);
-                            }
+                            goTo(subItem.path);
+                            if (isMobile) setIsOpen(false);
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-300 ${
                             activeMenu === subItem.id
@@ -414,15 +437,12 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                       const SubIcon = subItem.icon;
                       return (
                         <button
+                          type="button"
                           key={subItem.id}
                           onClick={() => {
                             setActiveMenu(subItem.id);
-                            if (subItem.path) {
-                              navigate(subItem.path);
-                            }
-                            if (isMobile) {
-                              setIsOpen(false);
-                            }
+                            goTo(subItem.path);
+                            if (isMobile) setIsOpen(false);
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-300 ${
                             activeMenu === subItem.id
@@ -461,6 +481,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   </p>
                 </div>
                 <button 
+                  type="button"
                   onClick={handleLogout}
                   className="p-2 rounded-lg hover:bg-red-500/20 text-gray-400 hover:text-red-500 transition flex-shrink-0"
                   title="Logout"
@@ -479,6 +500,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
                   {user?.name || 'User'} ({user?.role || 'employee'})
                 </div>
                 <button 
+                  type="button"
                   onClick={handleLogout}
                   className="absolute inset-0 rounded-full hover:bg-red-500/30 transition flex items-center justify-center opacity-0 group-hover:opacity-100"
                 >
@@ -492,6 +514,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
 
       {/* Mobile Menu Toggle Button */}
       <button 
+        type="button"
         onClick={toggleSidebar} 
         className="lg:hidden fixed top-4 left-4 z-50 p-2.5 bg-black rounded-xl text-white shadow-lg hover:bg-gray-800 transition-all duration-300"
         style={{ 

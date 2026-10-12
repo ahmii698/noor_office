@@ -54,24 +54,62 @@ class Employee extends Model
     // =========================================================================
 
     /**
-     * Get list of every salary month from join_date to the current month.
-     * ✅ UPDATED: "now" can be manually pushed forward via manual_cycles_added
+     * ✅ FIXED: First salary cycle month, based on join_date AND salary_date.
+     *
+     * Join 17 Sep, salary_date 15 → 15 Sep already passed before joining,
+     *                               so first cycle = Oct (15 Oct).
+     * Join 10 Sep, salary_date 15 → first cycle = Sep (15 Sep).
+     *
+     * Returns the first day of that month (Carbon).
+     */
+    public function getFirstCycleMonth(): Carbon
+    {
+        if (!$this->join_date) {
+            return now()->startOfMonth();
+        }
+
+        $join = $this->join_date->copy();
+        $start = $join->copy()->startOfMonth();
+
+        if (!$this->salary_date) {
+            return $start;
+        }
+
+        $effectiveDay = min($this->salary_date, $join->daysInMonth);
+
+        // Salary date of the join month already passed → start from next month
+        if ($join->day > $effectiveDay) {
+            return $start->addMonthNoOverflow();
+        }
+
+        return $start;
+    }
+
+    /**
+     * Get list of every salary month from the first cycle to the current month.
+     * "now" can be manually pushed forward via manual_cycles_added
      * (the Restart Month button), so an admin can force a new month to start
      * before its calendar month naturally arrives.
+     *
+     * ✅ FIXED: starts from getFirstCycleMonth() instead of the raw join month,
+     * and always includes at least the first cycle.
      */
     public function getMonthsSinceJoinList(): array
     {
-        if (!$this->join_date) {
-            return [now()->format('Y-m')];
+        $start = $this->getFirstCycleMonth();
+        $end = now()->startOfMonth()->addMonthsNoOverflow($this->manual_cycles_added ?? 0);
+
+        // Always show at least the first cycle (new employee → pending 1 month)
+        if ($end->lt($start)) {
+            $end = $start->copy();
         }
 
         $months = [];
-        $cursor = $this->join_date->copy()->startOfMonth();
-        $end = now()->addMonths($this->manual_cycles_added ?? 0)->startOfMonth();
+        $cursor = $start->copy();
 
         while ($cursor->lte($end)) {
             $months[] = $cursor->format('Y-m');
-            $cursor->addMonth();
+            $cursor->addMonthNoOverflow();
         }
 
         return $months;
@@ -140,7 +178,7 @@ class Employee extends Model
 
     /**
      * Full month-by-month breakdown for the History view.
-     * Every month from join_date to now (+ manual cycles) shows up,
+     * Every month from the first cycle to now (+ manual cycles) shows up,
      * with advance payments already applied against unpaid months.
      */
     public function getMonthlyBreakdown()
@@ -174,7 +212,7 @@ class Employee extends Model
     }
 
     // =========================================================================
-    // Balance = total owed across ALL months since join (incl. manual cycles),
+    // Balance = total owed across ALL months since first cycle (incl. manual cycles),
     // minus total paid across all time (for_month payments + advance payments).
     // =========================================================================
     public function updateBalance()
@@ -253,7 +291,7 @@ class Employee extends Model
         return 'Rs. ' . number_format($this->balance_amount, 0);
     }
 
-    // ✅ Get payment percentage (against total due since join, not just one month)
+    // ✅ Get payment percentage (against total due since first cycle, not just one month)
     public function getPaymentPercentageAttribute()
     {
         $monthsSinceJoin = $this->getMonthsSinceJoinList();

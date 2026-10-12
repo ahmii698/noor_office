@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\ProductHistory;
 use App\Models\User;
 use App\Models\CreditVendor;
 use Illuminate\Http\Request;
@@ -12,6 +13,18 @@ use Illuminate\Support\Facades\DB;
 
 class ProductController extends Controller
 {
+    /**
+     * ✅ NEW: Wo fields jinki history track hogi
+     */
+    private array $trackedFields = [
+        'name',
+        'purchase_price',
+        'selling_price',
+        'quantity',
+        'low_stock_threshold',
+        'is_hidden',
+    ];
+
     /**
      * Get all products with credit vendor info
      * GET /api/products
@@ -169,6 +182,42 @@ class ProductController extends Controller
     }
 
     /**
+     * ✅ NEW: Get product history (eye button)
+     * GET /api/products/{id}/history
+     */
+    public function history($id)
+    {
+        try {
+            $histories = ProductHistory::where('product_id', $id)
+                ->orderBy('created_at', 'desc')
+                ->orderBy('id', 'desc')
+                ->get()
+                ->map(function ($h) {
+                    return [
+                        'id' => $h->id,
+                        'action' => $h->action,
+                        'changes' => $h->changes ?? [],
+                        'user_name' => $h->user_name,
+                        'created_at' => $h->created_at,
+                    ];
+                });
+
+            return response()->json([
+                'success' => true,
+                'data' => $histories,
+                'count' => $histories->count(),
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch product history',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Create new product
      * POST /api/products
      */
@@ -205,6 +254,14 @@ class ProductController extends Controller
                 'is_credit_purchase' => $request->is_credit_purchase ?? false,
                 'is_hidden' => 0,
             ]);
+
+            // ✅ NEW: History - product add hua
+            $createdChanges = [];
+            foreach ($this->snapshot($product) as $field => $value) {
+                if ($field === 'is_hidden') continue;
+                $createdChanges[$field] = ['old' => null, 'new' => $value];
+            }
+            $this->logHistory($product, 'created', $createdChanges);
 
             // If vendor_id is provided, create credit product link
             if ($request->has('vendor_id') && !empty($request->vendor_id)) {
@@ -268,6 +325,9 @@ class ProductController extends Controller
         try {
             // Get old quantity before update
             $oldQuantity = $product->quantity;
+
+            // ✅ NEW: update se pehle ki values (history ke liye)
+            $before = $this->snapshot($product);
             
             // Update product
             $product->update($request->only([
@@ -283,6 +343,12 @@ class ProductController extends Controller
             ]));
 
             $product->refresh();
+
+            // ✅ NEW: History - sirf wahi fields jo sach mein badli
+            $changes = $this->diffSnapshots($before, $this->snapshot($product));
+            if (!empty($changes)) {
+                $this->logHistory($product, $this->determineAction($changes), $changes);
+            }
 
             // ✅ Check if stock dropped below THIS product's own threshold
             if ($product->quantity < $product->low_stock_threshold && $oldQuantity >= $product->low_stock_threshold) {
@@ -334,6 +400,9 @@ class ProductController extends Controller
     {
         try {
             $product = Product::findOrFail($id);
+
+            // ✅ NEW: History - delete se pehle record karo
+            $this->logHistory($product, 'deleted', []);
             
             // Delete credit product links first
             $product->creditLinks()->delete();
@@ -379,6 +448,9 @@ class ProductController extends Controller
         }
 
         try {
+            // ✅ NEW: update se pehle ki values (history ke liye)
+            $before = $this->snapshot($product);
+
             $product->update($request->only([
                 'quantity',
                 'purchase_price',
@@ -389,6 +461,12 @@ class ProductController extends Controller
             ]));
 
             $product->refresh();
+
+            // ✅ NEW: History - hide/unhide ya koi bhi partial change
+            $changes = $this->diffSnapshots($before, $this->snapshot($product));
+            if (!empty($changes)) {
+                $this->logHistory($product, $this->determineAction($changes), $changes);
+            }
 
             // ✅ Check against this product's own threshold
             if ($product->quantity < $product->low_stock_threshold) {
@@ -561,6 +639,96 @@ class ProductController extends Controller
                 'message' => 'Failed to fetch categories',
                 'error' => $e->getMessage(),
             ], 500);
+        }
+    }
+
+    // =====================================================================
+    // ✅ NEW: HISTORY HELPERS
+    // =====================================================================
+
+    /**
+     * Value ko ek standard shakal mein laao, taake sahi compare ho sake
+     */
+    private function normalizeValue(string $field, $value)
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (in_array($field, ['purchase_price', 'selling_price'])) {
+            return (float) $value;
+        }
+
+        if (in_array($field, ['quantity', 'low_stock_threshold'])) {
+            return (int) $value;
+        }
+
+        if ($field === 'is_hidden') {
+            return (int) (bool) $value;
+        }
+
+        return (string) $value;
+    }
+
+    /**
+     * Product ki tracked fields ki current values
+     */
+    private function snapshot($product): array
+    {
+        $data = [];
+        foreach ($this->trackedFields as $field) {
+            $data[$field] = $this->normalizeValue($field, $product->{$field});
+        }
+        return $data;
+    }
+
+    /**
+     * Before aur after ka farq: sirf badli hui fields wapas deta hai
+     * Format: { "selling_price": { "old": 1000, "new": 1200 } }
+     */
+    private function diffSnapshots(array $before, array $after): array
+    {
+        $changes = [];
+        foreach ($this->trackedFields as $field) {
+            if ($before[$field] !== $after[$field]) {
+                $changes[$field] = [
+                    'old' => $before[$field],
+                    'new' => $after[$field],
+                ];
+            }
+        }
+        return $changes;
+    }
+
+    /**
+     * Sirf is_hidden badla to hidden/unhidden, warna updated
+     */
+    private function determineAction(array $changes): string
+    {
+        if (count($changes) === 1 && isset($changes['is_hidden'])) {
+            return ((int) $changes['is_hidden']['new'] === 1) ? 'hidden' : 'unhidden';
+        }
+        return 'updated';
+    }
+
+    /**
+     * History save karo. Agar yahan koi masla aaye to product ka asal kaam kabhi nahi rukta.
+     */
+    private function logHistory($product, string $action, array $changes = []): void
+    {
+        try {
+            $user = auth()->user();
+
+            ProductHistory::create([
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'action' => $action,
+                'changes' => $changes,
+                'user_id' => $user->id ?? null,
+                'user_name' => $user->name ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Product history log failed: ' . $e->getMessage());
         }
     }
 

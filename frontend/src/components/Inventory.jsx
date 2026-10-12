@@ -13,6 +13,9 @@ import {
 } from 'react-icons/fi';
 import api from '../services/api';
 
+// ✅ Category options for the dropdown (sirf Battery)
+const CATEGORY_OPTIONS = ['Battery'];
+
 // ✅ Helper: Get date range for filter (with custom date support)
 const getDateRange = (filter, customDate = null) => {
   const now = new Date();
@@ -72,8 +75,67 @@ const debounce = (func, delay) => {
   };
 };
 
+// ✅ Date + Time formatter (e.g. 09 Oct 2026, 03:24 PM)
+const formatDateTime = (value) => {
+  if (!value) return { date: '-', time: '' };
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return { date: '-', time: '' };
+  return {
+    date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+    time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+  };
+};
+
+// ✅ History helpers (eye button -> product history modal)
+const HISTORY_FIELD_LABELS = {
+  name: 'Product Name',
+  category: 'Category',
+  purchase_price: 'Purchase Price',
+  selling_price: 'Selling Price',
+  quantity: 'Stock',
+  low_stock_threshold: 'Low Stock Alert At',
+  is_hidden: 'Visibility'
+};
+
+const HISTORY_ACTIONS = {
+  created: { label: 'Product Added', dot: 'bg-green-500', badge: 'bg-green-500' },
+  updated: { label: 'Updated', dot: 'bg-blue-500', badge: 'bg-blue-500' },
+  hidden: { label: 'Hidden', dot: 'bg-yellow-500', badge: 'bg-yellow-500' },
+  unhidden: { label: 'Unhidden', dot: 'bg-teal-500', badge: 'bg-teal-500' },
+  deleted: { label: 'Deleted', dot: 'bg-red-500', badge: 'bg-red-500' }
+};
+
+const formatHistoryValue = (field, value) => {
+  if (value === null || value === undefined || value === '') return '-';
+  if (field === 'purchase_price' || field === 'selling_price') {
+    const n = Number(value);
+    return isNaN(n) ? String(value) : `Rs. ${n.toLocaleString()}`;
+  }
+  if (field === 'is_hidden') {
+    return (value === true || value === 1 || value === '1') ? 'Hidden' : 'Visible';
+  }
+  return String(value);
+};
+
+// Backend `changes` can be an object { field: {old, new} } or an array [{field, old, new}]
+const normalizeChanges = (changes) => {
+  if (!changes) return [];
+  let data = changes;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (e) { return []; }
+  }
+  if (Array.isArray(data)) {
+    return data.map(c => ({ field: c.field, old: c.old, new: c.new }));
+  }
+  return Object.entries(data).map(([field, v]) => ({
+    field,
+    old: v?.old,
+    new: v?.new
+  }));
+};
+
 // ✅ Product Row Component - WITH LOW STOCK UI (NO EMAIL)
-const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, onSaveEdit, onKeyPress, onEditProduct, onDeleteProduct, onToggleHide, formatPrice, isAdmin }) => {
+const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, onSaveEdit, onKeyPress, onEditProduct, onDeleteProduct, onToggleHide, onViewHistory, formatPrice, isAdmin }) => {
   const isEditingName = editingCell.productId === product.id && editingCell.field === 'name';
   const isEditingPurchase = editingCell.productId === product.id && editingCell.field === 'purchasePrice';
   const isEditingSelling = editingCell.productId === product.id && editingCell.field === 'sellingPrice';
@@ -87,6 +149,12 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
   // ✅ Vendor / Invoice info (from credit_vendor relation returned by backend)
   const invoiceNo = product.credit_vendor?.invoice_number || '-';
   const vendorName = product.credit_vendor?.name || product.vendor_name || '-';
+
+  // ✅ Date & Time jab product add hua
+  const addedAt = formatDateTime(product.created_at || product.date_added);
+
+  // ✅ Updated At - jab bhi product edit / stock change hua
+  const updatedAt = formatDateTime(product.updated_at || product.created_at || product.date_added);
 
   return (
     <tr className={`${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} ${isHidden ? 'opacity-50 bg-gray-100 dark:bg-gray-800' : ''}`}>
@@ -108,6 +176,9 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
             title={isAdmin ? "Double-click to edit product name" : ""}
           >
             {product.name}
+            {product.category && (
+              <span className="ml-2 text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">{product.category}</span>
+            )}
             {isHidden && <span className="ml-2 text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full">Hidden</span>}
           </div>
         )}
@@ -230,11 +301,31 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
       <td className="px-6 py-4 text-sm text-gray-400">
         {vendorName}
       </td>
+
+      {/* ✅ Date & Time - jab product add hua */}
+      <td className="px-6 py-4 text-sm">
+        <div className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{addedAt.date}</div>
+        <div className="text-xs text-gray-400">{addedAt.time}</div>
+      </td>
+
+      {/* ✅ Updated At - last change ka date & time */}
+      <td className="px-6 py-4 text-sm">
+        <div className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{updatedAt.date}</div>
+        <div className="text-xs text-gray-400">{updatedAt.time}</div>
+      </td>
       
       <td className="px-6 py-4">
         <div className="flex items-center gap-1 flex-wrap">
           {isAdmin && (
             <>
+              {/* ✅ Eye button - product ki poori history dekhne ke liye */}
+              <button
+                onClick={() => onViewHistory(product)}
+                className="px-3 py-1 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition flex items-center gap-1 shadow-md"
+                title="View History"
+              >
+                <FiEye className="text-sm" />
+              </button>
               <button 
                 onClick={() => onEditProduct(product)} 
                 className="px-3 py-1 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center gap-1 shadow-md"
@@ -273,6 +364,7 @@ const ProductRow = React.memo(({ product, darkMode, editingCell, onStartEdit, on
 // ✅ Empty form state - shared shape for reset points
 const emptyFormData = {
   name: '',
+  category: '',
   purchasePrice: '',
   sellingPrice: '',
   quantity: '',
@@ -307,15 +399,20 @@ const Inventory = ({ darkMode }) => {
   const [viewMode, setViewMode] = useState('active');
   const [editingCell, setEditingCell] = useState({ productId: null, field: null, value: '' });
 
-  // ✅ NEW: Vendor names list (for autocomplete dropdown/datalist)
+  // Vendor names list (for autocomplete dropdown)
   const [vendorsList, setVendorsList] = useState([]);
 
-  // ✅ NEW: Prevents duplicate submissions + drives the loading UI on the Add/Update button
+  // Prevents duplicate submissions + drives the loading UI on the Add/Update button
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✅ NEW: Controls the custom-styled vendor suggestion dropdown
-  // (replaces the native <datalist> which can't be styled and looked broken)
+  // Controls the custom-styled vendor suggestion dropdown
   const [showVendorDropdown, setShowVendorDropdown] = useState(false);
+
+  // Product history modal (eye button)
+  const [historyProduct, setHistoryProduct] = useState(null);
+  const [historyEntries, setHistoryEntries] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
 
   useEffect(() => {
     const user = localStorage.getItem('user');
@@ -339,7 +436,8 @@ const Inventory = ({ darkMode }) => {
     
     if (searchTerm.trim()) {
       filtered = filtered.filter(product =>
-        product.name?.toLowerCase().includes(searchTerm.toLowerCase())
+        product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     
@@ -366,8 +464,7 @@ const Inventory = ({ darkMode }) => {
     return filtered;
   }, [products, searchTerm, viewMode, timeFilter, customDate, sortOption]);
 
-  // ✅ NEW: Vendor names filtered by what's currently typed in the Vendor Name field,
-  // used to render the custom dropdown list instead of the native <datalist>
+  // Vendor names filtered by what's currently typed in the Vendor Name field
   const filteredVendorSuggestions = useMemo(() => {
     const query = (formData.vendorName || '').toLowerCase().trim();
     if (!query) return vendorsList;
@@ -497,7 +594,7 @@ const Inventory = ({ darkMode }) => {
     return () => abortController.abort();
   }, [calculateFilteredStats, timeFilter, customDate]);
 
-  // ✅ NEW: Fetch unique vendor names for the autocomplete datalist
+  // Fetch unique vendor names for the autocomplete dropdown
   const fetchVendorsList = useCallback(async () => {
     try {
       const response = await api.get('/credit/vendors');
@@ -601,23 +698,29 @@ const Inventory = ({ darkMode }) => {
   const exportToExcel = useCallback((data, filename) => {
     const exportData = data.map(p => ({
       'Product': p.name,
+      'Category': p.category || '-',
       ...(isAdmin && { 'Purchase Price': `Rs. ${(p.purchase_price || 0).toLocaleString()}` }),
       ...(isAdmin && { 'Selling Price': `Rs. ${(p.selling_price || 0).toLocaleString()}` }),
       'Stock': p.quantity || 0,
       ...(isAdmin && { 'Low Stock At': p.low_stock_threshold ?? 5 }),
       'Invoice No': p.credit_vendor?.invoice_number || '-',
       'Vendor': p.credit_vendor?.name || p.vendor_name || '-',
+      'Date & Time': (() => { const t = formatDateTime(p.created_at || p.date_added); return `${t.date} ${t.time}`.trim(); })(),
+      'Updated At': (() => { const t = formatDateTime(p.updated_at || p.created_at || p.date_added); return `${t.date} ${t.time}`.trim(); })(),
       'Status': p.is_hidden === true ? 'Hidden' : 'Active'
     }));
     
     const summaryRow = {
       'Product': '📊 TOTAL',
+      'Category': '-',
       ...(isAdmin && { 'Purchase Price': `Rs. ${summaryTotals.totalPurchaseValue.toLocaleString()}` }),
       ...(isAdmin && { 'Selling Price': `Rs. ${summaryTotals.totalSellingValue.toLocaleString()}` }),
       'Stock': summaryTotals.totalStock,
       ...(isAdmin && { 'Low Stock At': '-' }),
       'Invoice No': '-',
       'Vendor': '-',
+      'Date & Time': '-',
+      'Updated At': '-',
       'Status': ''
     };
     exportData.push(summaryRow);
@@ -633,30 +736,36 @@ const Inventory = ({ darkMode }) => {
     const doc = new jsPDF('landscape');
     doc.text(title, 14, 10);
     
-    const head = ['Product'];
+    const head = ['Product', 'Category'];
     if (isAdmin) head.push('Purchase Price', 'Selling Price');
     head.push('Stock');
     if (isAdmin) head.push('Low Stock At');
     head.push('Invoice No', 'Vendor');
+    head.push('Date & Time', 'Updated At');
     head.push('Status');
     
     const body = data.map(p => {
-      const row = [p.name || ''];
+      const row = [p.name || '', p.category || '-'];
       if (isAdmin) row.push(`Rs. ${(p.purchase_price || 0).toLocaleString()}`, `Rs. ${(p.selling_price || 0).toLocaleString()}`);
       row.push(p.quantity || 0);
       if (isAdmin) row.push(p.low_stock_threshold ?? 5);
       row.push(p.credit_vendor?.invoice_number || '-', p.credit_vendor?.name || p.vendor_name || '-');
+      const t = formatDateTime(p.created_at || p.date_added);
+      row.push(`${t.date} ${t.time}`.trim());
+      const u = formatDateTime(p.updated_at || p.created_at || p.date_added);
+      row.push(`${u.date} ${u.time}`.trim());
       row.push(p.is_hidden === true ? 'Hidden' : 'Active');
       return row;
     });
     
-    const summaryRow = ['📊 TOTAL'];
+    const summaryRow = ['📊 TOTAL', '-'];
     if (isAdmin) {
       summaryRow.push(`Rs. ${summaryTotals.totalPurchaseValue.toLocaleString()}`);
       summaryRow.push(`Rs. ${summaryTotals.totalSellingValue.toLocaleString()}`);
     }
     summaryRow.push(summaryTotals.totalStock);
     if (isAdmin) summaryRow.push('-');
+    summaryRow.push('-', '-');
     summaryRow.push('-', '-');
     summaryRow.push('');
     body.push(summaryRow);
@@ -678,13 +787,11 @@ const Inventory = ({ darkMode }) => {
     }));
   }, []);
 
-  // ✅ Add Product - now supports Vendor / Credit purchase linking
-  // ✅ UPDATED: wrapped with isSubmitting guard so double-clicking the
-  // "Add Product" button can't fire multiple requests / duplicate products.
+  // ✅ Add Product - supports Category + Vendor / Credit purchase linking
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
 
-    if (isSubmitting) return; // ✅ ignore extra clicks while a request is in flight
+    if (isSubmitting) return; // ignore extra clicks while a request is in flight
     
     if (!isAdmin) {
       toast.error('Only admin can add products');
@@ -716,13 +823,14 @@ const Inventory = ({ darkMode }) => {
       return;
     }
 
-    setIsSubmitting(true); // ✅ start loading
+    setIsSubmitting(true);
     try {
       // Step 1: create product.
       // If credit purchase, start quantity at 0 — the vendor link (Step 2)
       // adds the real quantity, so stock is never double-counted.
       const productRes = await api.post('/products', {
         name: formData.name,
+        category: formData.category || null,
         purchase_price: purchasePriceNum,
         selling_price: sellingPriceNum,
         quantity: formData.isCreditPurchase ? 0 : quantityNum,
@@ -761,8 +869,6 @@ const Inventory = ({ darkMode }) => {
               }]
             });
             toast.success('Product add ho gaya aur vendor se link ho gaya!');
-            // ✅ refresh vendor list so the newly used/created vendor
-            // shows up in the dropdown next time
             fetchVendorsList();
           } catch (vendorError) {
             console.error('Vendor link error:', vendorError);
@@ -780,7 +886,7 @@ const Inventory = ({ darkMode }) => {
       console.error('Error adding product:', error);
       toast.error(error.response?.data?.message || 'Failed to add product');
     } finally {
-      setIsSubmitting(false); // ✅ stop loading whether it succeeded or failed
+      setIsSubmitting(false);
     }
   }, [formData, isAdmin, fetchProducts, fetchVendorsList, isSubmitting]);
 
@@ -789,6 +895,7 @@ const Inventory = ({ darkMode }) => {
     setFormData({
       ...emptyFormData,
       name: product.name,
+      category: product.category || '',
       purchasePrice: product.purchase_price,
       sellingPrice: product.selling_price,
       quantity: product.quantity,
@@ -797,11 +904,10 @@ const Inventory = ({ darkMode }) => {
     setIsModalOpen(true);
   }, []);
 
-  // ✅ UPDATED: same isSubmitting guard applied to the Update flow
   const handleUpdateSubmit = useCallback(async (e) => {
     e.preventDefault();
 
-    if (isSubmitting) return; // ✅ ignore extra clicks while a request is in flight
+    if (isSubmitting) return;
     
     if (!isAdmin) {
       if (!formData.quantity) {
@@ -851,10 +957,11 @@ const Inventory = ({ darkMode }) => {
       return;
     }
 
-    setIsSubmitting(true); // ✅ start loading
+    setIsSubmitting(true);
     try {
       const success = await handleUpdateProduct(editingProduct.id, {
         name: formData.name,
+        category: formData.category || null,
         purchase_price: purchasePriceNum,
         selling_price: sellingPriceNum,
         quantity: quantityNum,
@@ -867,7 +974,7 @@ const Inventory = ({ darkMode }) => {
         setIsModalOpen(false);
       }
     } finally {
-      setIsSubmitting(false); // ✅ stop loading whether it succeeded or failed
+      setIsSubmitting(false);
     }
   }, [formData, editingProduct, handleUpdateProduct, isAdmin, isSubmitting]);
 
@@ -910,6 +1017,7 @@ const Inventory = ({ darkMode }) => {
 
     const updateData = {
       name: productToUpdate.name,
+      category: productToUpdate.category ?? null,
       purchase_price: productToUpdate.purchase_price,
       selling_price: productToUpdate.selling_price,
       quantity: productToUpdate.quantity,
@@ -971,13 +1079,45 @@ const Inventory = ({ darkMode }) => {
     return 'all';
   };
 
-  // ✅ UPDATED: also resets isSubmitting so the modal never reopens stuck in a loading state
+  // Also resets isSubmitting so the modal never reopens stuck in a loading state
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingProduct(null);
     setFormData({ ...emptyFormData });
     setIsSubmitting(false);
   };
+
+  // Open history modal + fetch product history from backend
+  const openHistory = useCallback(async (product) => {
+    setHistoryProduct(product);
+    setHistoryEntries([]);
+    setHistoryError('');
+    setHistoryLoading(true);
+    try {
+      const response = await api.get(`/products/${product.id}/history`);
+      const raw = response.data?.success && Array.isArray(response.data.data)
+        ? response.data.data
+        : (Array.isArray(response.data) ? response.data : (Array.isArray(response.data?.data) ? response.data.data : []));
+      const sorted = [...raw].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      setHistoryEntries(sorted);
+    } catch (error) {
+      console.error('Error fetching product history:', error);
+      if (error.response?.status === 404) {
+        setHistoryError('History ka backend abhi set nahi hua (route / table baqi hai).');
+      } else {
+        setHistoryError(error.response?.data?.message || 'History load nahi ho saki');
+      }
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const closeHistory = useCallback(() => {
+    setHistoryProduct(null);
+    setHistoryEntries([]);
+    setHistoryError('');
+    setHistoryLoading(false);
+  }, []);
 
   if (loading) {
     return (
@@ -1323,13 +1463,19 @@ const Inventory = ({ darkMode }) => {
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
                   Vendor
                 </th>
+                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
+                  Date & Time
+                </th>
+                <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>
+                  Updated At
+                </th>
                 <th className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase tracking-wider`}>Actions</th>
               </tr>
             </thead>
             <tbody className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-200'}`}>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 8 : 5} className="px-6 py-12 text-center">
+                  <td colSpan={isAdmin ? 10 : 7} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <FiPackage className="text-5xl text-gray-400" />
                       <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1371,6 +1517,7 @@ const Inventory = ({ darkMode }) => {
                       onEditProduct={handleEditProduct}
                       onDeleteProduct={handleDeleteProduct}
                       onToggleHide={handleToggleHide}
+                      onViewHistory={openHistory}
                       formatPrice={formatPrice}
                       isAdmin={isAdmin}
                     />
@@ -1418,6 +1565,14 @@ const Inventory = ({ darkMode }) => {
                       <span className="text-xs text-gray-400">-</span>
                     </td>
                     
+                    <td className="px-6 py-3">
+                      <span className="text-xs text-gray-400">-</span>
+                    </td>
+
+                    <td className="px-6 py-3">
+                      <span className="text-xs text-gray-400">-</span>
+                    </td>
+
                     <td className="px-6 py-3">
                       <span className="text-xs text-gray-400">-</span>
                     </td>
@@ -1514,6 +1669,26 @@ const Inventory = ({ darkMode }) => {
                   disabled={isSubmitting}
                 />
               </div>
+
+              {/* ✅ Category dropdown (sirf Battery) */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Category</label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                  disabled={isSubmitting}
+                >
+                  <option value="">-- Select Category --</option>
+                  {CATEGORY_OPTIONS.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  🔋 Battery select karoge to product Battery page par bhi dikhega
+                </p>
+              </div>
               
               <div>
                 <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Purchase Price * (Rs.)</label>
@@ -1583,7 +1758,7 @@ const Inventory = ({ darkMode }) => {
                 </p>
               </div>
 
-              {/* ✅ Vendor / Credit Purchase Section - only for NEW products */}
+              {/* Vendor / Credit Purchase Section - only for NEW products */}
               {!editingProduct && (
                 <div className={`p-3 rounded-lg border ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1603,10 +1778,6 @@ const Inventory = ({ darkMode }) => {
                     <div className="mt-3 space-y-3">
                       <div className="relative">
                         <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Vendor Name *</label>
-                        {/* ✅ CHANGED: replaced the native <datalist> (unstyleable,
-                            looked like a stray browser autofill popup) with a
-                            fully custom, theme-matched dropdown. Repeat vendors
-                            can still be picked, and a brand-new name still works. */}
                         <input
                           type="text"
                           value={formData.vendorName || ''}
@@ -1616,8 +1787,6 @@ const Inventory = ({ darkMode }) => {
                           }}
                           onFocus={() => setShowVendorDropdown(true)}
                           onBlur={() => {
-                            // Small delay so a click on a dropdown item registers
-                            // before the dropdown unmounts on blur.
                             setTimeout(() => setShowVendorDropdown(false), 150);
                           }}
                           className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
@@ -1635,8 +1804,6 @@ const Inventory = ({ darkMode }) => {
                             {filteredVendorSuggestions.map((name, idx) => (
                               <li
                                 key={idx}
-                                // onMouseDown fires before the input's onBlur, so the
-                                // selection registers before the dropdown closes.
                                 onMouseDown={() => {
                                   setFormData(prev => ({ ...prev, vendorName: name }));
                                   setShowVendorDropdown(false);
@@ -1719,6 +1886,102 @@ const Inventory = ({ darkMode }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Product History Modal (eye button) */}
+      {historyProduct && isAdmin && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] flex flex-col border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-start`}>
+              <div>
+                <h3 className="text-xl font-semibold flex items-center gap-2">
+                  <FiEye className="text-purple-500" /> Product History
+                </h3>
+                <p className={`text-sm mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{historyProduct.name}</p>
+              </div>
+              <button onClick={closeHistory} className="text-gray-500 hover:text-gray-700 text-2xl">
+                <FiX />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
+              {historyLoading ? (
+                <div className="flex flex-col items-center gap-3 py-10">
+                  <FiLoader className="text-3xl text-purple-500 animate-spin" />
+                  <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Loading history...</p>
+                </div>
+              ) : historyError ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <FiAlertCircle className="text-4xl text-red-500" />
+                  <p className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{historyError}</p>
+                </div>
+              ) : historyEntries.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-center">
+                  <FiPackage className="text-4xl text-gray-400" />
+                  <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Abhi tak koi history record nahi hui.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {historyEntries.map((entry, idx) => {
+                    const cfg = HISTORY_ACTIONS[entry.action] || { label: entry.action || 'Change', dot: 'bg-gray-500', badge: 'bg-gray-500' };
+                    const when = formatDateTime(entry.created_at);
+                    const changes = normalizeChanges(entry.changes);
+                    return (
+                      <div key={entry.id ?? idx} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <span className={`w-3 h-3 rounded-full mt-1.5 ${cfg.dot}`}></span>
+                          {idx < historyEntries.length - 1 && (
+                            <span className={`w-px flex-1 mt-1 ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}></span>
+                          )}
+                        </div>
+                        <div className={`flex-1 p-3 rounded-lg border ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`text-xs text-white px-2 py-0.5 rounded-full ${cfg.badge}`}>{cfg.label}</span>
+                            <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{when.date} • {when.time}</span>
+                          </div>
+                          {entry.user_name && (
+                            <p className={`text-xs mt-1 flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              <FiUser className="text-xs" /> {entry.user_name}
+                            </p>
+                          )}
+                          {changes.length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {changes.map((c, i) => (
+                                <li key={i} className="text-sm flex flex-wrap items-center gap-1">
+                                  <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {HISTORY_FIELD_LABELS[c.field] || c.field}:
+                                  </span>
+                                  {entry.action === 'created' || c.old === null || c.old === undefined ? (
+                                    <span className="text-green-500 font-semibold">{formatHistoryValue(c.field, c.new)}</span>
+                                  ) : (
+                                    <>
+                                      <span className="text-red-500 line-through">{formatHistoryValue(c.field, c.old)}</span>
+                                      <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>→</span>
+                                      <span className="text-green-500 font-semibold">{formatHistoryValue(c.field, c.new)}</span>
+                                    </>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className={`px-6 py-3 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <button
+                onClick={closeHistory}
+                className={`w-full px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

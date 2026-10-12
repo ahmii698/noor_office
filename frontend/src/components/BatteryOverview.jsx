@@ -60,6 +60,26 @@ const formatDateKarachi = (dateString) => {
   });
 };
 
+const normText = (s) => (s || '').toString().trim().toLowerCase();
+
+// ✅ Profit ka color: minus mein laal, warna hara
+const profitColor = (v) => (v < 0 ? 'text-red-500' : 'text-green-500');
+
+// ✅ Invoice ke discount_note se trade-in batteries nikalna
+// Format: "Battery Trade-in: old daewoo (Rs. 500), osaka (Rs. 300)"
+const parseTradeInNote = (note) => {
+  if (!note) return [];
+  const afterColon = note.includes(':') ? note.slice(note.indexOf(':') + 1) : note;
+  const regex = /([^,]+?)\s*\(Rs\.\s*([\d,.]+)\)/g;
+  const entries = [];
+  let m;
+  while ((m = regex.exec(afterColon)) !== null) {
+    const amount = parseFloat(m[2].replace(/,/g, '')) || 0;
+    if (amount > 0) entries.push({ name: normText(m[1]), amount });
+  }
+  return entries;
+};
+
 const BatteryOverview = ({ darkMode }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -76,6 +96,8 @@ const BatteryOverview = ({ darkMode }) => {
     custom: { total: 0, count: 0, items: 0, profit: 0 }
   });
   const [recentSales, setRecentSales] = useState([]);
+  // ✅ Trade-in wali old batteries jo abhi stock mein hain (bikne par profit mein judengi)
+  const [oldStockValue, setOldStockValue] = useState(0);
   const [yearlyData, setYearlyData] = useState({ total: 0, count: 0, items: 0, profit: 0, details: [] });
 
   // ✅ Battery filter function
@@ -111,9 +133,18 @@ const BatteryOverview = ({ darkMode }) => {
   };
 
   // ✅ Ek invoice ka total / items / profit.
-  // Old battery sale ka profit old_batteries table se aata hai (sell - purchase).
+  //
+  // ✅ NAYA TRADE-IN RULE:
+  //   - Trade-in wali new battery sale ka profit = (final total) - (new battery ki purchase).
+  //     Yeh minus mein bhi ja sakta hai kyunke old battery ka paisa de diya, par wo abhi bik nahi.
+  //     Misal: new battery purchase 800, 1000 mein bechi, old 500 mein li → total 500, profit 500 - 800 = -300.
+  //   - Jab old battery bik jaati hai, us sale wale din POORI selling price profit mein judti hai
+  //     (kyunke uski cost pehle hi minus ho chuki hai). Misal: 700 mein biki → +700.
+  //     Total = -300 + 700 = 400.
+  //   - Agar old battery "Trade-in Only" se khareedi thi (kisi sale se minus nahi hui),
+  //     to uska profit = sell - purchase hi rahega.
   const calcInvoiceStats = (inv, batteryItems, productsMap, oldProfitMap) => {
-    let rawTotal = 0, invProfit = 0, invItems = 0;
+    let rawTotal = 0, invItems = 0, totalCost = 0;
     const isOldSale = batteryItems.some(i => i.service_category === 'Old Battery Sale');
 
     batteryItems.forEach(item => {
@@ -124,17 +155,68 @@ const BatteryOverview = ({ darkMode }) => {
 
       if (!isOldSale) {
         const product = productsMap.get(item.service_name);
-        const purchasePrice = product ? (parseFloat(product.purchase_price) || 0) : 0;
-        invProfit += product ? (price - purchasePrice) * qty : price * qty;
+        totalCost += product ? (parseFloat(product.purchase_price) || 0) * qty : 0;
       }
     });
 
+    const invTotal = calculateInvoiceBatteryTotal(inv, batteryItems, rawTotal);
+
+    let invProfit;
     if (isOldSale) {
-      invProfit = oldProfitMap.get(inv.invoice_no) || 0; // e.g. 100 - 98 = 2
+      invProfit = oldProfitMap.get(inv.invoice_no) || 0;
+    } else {
+      invProfit = invTotal - totalCost; // e.g. 500 - 800 = -300
     }
 
-    const invTotal = calculateInvoiceBatteryTotal(inv, batteryItems, rawTotal);
+    invProfit = Math.round(invProfit * 100) / 100;
     return { invTotal, invProfit, invItems };
+  };
+
+  // ✅ Har sold old battery ka profit nikalna:
+  //  - Agar wo kisi trade-in sale se aayi (discount_note match) → cost pehle hi minus ho chuki,
+  //    to profit = poori selling price
+  //  - Warna (Trade-in Only se khareedi) → profit = sell - purchase (backend wala profit)
+  // Match: battery name + trade-in amount (pehle customer bhi match, phir sirf name+amount)
+  const buildOldProfitMap = (batteryInvoices, oldSold) => {
+    const pool = [];
+    batteryInvoices.forEach(inv => {
+      const items = getBatteryItems(inv.items);
+      if (items.length === 0) return;
+      if (items.some(i => i.service_category === 'Old Battery Sale')) return;
+      if (!(parseFloat(inv.discount) > 0)) return;
+      if (!/trade-in/i.test(inv.discount_note || '')) return;
+
+      parseTradeInNote(inv.discount_note).forEach(e => {
+        pool.push({
+          customer: normText(inv.customer_name),
+          name: e.name,
+          amount: e.amount,
+          used: false
+        });
+      });
+    });
+
+    const map = new Map();
+    oldSold.forEach(b => {
+      if (!b.sold_invoice_no) return;
+      const name = normText(b.battery_name);
+      const amount = parseFloat(b.trade_in_amount) || 0;
+      const customer = normText(b.customer_name);
+
+      const match =
+        pool.find(p => !p.used && p.name === name && p.amount === amount && p.customer === customer) ||
+        pool.find(p => !p.used && p.name === name && p.amount === amount);
+
+      let contribution;
+      if (match) {
+        match.used = true;
+        contribution = parseFloat(b.selling_price) || 0; // poora paisa profit
+      } else {
+        contribution = parseFloat(b.profit) || 0;        // sell - purchase
+      }
+      map.set(b.sold_invoice_no, (map.get(b.sold_invoice_no) || 0) + contribution);
+    });
+    return map;
   };
 
   // ✅ Get date range for custom filter - WITH KARACHI TIMEZONE
@@ -181,10 +263,11 @@ const BatteryOverview = ({ darkMode }) => {
     setError(null);
 
     try {
-      const [invoicesRes, productsRes, oldRes] = await Promise.all([
+      const [invoicesRes, productsRes, oldRes, stockRes] = await Promise.all([
         api.get('/invoices'),
         api.get('/products'),
-        api.get('/old-batteries', { params: { status: 'sold' } }).catch(() => ({ data: [] }))
+        api.get('/old-batteries', { params: { status: 'sold' } }).catch(() => ({ data: [] })),
+        api.get('/old-batteries', { params: { status: 'in_stock' } }).catch(() => ({ data: [] }))
       ]);
 
       // ✅ Products
@@ -207,16 +290,8 @@ const BatteryOverview = ({ darkMode }) => {
         invoices = [];
       }
 
-      // ✅ Old battery profit map: invoice_no -> profit
+      // ✅ Sold old batteries
       const oldSold = Array.isArray(oldRes.data) ? oldRes.data : (oldRes.data?.data || []);
-      const oldProfitMap = new Map();
-      oldSold.forEach(b => {
-        if (!b.sold_invoice_no) return;
-        oldProfitMap.set(
-          b.sold_invoice_no,
-          (oldProfitMap.get(b.sold_invoice_no) || 0) + (parseFloat(b.profit) || 0)
-        );
-      });
 
       // Create products map for profit calculation
       const productsMap = new Map();
@@ -229,6 +304,16 @@ const BatteryOverview = ({ darkMode }) => {
         if (!inv.items) return false;
         return inv.items.some(item => isBatteryItem(item));
       });
+
+      // ✅ Old battery profit map: invoice_no -> profit
+      const oldProfitMap = buildOldProfitMap(batteryInvoices, oldSold);
+
+      // ✅ Trade-in wali old batteries jo abhi stock mein hain
+      const inStockOld = Array.isArray(stockRes.data) ? stockRes.data : (stockRes.data?.data || []);
+      const stockVal = inStockOld
+        .filter(b => /with purchase/i.test(b.note || ''))
+        .reduce((s, b) => s + (parseFloat(b.trade_in_amount) || 0), 0);
+      setOldStockValue(stockVal);
 
       // ✅ Use Karachi timezone for calculations
       const todayStr = getTodayKarachiStr();
@@ -591,6 +676,11 @@ const BatteryOverview = ({ darkMode }) => {
               <p className="text-sm opacity-90">Total Profit</p>
               <p className="text-3xl font-bold mt-2">Rs. {currentSales.profit.toLocaleString()}</p>
               <p className="text-xs opacity-75 mt-1">From battery sales</p>
+              {oldStockValue > 0 && (
+                <p className="text-xs mt-2 bg-white/20 rounded-lg px-2 py-1 inline-block">
+                  📦 Rs. {oldStockValue.toLocaleString()} ki old batteries stock mein — bikne par profit mein judega
+                </p>
+              )}
             </div>
             <FiTrendingUp className="text-3xl opacity-50" />
           </div>
@@ -615,7 +705,7 @@ const BatteryOverview = ({ darkMode }) => {
             </div>
             <div className="flex justify-between">
               <span className="text-sm opacity-70">Profit</span>
-              <span className="font-bold text-green-500">Rs. {batterySales.today.profit.toLocaleString()}</span>
+              <span className={`font-bold ${profitColor(batterySales.today.profit)}`}>Rs. {batterySales.today.profit.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -635,7 +725,7 @@ const BatteryOverview = ({ darkMode }) => {
             </div>
             <div className="flex justify-between">
               <span className="text-sm opacity-70">Profit</span>
-              <span className="font-bold text-green-500">Rs. {batterySales.week.profit.toLocaleString()}</span>
+              <span className={`font-bold ${profitColor(batterySales.week.profit)}`}>Rs. {batterySales.week.profit.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -655,7 +745,7 @@ const BatteryOverview = ({ darkMode }) => {
             </div>
             <div className="flex justify-between">
               <span className="text-sm opacity-70">Profit</span>
-              <span className="font-bold text-green-500">Rs. {batterySales.month.profit.toLocaleString()}</span>
+              <span className={`font-bold ${profitColor(batterySales.month.profit)}`}>Rs. {batterySales.month.profit.toLocaleString()}</span>
             </div>
           </div>
         </div>

@@ -35,6 +35,10 @@ const EstimateRecords = ({ darkMode }) => {
   const [hiddenIds, setHiddenIds] = useState([]);
   const [visibilityFilter, setVisibilityFilter] = useState('active');
 
+  // ✅ NEW: multi-select state
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem('noorani_hidden_estimates');
@@ -189,6 +193,7 @@ const EstimateRecords = ({ darkMode }) => {
         saveHiddenIds(updated);
         return updated;
       });
+      setSelectedIds(prev => prev.filter(sid => sid !== id));
       await fetchEstimates();
       if (selectedEstimate?.id === id) {
         setIsModalOpen(false);
@@ -540,6 +545,77 @@ const EstimateRecords = ({ darkMode }) => {
 
   const hiddenCount = estimates.filter(est => hiddenIds.includes(est.id)).length;
 
+  // ========== ✅ NEW: MULTI-SELECT + BULK DELETE ==========
+  // Sirf wohi selected count honge jo abhi filtered list mein nazar aa rahe hain
+  const selectedVisibleIds = selectedIds.filter(id => filteredEstimates.some(est => est.id === id));
+  const selectedCount = selectedVisibleIds.length;
+
+  const isPageAllSelected =
+    currentEstimates.length > 0 && currentEstimates.every(est => selectedIds.includes(est.id));
+  const isAllFilteredSelected =
+    filteredEstimates.length > 0 && filteredEstimates.every(est => selectedIds.includes(est.id));
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]));
+  };
+
+  const toggleSelectPage = () => {
+    const pageIds = currentEstimates.map(est => est.id);
+    if (isPageAllSelected) {
+      setSelectedIds(prev => prev.filter(id => !pageIds.includes(id)));
+    } else {
+      setSelectedIds(prev => Array.from(new Set([...prev, ...pageIds])));
+    }
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(prev => Array.from(new Set([...prev, ...filteredEstimates.map(est => est.id)])));
+  };
+
+  const clearSelection = () => setSelectedIds([]);
+
+  const handleBulkDelete = async () => {
+    const idsToDelete = selectedVisibleIds;
+    if (idsToDelete.length === 0) return;
+    if (!window.confirm(`Delete ${idsToDelete.length} selected estimate(s) permanently?`)) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map(id => api.delete(`/estimates/${id}`))
+      );
+
+      const deletedIds = idsToDelete.filter((_, i) => results[i].status === 'fulfilled');
+      const failedCount = idsToDelete.length - deletedIds.length;
+
+      if (deletedIds.length > 0) {
+        setHiddenIds(prev => {
+          const updated = prev.filter(pid => !deletedIds.includes(pid));
+          saveHiddenIds(updated);
+          return updated;
+        });
+        if (selectedEstimate && deletedIds.includes(selectedEstimate.id)) {
+          setIsModalOpen(false);
+          setSelectedEstimate(null);
+        }
+        toast.success(`${deletedIds.length} estimate(s) deleted`);
+      }
+      if (failedCount > 0) {
+        toast.error(`${failedCount} estimate(s) delete nahi ho sake`);
+      }
+
+      // Jo delete ho gaye unko selection se hata do, failed selected hi rehne do
+      setSelectedIds(prev => prev.filter(id => !deletedIds.includes(id)));
+      setCurrentPage(1);
+      await fetchEstimates();
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+      toast.error('Bulk delete failed');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className={`min-h-[400px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
@@ -682,12 +758,58 @@ const EstimateRecords = ({ darkMode }) => {
             )}
           </div>
 
+          {/* ✅ NEW: Bulk action bar */}
+          {selectedCount > 0 && (
+            <div className={`mb-4 p-3 rounded-2xl shadow-lg border flex flex-wrap items-center justify-between gap-3 ${darkMode ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {selectedCount} selected
+                </span>
+                {!isAllFilteredSelected && filteredEstimates.length > selectedCount && (
+                  <button
+                    onClick={selectAllFiltered}
+                    className="text-sm text-blue-500 hover:text-blue-600 underline"
+                  >
+                    Select all {filteredEstimates.length}
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={clearSelection}
+                  disabled={isBulkDeleting}
+                  className="px-3 py-2 bg-gray-500 text-white rounded-lg text-sm hover:bg-gray-600 transition flex items-center gap-1 shadow-md disabled:opacity-50"
+                >
+                  <FiX /> Clear
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isBulkDeleting}
+                  className="px-3 py-2 bg-red-700 text-white rounded-lg text-sm hover:bg-red-800 transition flex items-center gap-1 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBulkDeleting ? <FiLoader className="animate-spin" /> : <FiTrash2 />}
+                  {isBulkDeleting ? 'Deleting...' : `Delete Selected (${selectedCount})`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Table */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="overflow-x-auto">
               <table className={`w-full min-w-[800px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                 <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
                   <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                    <th className="px-4 py-3 text-left w-[40px]">
+                      <input
+                        type="checkbox"
+                        checked={isPageAllSelected}
+                        onChange={toggleSelectPage}
+                        disabled={currentEstimates.length === 0}
+                        className="w-4 h-4 accent-red-500 cursor-pointer"
+                        title="Select all on this page"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase">#</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase">Name</th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase">Policy #</th>
@@ -702,7 +824,7 @@ const EstimateRecords = ({ darkMode }) => {
                 <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {currentEstimates.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="px-6 py-12 text-center">
+                      <td colSpan="10" className="px-6 py-12 text-center">
                         <FiInbox className="text-6xl mx-auto text-gray-400" />
                         <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No estimates found</p>
                       </td>
@@ -710,11 +832,23 @@ const EstimateRecords = ({ darkMode }) => {
                   ) : (
                     currentEstimates.map((est, idx) => {
                       const isHidden = hiddenIds.includes(est.id);
+                      const isSelected = selectedIds.includes(est.id);
                       const status = getStatusText(est.valid_until);
                       const statusColor = getStatusBadge(est.valid_until);
 
                       return (
-                        <tr key={est.id} className={`${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'} ${isHidden ? 'opacity-60' : ''}`}>
+                        <tr
+                          key={est.id}
+                          className={`${isSelected ? (darkMode ? 'bg-red-900/20' : 'bg-red-50') : (darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50')} ${isHidden ? 'opacity-60' : ''}`}
+                        >
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectOne(est.id)}
+                              className="w-4 h-4 accent-red-500 cursor-pointer"
+                            />
+                          </td>
                           <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{indexOfFirstItem + idx + 1}</td>
                           <td className={`px-4 py-3 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{est.name || est.company_name || ''}</td>
                           <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{est.policy_number || ''}</td>
@@ -763,7 +897,7 @@ const EstimateRecords = ({ darkMode }) => {
 
             <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center flex-wrap gap-3`}>
               <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredEstimates.length)} of {filteredEstimates.length} entries
+                Showing {filteredEstimates.length === 0 ? 0 : indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredEstimates.length)} of {filteredEstimates.length} entries
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button
@@ -805,7 +939,7 @@ const EstimateRecords = ({ darkMode }) => {
                 })}
                 <button
                   onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
+                  disabled={currentPage === totalPages || totalPages === 0}
                   className={`p-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${darkMode ? 'text-white hover:bg-gray-700' : 'text-gray-900 hover:bg-gray-100'}`}
                 >
                   <FiChevronRight />

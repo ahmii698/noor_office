@@ -16,7 +16,8 @@ import {
   FiArrowLeft,
   FiCheckCircle,
   FiFileText,
-  FiDownload
+  FiDownload,
+  FiChevronDown
 } from 'react-icons/fi';
 import { 
   getDiscardedCarts, 
@@ -35,6 +36,11 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
   const [loading, setLoading] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
+
+  // ✅ NEW: multi-select states
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   const navigate = useNavigate();
 
   const fetchDiscardedBills = async () => {
@@ -42,14 +48,19 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     try {
       const response = await getDiscardedCarts();
       if (response.success) {
-        setDiscardedBills(response.data || []);
+        const list = response.data || [];
+        setDiscardedBills(list);
+        // Jo bills ab exist nahi karte unki selection hata do
+        setSelectedIds(prev => prev.filter(id => list.some(b => b.id === id)));
       } else {
         setDiscardedBills([]);
+        setSelectedIds([]);
       }
     } catch (error) {
       console.error('Error fetching discarded bills:', error);
       toast.error('Failed to load discarded bills');
       setDiscardedBills([]);
+      setSelectedIds([]);
     } finally {
       setLoading(false);
     }
@@ -58,6 +69,23 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
   useEffect(() => {
     fetchDiscardedBills();
   }, []);
+
+  // ✅ NEW: selection helpers
+  const isAllSelected = discardedBills.length > 0 && selectedIds.length === discardedBills.length;
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(discardedBills.map(b => b.id));
+    }
+  };
 
   const handleRestore = async (cartId) => {
     setRestoringId(cartId);
@@ -101,11 +129,54 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
       if (response.success) {
         toast.success('Bill deleted permanently');
         setDiscardedBills(prev => prev.filter(c => c.id !== cartId));
+        setSelectedIds(prev => prev.filter(id => id !== cartId));
         window.dispatchEvent(new Event('discarded-update'));
       }
     } catch (error) {
       console.error('Error deleting bill:', error);
       toast.error(error.response?.data?.message || 'Failed to delete bill');
+    }
+  };
+
+  // ✅ NEW: selected bills ek sath delete
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) {
+      toast.error('Please select at least one bill');
+      return;
+    }
+    if (!window.confirm(`Delete ${selectedIds.length} selected bill${selectedIds.length > 1 ? 's' : ''} permanently?`)) return;
+
+    setBulkDeleting(true);
+    try {
+      const idsToDelete = [...selectedIds];
+      const results = await Promise.allSettled(
+        idsToDelete.map(id => deleteDiscardedCart(id))
+      );
+
+      const deletedIds = [];
+      results.forEach((res, index) => {
+        if (res.status === 'fulfilled' && res.value?.success) {
+          deletedIds.push(idsToDelete[index]);
+        }
+      });
+
+      const failedCount = idsToDelete.length - deletedIds.length;
+
+      if (deletedIds.length > 0) {
+        setDiscardedBills(prev => prev.filter(b => !deletedIds.includes(b.id)));
+        setSelectedIds(prev => prev.filter(id => !deletedIds.includes(id)));
+        window.dispatchEvent(new Event('discarded-update'));
+        toast.success(`${deletedIds.length} bill${deletedIds.length > 1 ? 's' : ''} deleted`);
+      }
+
+      if (failedCount > 0) {
+        toast.error(`${failedCount} bill${failedCount > 1 ? 's' : ''} could not be deleted`);
+      }
+    } catch (error) {
+      console.error('Error deleting selected bills:', error);
+      toast.error('Failed to delete selected bills');
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -116,6 +187,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
       if (response.success) {
         toast.success(response.message || 'All discarded bills cleared');
         setDiscardedBills([]);
+        setSelectedIds([]);
         window.dispatchEvent(new Event('discarded-update'));
       }
     } catch (error) {
@@ -308,262 +380,348 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {discardedBills.map((bill) => {
-                const isExpanded = selectedBill === bill.id;
-                const totalItems = getTotalItems(bill.cart_items);
-                const totalAmount = getTotalAmount(bill.cart_summary);
-                const itemCount = getItemCount(bill.cart_items);
-                const hasCustomer = bill.customer_name || bill.customer_phone;
-                const wasRestored = !!bill.last_restored_at;
-                const isRestoring = restoringId === bill.id;
+            <>
+              {/* ✅ NEW: Select All + Delete Selected bar */}
+              <div className={`flex items-center justify-between flex-wrap gap-3 mb-4 p-3 rounded-xl border ${
+                darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+              }`}>
+                <label className={`flex items-center gap-3 cursor-pointer select-none text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 accent-red-500 cursor-pointer"
+                  />
+                  Select All
+                  {selectedIds.length > 0 && (
+                    <span className={`text-xs font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      ({selectedIds.length} selected)
+                    </span>
+                  )}
+                </label>
 
-                return (
-                  <div 
-                    key={bill.id} 
-                    className={`p-4 rounded-xl border transition-all duration-200 ${
-                      darkMode 
-                        ? `bg-gray-700 border-gray-600 ${isExpanded ? 'border-yellow-500 ring-1 ring-yellow-500/50' : 'hover:border-yellow-500/50'}` 
-                        : `bg-gray-50 border-gray-200 ${isExpanded ? 'border-yellow-400 ring-1 ring-yellow-400/50' : 'hover:border-yellow-400/70'}`
-                    }`}
-                  >
-                    <div 
-                      className="cursor-pointer"
-                      onClick={() => toggleBillDetails(bill.id)}
+                {selectedIds.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedIds([])}
+                      disabled={bulkDeleting}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                        darkMode 
+                          ? 'bg-gray-600 text-gray-200 hover:bg-gray-500' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                              darkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
-                            }`}>
-                              🗑️ Discarded
-                            </span>
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              {formatDate(bill.discarded_at || bill.created_at)}
-                            </span>
-                            <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                              #{bill.id}
-                            </span>
-                            {hasCustomer && (
-                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                • {bill.customer_name || bill.customer_phone}
-                              </span>
-                            )}
-                            {wasRestored && (
-                              <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 bg-green-500/20 text-green-400`}>
-                                <FiCheckCircle size={12} /> Restored {formatDate(bill.last_restored_at)}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Quick Stats */}
-                          <div className="mt-2 flex items-center gap-4 flex-wrap">
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              <FiPackage className="inline mr-1" size={14} />
-                              {itemCount} item{itemCount !== 1 ? 's' : ''}
-                            </span>
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              <FiDollarSign className="inline mr-1" size={14} />
-                              Total: <span className="font-bold text-red-500">Rs. {totalAmount.toLocaleString()}</span>
-                            </span>
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              <FiCalendar className="inline mr-1" size={14} />
-                              Total Qty: {totalItems}
-                            </span>
-                          </div>
-
-                          {/* Customer Info - Quick Preview */}
-                          {hasCustomer && (
-                            <div className="mt-1 flex items-center gap-3 flex-wrap text-xs">
-                              {bill.customer_name && (
-                                <span className={`flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  <FiUser size={12} /> {bill.customer_name}
-                                </span>
-                              )}
-                              {bill.customer_phone && (
-                                <span className={`flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  <FiPhone size={12} /> {bill.customer_phone}
-                                </span>
-                              )}
-                              {bill.customer_car_number && (
-                                <span className={`flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  <FiTruck size={12} /> {bill.customer_car_number}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRestore(bill.id);
-                            }}
-                            disabled={isRestoring}
-                            className={`p-2 rounded-lg transition ${
-                              isRestoring
-                                ? darkMode 
-                                  ? 'bg-green-500/20 text-green-400 animate-pulse' 
-                                  : 'bg-green-100 text-green-600 animate-pulse'
-                                : darkMode 
-                                  ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400' 
-                                  : 'bg-green-100 hover:bg-green-200 text-green-600'
-                            }`}
-                            title="Restore this bill to billing page"
-                          >
-                            {isRestoring ? (
-                              <div className="animate-spin h-4 w-4 border-2 border-green-500 border-t-transparent rounded-full" />
-                            ) : (
-                              <FiRefreshCw size={16} />
-                            )}
-                          </button>
-                          
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(bill.id);
-                            }}
-                            className={`p-2 rounded-lg transition ${
-                              darkMode 
-                                ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400' 
-                                : 'bg-red-100 hover:bg-red-200 text-red-600'
-                            }`}
-                            title="Delete this bill permanently"
-                          >
-                            <FiTrash2 size={16} />
-                          </button>
-                          
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleBillDetails(bill.id);
-                            }}
-                            className={`p-2 rounded-lg transition ${
-                              darkMode 
-                                ? 'hover:bg-gray-600 text-gray-400' 
-                                : 'hover:bg-gray-200 text-gray-500'
-                            }`}
-                            title={isExpanded ? 'Collapse' : 'Expand'}
-                          >
-                            <FiClock size={16} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expanded Details */}
-                    {isExpanded && (
-                      <div className="mt-4 pt-4 border-t dark:border-gray-600">
-                        {/* Full Customer Details */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
-                          {bill.customer_name && (
-                            <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                              <FiUser className="text-gray-400" /> {bill.customer_name}
-                            </div>
-                          )}
-                          {bill.customer_phone && (
-                            <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                              <FiPhone className="text-gray-400" /> {bill.customer_phone}
-                            </div>
-                          )}
-                          {bill.customer_email && (
-                            <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                              <FiMail className="text-gray-400" /> {bill.customer_email}
-                            </div>
-                          )}
-                          {bill.customer_car_number && (
-                            <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                              <FiTruck className="text-gray-400" /> {bill.customer_car_number}
-                            </div>
-                          )}
-                          {bill.customer_car_model && (
-                            <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                              <FiTool className="text-gray-400" /> {bill.customer_car_model}
-                            </div>
-                          )}
-                          {bill.customer_birthday && (
-                            <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                              <FiCalendar className="text-gray-400" /> {bill.customer_birthday}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Cart Items */}
-                        <div className="mt-3">
-                          <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Cart Items ({itemCount})
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {bill.cart_items && Array.isArray(bill.cart_items) && bill.cart_items.map((item, idx) => (
-                              <span 
-                                key={idx} 
-                                className={`px-2.5 py-1 rounded text-xs flex items-center gap-1 ${
-                                  darkMode 
-                                    ? 'bg-gray-600 text-gray-300 border border-gray-500' 
-                                    : 'bg-white text-gray-600 border border-gray-200'
-                                }`}
-                              >
-                                {item.type === 'service' ? (
-                                  <FiTool size={10} className="text-red-400" />
-                                ) : (
-                                  <FiPackage size={10} className="text-blue-400" />
-                                )}
-                                {item.name}
-                                {item.mileage && (
-                                  <span className="text-blue-400 text-[10px]">({item.mileage}km)</span>
-                                )}
-                                <span className="text-gray-400">×</span>
-                                <span className="font-semibold">{item.quantity}</span>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Summary */}
-                        {bill.cart_summary && (
-                          <div className="mt-3 pt-3 border-t dark:border-gray-600 flex items-center gap-4 flex-wrap">
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Subtotal: Rs. {(bill.cart_summary.subtotal || 0).toLocaleString()}
-                            </span>
-                            {bill.cart_summary.discount > 0 && (
-                              <span className={`text-sm text-red-400`}>
-                                Discount: -Rs. {(bill.cart_summary.discount || 0).toLocaleString()}
-                              </span>
-                            )}
-                            <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                              Total: <span className="text-red-500">Rs. {(bill.cart_summary.total_amount || 0).toLocaleString()}</span>
-                            </span>
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                              Total Items: {bill.cart_summary.total_items || 0}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      Deselect
+                    </button>
+                    <button
+                      onClick={handleDeleteSelected}
+                      disabled={bulkDeleting}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white ${
+                        bulkDeleting ? 'opacity-70 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      {bulkDeleting ? (
+                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                      ) : (
+                        <FiTrash2 size={14} />
+                      )}
+                      Delete Selected ({selectedIds.length})
+                    </button>
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {discardedBills.map((bill) => {
+                  const isExpanded = selectedBill === bill.id;
+                  const isChecked = selectedIds.includes(bill.id);
+                  const totalItems = getTotalItems(bill.cart_items);
+                  const totalAmount = getTotalAmount(bill.cart_summary);
+                  const itemCount = getItemCount(bill.cart_items);
+                  const hasCustomer = bill.customer_name || bill.customer_phone;
+                  const wasRestored = !!bill.last_restored_at;
+                  const isRestoring = restoringId === bill.id;
+
+                  return (
+                    <div 
+                      key={bill.id} 
+                      className={`p-4 rounded-xl border transition-all duration-200 ${
+                        isChecked
+                          ? darkMode
+                            ? 'bg-red-500/10 border-red-500/60 ring-1 ring-red-500/40'
+                            : 'bg-red-50 border-red-300 ring-1 ring-red-300/60'
+                          : darkMode 
+                            ? `bg-gray-700 border-gray-600 ${isExpanded ? 'border-yellow-500 ring-1 ring-yellow-500/50' : 'hover:border-yellow-500/50'}` 
+                            : `bg-gray-50 border-gray-200 ${isExpanded ? 'border-yellow-400 ring-1 ring-yellow-400/50' : 'hover:border-yellow-400/70'}`
+                      }`}
+                    >
+                      <div 
+                        className="cursor-pointer"
+                        onClick={() => toggleBillDetails(bill.id)}
+                      >
+                        <div className="flex items-start justify-between">
+                          {/* ✅ NEW: Checkbox */}
+                          <div
+                            className="mr-4 pt-1 flex-shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleSelect(bill.id)}
+                              className="w-4 h-4 accent-red-500 cursor-pointer"
+                              title="Select this bill"
+                            />
+                          </div>
+
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                darkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                🗑️ Discarded
+                              </span>
+                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {formatDate(bill.discarded_at || bill.created_at)}
+                              </span>
+                              <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                #{bill.id}
+                              </span>
+                              {hasCustomer && (
+                                <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                  • {bill.customer_name || bill.customer_phone}
+                                </span>
+                              )}
+                              {wasRestored && (
+                                <span className={`px-2 py-0.5 rounded-full text-xs flex items-center gap-1 bg-green-500/20 text-green-400`}>
+                                  <FiCheckCircle size={12} /> Restored {formatDate(bill.last_restored_at)}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Quick Stats */}
+                            <div className="mt-2 flex items-center gap-4 flex-wrap">
+                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <FiPackage className="inline mr-1" size={14} />
+                                {itemCount} item{itemCount !== 1 ? 's' : ''}
+                              </span>
+                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <FiDollarSign className="inline mr-1" size={14} />
+                                Total: <span className="font-bold text-red-500">Rs. {totalAmount.toLocaleString()}</span>
+                              </span>
+                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <FiCalendar className="inline mr-1" size={14} />
+                                Total Qty: {totalItems}
+                              </span>
+                            </div>
+
+                            {/* Customer Info - Quick Preview */}
+                            {hasCustomer && (
+                              <div className="mt-1 flex items-center gap-3 flex-wrap text-xs">
+                                {bill.customer_name && (
+                                  <span className={`flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <FiUser size={12} /> {bill.customer_name}
+                                  </span>
+                                )}
+                                {bill.customer_phone && (
+                                  <span className={`flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <FiPhone size={12} /> {bill.customer_phone}
+                                  </span>
+                                )}
+                                {bill.customer_car_number && (
+                                  <span className={`flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <FiTruck size={12} /> {bill.customer_car_number}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRestore(bill.id);
+                              }}
+                              disabled={isRestoring}
+                              className={`p-2 rounded-lg transition ${
+                                isRestoring
+                                  ? darkMode 
+                                    ? 'bg-green-500/20 text-green-400 animate-pulse' 
+                                    : 'bg-green-100 text-green-600 animate-pulse'
+                                  : darkMode 
+                                    ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400' 
+                                    : 'bg-green-100 hover:bg-green-200 text-green-600'
+                              }`}
+                              title="Restore this bill to billing page"
+                            >
+                              {isRestoring ? (
+                                <div className="animate-spin h-4 w-4 border-2 border-green-500 border-t-transparent rounded-full" />
+                              ) : (
+                                <FiRefreshCw size={16} />
+                              )}
+                            </button>
+                            
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(bill.id);
+                              }}
+                              className={`p-2 rounded-lg transition ${
+                                darkMode 
+                                  ? 'bg-red-500/20 hover:bg-red-500/30 text-red-400' 
+                                  : 'bg-red-100 hover:bg-red-200 text-red-600'
+                              }`}
+                              title="Delete this bill permanently"
+                            >
+                              <FiTrash2 size={16} />
+                            </button>
+                            
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleBillDetails(bill.id);
+                              }}
+                              className={`p-2 rounded-lg transition ${
+                                darkMode 
+                                  ? 'hover:bg-gray-600 text-gray-400' 
+                                  : 'hover:bg-gray-200 text-gray-500'
+                              }`}
+                              title={isExpanded ? 'Collapse' : 'Expand'}
+                            >
+                              <FiChevronDown size={16} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expanded Details */}
+                      {isExpanded && (
+                        <div className="mt-4 pt-4 border-t dark:border-gray-600">
+                          {/* Full Customer Details */}
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+                            {bill.customer_name && (
+                              <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <FiUser className="text-gray-400" /> {bill.customer_name}
+                              </div>
+                            )}
+                            {bill.customer_phone && (
+                              <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <FiPhone className="text-gray-400" /> {bill.customer_phone}
+                              </div>
+                            )}
+                            {bill.customer_email && (
+                              <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <FiMail className="text-gray-400" /> {bill.customer_email}
+                              </div>
+                            )}
+                            {bill.customer_car_number && (
+                              <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <FiTruck className="text-gray-400" /> {bill.customer_car_number}
+                              </div>
+                            )}
+                            {bill.customer_car_model && (
+                              <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <FiTool className="text-gray-400" /> {bill.customer_car_model}
+                              </div>
+                            )}
+                            {bill.customer_birthday && (
+                              <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                <FiCalendar className="text-gray-400" /> {bill.customer_birthday}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Cart Items */}
+                          <div className="mt-3">
+                            <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                              Cart Items ({itemCount})
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {bill.cart_items && Array.isArray(bill.cart_items) && bill.cart_items.map((item, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className={`px-2.5 py-1 rounded text-xs flex items-center gap-1 ${
+                                    darkMode 
+                                      ? 'bg-gray-600 text-gray-300 border border-gray-500' 
+                                      : 'bg-white text-gray-600 border border-gray-200'
+                                  }`}
+                                >
+                                  {item.type === 'service' ? (
+                                    <FiTool size={10} className="text-red-400" />
+                                  ) : (
+                                    <FiPackage size={10} className="text-blue-400" />
+                                  )}
+                                  {item.name}
+                                  {item.mileage && (
+                                    <span className="text-blue-400 text-[10px]">({item.mileage}km)</span>
+                                  )}
+                                  <span className="text-gray-400">×</span>
+                                  <span className="font-semibold">{item.quantity}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Summary */}
+                          {bill.cart_summary && (
+                            <div className="mt-3 pt-3 border-t dark:border-gray-600 flex items-center gap-4 flex-wrap">
+                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                Subtotal: Rs. {(bill.cart_summary.subtotal || 0).toLocaleString()}
+                              </span>
+                              {bill.cart_summary.discount > 0 && (
+                                <span className={`text-sm text-red-400`}>
+                                  Discount: -Rs. {(bill.cart_summary.discount || 0).toLocaleString()}
+                                </span>
+                              )}
+                              <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                Total: <span className="text-red-500">Rs. {(bill.cart_summary.total_amount || 0).toLocaleString()}</span>
+                              </span>
+                              <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                Total Items: {bill.cart_summary.total_items || 0}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
 
         {/* Footer Actions */}
         {discardedBills.length > 0 && (
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mt-6 flex justify-between items-center flex-wrap gap-3`}>
-            <button
-              onClick={handleClearAll}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                darkMode 
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
-                  : 'bg-red-100 text-red-600 hover:bg-red-200'
-              }`}
-            >
-              <FiTrash2 className="inline mr-2" size={14} />
-              Clear All ({discardedBills.length})
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* ✅ NEW: Footer mein bhi Delete Selected */}
+              {selectedIds.length > 0 && (
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={bulkDeleting}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition bg-red-500 hover:bg-red-600 text-white ${
+                    bulkDeleting ? 'opacity-70 cursor-not-allowed' : ''
+                  }`}
+                >
+                  <FiTrash2 className="inline mr-2" size={14} />
+                  Delete Selected ({selectedIds.length})
+                </button>
+              )}
+              <button
+                onClick={handleClearAll}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  darkMode 
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                    : 'bg-red-100 text-red-600 hover:bg-red-200'
+                }`}
+              >
+                <FiTrash2 className="inline mr-2" size={14} />
+                Clear All ({discardedBills.length})
+              </button>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={fetchDiscardedBills}

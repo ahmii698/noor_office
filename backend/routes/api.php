@@ -54,6 +54,7 @@ Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/low-stock', [ProductController::class, 'lowStock']);
 Route::get('/products/vendor/{vendorId}', [ProductController::class, 'getByVendor']);
 Route::get('/products/{id}', [ProductController::class, 'show']);
+Route::get('/products/{id}/history', [ProductController::class, 'history']); // ✅ NEW: product history (eye button)
 Route::post('/products', [ProductController::class, 'store']);
 Route::put('/products/{id}', [ProductController::class, 'update']);
 Route::patch('/products/{id}', [ProductController::class, 'patch']);

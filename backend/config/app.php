@@ -15,6 +15,11 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+
+    'salary_system_start' => '2026-10-01',
+
+
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment
@@ -124,3 +129,6 @@ return [
     ],
 
 ];
+
+
+

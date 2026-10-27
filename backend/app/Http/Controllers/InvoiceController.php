@@ -44,6 +44,20 @@ class InvoiceController extends Controller
         }
     }
 
+    // ✅ NEW: serial_numbers ko hamesha array bana do (model cast se array aata hai,
+    // DB::table() se JSON string aata hai — dono handle ho jayenge)
+    private function decodeSerials($value)
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if (is_string($value) && $value !== '') {
+            $decoded = json_decode($value, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+        return [];
+    }
+
     public function index()
     {
         try {
@@ -82,6 +96,7 @@ class InvoiceController extends Controller
                             'service_name' => $item->service_name,
                             'service_category' => $item->service_category,
                             'mileage' => $item->mileage,
+                            'serial_numbers' => $this->decodeSerials($item->serial_numbers), // ✅ NEW
                             'quantity' => $item->quantity,
                             'price' => $item->price,
                             'total' => $item->total
@@ -136,6 +151,7 @@ class InvoiceController extends Controller
                         'service_name' => $item->service_name,
                         'service_category' => $item->service_category,
                         'mileage' => $item->mileage,
+                        'serial_numbers' => $this->decodeSerials($item->serial_numbers), // ✅ NEW
                         'quantity' => $item->quantity,
                         'price' => $item->price,
                         'total' => $item->total
@@ -178,6 +194,8 @@ class InvoiceController extends Controller
                 'items.*.service_name' => 'required|string',
                 'items.*.service_category' => 'nullable|string',
                 'items.*.mileage' => 'nullable|integer|min:0',
+                'items.*.serial_numbers' => 'nullable|array',        // ✅ NEW: battery serial codes
+                'items.*.serial_numbers.*' => 'nullable|string|max:100', // ✅ NEW
                 'items.*.price' => 'required|numeric|min:0',
                 'items.*.quantity' => 'required|integer|min:1'
             ]);
@@ -219,10 +237,10 @@ class InvoiceController extends Controller
             // mein nahi aana chahiye.
             $isTradeIn = ($validated['status'] ?? null) === 'Trade-in';
 
-           if ($isTradeIn) {
-    $status = 'Paid';
-    $remainingAmount = 0;
-}elseif ($paidAmount >= $totalAmount) {
+            if ($isTradeIn) {
+                $status = 'Paid';
+                $remainingAmount = 0;
+            } elseif ($paidAmount >= $totalAmount) {
                 $status = 'Paid';
             } elseif ($paidAmount > 0) {
                 $status = 'Partial';
@@ -277,11 +295,27 @@ class InvoiceController extends Controller
             }
 
             foreach ($validated['items'] as $item) {
+                // ✅ NEW: khali serials hata do, trim karo
+                $serials = collect($item['serial_numbers'] ?? [])
+                    ->map(fn($s) => trim((string) $s))
+                    ->filter(fn($s) => $s !== '')
+                    ->values()
+                    ->all();
+
+                // ✅ NEW: serials ki ginti quantity se zyada nahi honi chahiye
+                if (count($serials) > $item['quantity']) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'items' => ["Serial numbers ki ginti quantity se zyada hai: {$item['service_name']}"]
+                    ]);
+                }
+
                 DB::table('invoice_items')->insert([
                     'invoice_id' => $invoiceId,
                     'service_name' => $item['service_name'],
                     'service_category' => $item['service_category'] ?? 'Service',
                     'mileage' => $item['mileage'] ?? null,
+                    // ✅ NEW: DB::table() cast nahi lagata, isliye khud json_encode
+                    'serial_numbers' => !empty($serials) ? json_encode($serials) : null,
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     'total' => $item['price'] * $item['quantity'],
@@ -321,6 +355,7 @@ class InvoiceController extends Controller
                         'service_name' => $item->service_name,
                         'service_category' => $item->service_category,
                         'mileage' => $item->mileage,
+                        'serial_numbers' => $this->decodeSerials($item->serial_numbers), // ✅ NEW
                         'quantity' => $item->quantity,
                         'price' => $item->price,
                         'total' => $item->total
@@ -412,6 +447,7 @@ class InvoiceController extends Controller
                             'service_name' => $item->service_name,
                             'service_category' => $item->service_category,
                             'mileage' => $item->mileage,
+                            'serial_numbers' => $this->decodeSerials($item->serial_numbers), // ✅ NEW
                             'quantity' => $item->quantity,
                             'price' => $item->price,
                             'total' => $item->total
@@ -521,6 +557,7 @@ class InvoiceController extends Controller
                             'service_name' => $item->service_name,
                             'service_category' => $item->service_category,
                             'mileage' => $item->mileage,
+                            'serial_numbers' => $this->decodeSerials($item->serial_numbers), // ✅ NEW
                             'quantity' => $item->quantity,
                             'price' => $item->price,
                             'total' => $item->total
@@ -612,7 +649,8 @@ class InvoiceController extends Controller
                             'price' => (float) $item->price,
                             'quantity' => $item->quantity,
                             'total' => (float) $item->total,
-                            'mileage' => $item->mileage
+                            'mileage' => $item->mileage,
+                            'serial_numbers' => $this->decodeSerials($item->serial_numbers) // ✅ NEW
                         ];
                     })
                 ];

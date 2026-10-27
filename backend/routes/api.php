@@ -149,6 +149,15 @@ Route::prefix('employee-payments')->group(function () {
     Route::delete('/{id}', [EmployeeController::class, 'deletePayment']);
 });
 
+// ✅ ==================== EMPLOYEE LOAN ROUTES ====================
+Route::prefix('employee-loans')->group(function () {
+    Route::post('/', [EmployeeController::class, 'giveLoan']);
+    Route::post('/repay', [EmployeeController::class, 'repayLoan']);
+    Route::get('/{employeeId}/history', [EmployeeController::class, 'loanHistory']);
+    Route::delete('/loan/{id}', [EmployeeController::class, 'deleteLoan']);
+    Route::delete('/repayment/{id}', [EmployeeController::class, 'deleteLoanRepayment']);
+});
+
 // ==================== ESTIMATES ROUTES ====================
 Route::prefix('estimates')->group(function () {
     // Main CRUD

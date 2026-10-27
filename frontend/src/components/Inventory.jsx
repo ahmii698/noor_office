@@ -1313,7 +1313,7 @@ const Inventory = ({ darkMode }) => {
           <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-sm opacity-90">{getStatsLabelText()} Purchase Total</p>
+                <p className="text-sm opacity-90">Inventory Cost</p>
                 <p className="text-3xl font-bold mt-2">Rs. {filteredStats.totalPurchase.toLocaleString()}</p>
                 <p className="text-xs opacity-75 mt-2">{getStatsLabelText().toLowerCase()} purchases</p>
               </div>

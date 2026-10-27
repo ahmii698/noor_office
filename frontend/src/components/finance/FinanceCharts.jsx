@@ -50,6 +50,33 @@ const isTradeInInvoice = (inv) => {
   return items.length > 0 && items.every(it => it && it.service_category === 'Battery');
 };
 
+// =====================================================================
+// 💼 Salary helpers (Dashboard jaisa rule): Salary + Advance = expense,
+// Loan = expense NAHI (wapas aane wala paisa)
+// =====================================================================
+const isLoanPayment = (p) =>
+  String(p?.payment_type || p?.type || '').toLowerCase().includes('loan');
+
+// Employees ki salary/advance payments ko expense-entries mein badalta hai
+const salaryPaymentsAsExpenses = (employees) => {
+  const list = [];
+  (Array.isArray(employees) ? employees : []).forEach(emp => {
+    (Array.isArray(emp?.payments) ? emp.payments : []).forEach(p => {
+      if (!p || isLoanPayment(p)) return;
+      const isAdvance = String(p?.payment_type || p?.type || '').toLowerCase().includes('advance');
+      list.push({
+        id: `salary-${emp.id}-${p.id}`,
+        description: `${isAdvance ? 'Advance' : 'Salary'} - ${emp.name}`,
+        category: isAdvance ? 'Advance' : 'Salary',
+        amount: parseFloat(p.amount) || 0,
+        date: p.payment_date || p.date || p.created_at,
+        isSalary: true
+      });
+    });
+  });
+  return list;
+};
+
 const FinanceCharts = ({ darkMode }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [compareYear, setCompareYear] = useState(null);
@@ -61,6 +88,7 @@ const FinanceCharts = ({ darkMode }) => {
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [oldBatteries, setOldBatteries] = useState([]);
   const [inventoryStats, setInventoryStats] = useState({
     totalPurchase: 0,
     totalSelling: 0,
@@ -68,11 +96,14 @@ const FinanceCharts = ({ darkMode }) => {
   });
   const [monthlyData, setMonthlyData] = useState([]);
   const [yearlyOverview, setYearlyOverview] = useState({
-    totalRevenue: 0,       // Total Sales
-    totalExpenses: 0,      // Manual expenses (Expenses page wale)
-    totalInventoryExpense: 0, // Inventory kitni kharidi gayi (purchase cost)
-    totalProfit: 0,        // Inventory/products bechne se profit (discount ke baad)
-    totalNetProfit: 0,     // Profit - Total Expenses (haath mein bacha hua)
+    totalRevenue: 0,            // Total Sales
+    totalExpenses: 0,           // Manual expenses + Salary/Advance (Expenses page wale)
+    totalSalaryExpense: 0,      // Sirf Salary/Advance payments
+    totalInventoryExpense: 0,   // Inventory + Old Battery purchase cost (dono ka jod)
+    totalProductExpense: 0,     // Sirf inventory (products) purchase cost
+    totalOldBatteryExpense: 0,  // Sirf old battery purchase cost
+    totalProfit: 0,             // Inventory/products bechne se profit (discount ke baad)
+    totalNetProfit: 0,          // Profit - Total Expenses (haath mein bacha hua)
     profitMargin: 0
   });
 
@@ -109,6 +140,18 @@ const FinanceCharts = ({ darkMode }) => {
     }
   }, []);
 
+  // Fetch employees (salary + advance payments yahin se aate hain, Dashboard jaisa)
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const response = await api.get('/employees');
+      const raw = response.data;
+      return Array.isArray(raw?.data) ? raw.data : (Array.isArray(raw) ? raw : []);
+    } catch (err) {
+      console.error('Error fetching employees:', err);
+      return [];
+    }
+  }, []);
+
   // Fetch invoices from API for sales data
   const fetchInvoices = useCallback(async () => {
     try {
@@ -120,6 +163,21 @@ const FinanceCharts = ({ darkMode }) => {
       return [];
     } catch (err) {
       console.error('Error fetching invoices:', err);
+      return [];
+    }
+  }, []);
+
+  // Fetch old batteries (purchase cost = trade_in_amount, Dashboard jaisa)
+  const fetchOldBatteries = useCallback(async () => {
+    try {
+      const response = await api.get('/old-batteries', { params: { status: 'all' } });
+      const list = Array.isArray(response.data)
+        ? response.data
+        : (Array.isArray(response.data?.data) ? response.data.data : []);
+      setOldBatteries(list);
+      return list;
+    } catch (err) {
+      console.error('Error fetching old batteries:', err);
       return [];
     }
   }, []);
@@ -141,7 +199,7 @@ const FinanceCharts = ({ darkMode }) => {
   }, []);
 
   // Monthly data (Dashboard jaisi logic)
-  const calculateMonthlyData = useCallback((year, productsList, expensesList, invoicesList) => {
+  const calculateMonthlyData = useCallback((year, productsList, expensesList, invoicesList, oldBatteriesList) => {
     const months = [];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -205,7 +263,7 @@ const FinanceCharts = ({ darkMode }) => {
       // Profit = products bechne se hua profit (discount / trade-in kat kar)
       const monthProfit = monthGrossProfit - monthDiscount - monthTradeIn;
 
-      // Total Expenses = sirf manual expenses (Expenses page wale)
+      // Total Expenses = manual expenses + Salary/Advance payments
       const monthExpenses = expensesList.filter(exp => {
         const rawDate = exp.expense_date || exp.date || exp.created_at;
         if (!rawDate) return false;
@@ -213,28 +271,45 @@ const FinanceCharts = ({ darkMode }) => {
         return expDate.getMonth() === i && expDate.getFullYear() === year;
       });
       const totalExpenses = monthExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
+      const salaryExpense = monthExpenses
+        .filter(exp => exp.isSalary)
+        .reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
 
-      // Inventory Expense = us mahine mein jitni inventory aayi (purchase price x kharidi hui qty)
+      // Product Expense = us mahine mein jitni inventory aayi (purchase price x kharidi hui qty)
       const monthProducts = productsList.filter(p => {
         const rawDate = p.date_added || p.created_at;
         if (!rawDate) return false;
         const productDate = new Date(rawDate);
         return productDate.getMonth() === i && productDate.getFullYear() === year;
       });
-      const inventoryExpense = monthProducts.reduce((sum, p) => {
+      const productExpense = monthProducts.reduce((sum, p) => {
         const purchasedQty = (parseInt(p.quantity) || 0) + (soldQtyByProduct[p.name] || 0);
         return sum + (parseFloat(p.purchase_price) || 0) * purchasedQty;
       }, 0);
 
-      // Net Profit = Profit - Total Expenses (haath mein bacha hua)
-      const netProfit = monthProfit - totalExpenses;
+      // Old Battery Expense = us mahine mein jitni purani batteries khareedi (trade_in_amount)
+      const oldBatteryExpense = oldBatteriesList
+        .filter(b => {
+          const d = new Date(b.purchase_date || b.created_at);
+          return !isNaN(d.getTime()) && d.getMonth() === i && d.getFullYear() === year;
+        })
+        .reduce((sum, b) => sum + (parseFloat(b.trade_in_amount) || 0), 0);
+
+      // Inventory Expense = Products + Old Batteries (dono ka purchase cost)
+      const inventoryExpense = productExpense + oldBatteryExpense;
+
+      // Net Profit = Profit - Total Expenses - Inventory Expense (haath mein bacha hua)
+      const netProfit = monthProfit - totalExpenses - inventoryExpense;
 
       months.push({
         month: monthNames[i],
         monthIndex: i,
         revenue: monthSales,
         expenses: totalExpenses,
+        salaryExpense: salaryExpense,
         inventoryExpense: inventoryExpense,
+        productExpense: productExpense,
+        oldBatteryExpense: oldBatteryExpense,
         purchase: inventoryExpense, // purana naam (agar FinancialCharts use kar raha ho)
         profit: monthProfit,
         netProfit: netProfit,
@@ -251,15 +326,21 @@ const FinanceCharts = ({ darkMode }) => {
   const calculateYearlyOverview = useCallback((monthly) => {
     const totalRevenue = monthly.reduce((sum, m) => sum + m.revenue, 0);
     const totalExpenses = monthly.reduce((sum, m) => sum + m.expenses, 0);
-    const totalInventoryExpense = monthly.reduce((sum, m) => sum + m.inventoryExpense, 0);
+    const totalSalaryExpense = monthly.reduce((sum, m) => sum + (m.salaryExpense || 0), 0);
+    const totalProductExpense = monthly.reduce((sum, m) => sum + m.productExpense, 0);
+    const totalOldBatteryExpense = monthly.reduce((sum, m) => sum + m.oldBatteryExpense, 0);
+    const totalInventoryExpense = totalProductExpense + totalOldBatteryExpense;
     const totalProfit = monthly.reduce((sum, m) => sum + m.profit, 0);
-    const totalNetProfit = totalProfit - totalExpenses;
+    const totalNetProfit = totalProfit - totalExpenses - totalInventoryExpense;
     const profitMargin = totalRevenue > 0 ? (totalNetProfit / totalRevenue) * 100 : 0;
 
     setYearlyOverview({
       totalRevenue,
       totalExpenses,
+      totalSalaryExpense,
       totalInventoryExpense,
+      totalProductExpense,
+      totalOldBatteryExpense,
       totalProfit,
       totalNetProfit,
       profitMargin
@@ -272,15 +353,27 @@ const FinanceCharts = ({ darkMode }) => {
     setError(null);
 
     try {
-      const [productsList, expensesList, invoicesList] = await Promise.all([
+      const [productsList, manualExpenses, invoicesList, oldBatteriesList, employeesList] = await Promise.all([
         fetchProducts(),
         fetchExpenses(),
-        fetchInvoices()
+        fetchInvoices(),
+        fetchOldBatteries(),
+        fetchEmployees()
       ]);
+
+      // Manual expenses + Salary/Advance payments (Loan shamil nahi)
+      const expensesList = [...manualExpenses, ...salaryPaymentsAsExpenses(employeesList)];
+      setExpenses(expensesList); // availableYears bhi salary ke saal dekh sake
 
       calculateInventoryStats(productsList);
 
-      const monthlyChartData = calculateMonthlyData(selectedYear, productsList, expensesList, invoicesList);
+      const monthlyChartData = calculateMonthlyData(
+        selectedYear,
+        productsList,
+        expensesList,
+        invoicesList,
+        oldBatteriesList
+      );
       setMonthlyData(monthlyChartData);
 
       calculateYearlyOverview(monthlyChartData);
@@ -291,14 +384,14 @@ const FinanceCharts = ({ darkMode }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, calculateInventoryStats, calculateMonthlyData, calculateYearlyOverview]);
+  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, fetchOldBatteries, fetchEmployees, calculateInventoryStats, calculateMonthlyData, calculateYearlyOverview]);
 
   // Reload data when selected year changes
   useEffect(() => {
     loadChartData();
   }, [selectedYear, loadChartData]);
 
-  // Available years from invoices and expenses
+  // Available years from invoices, expenses and old batteries
   const availableYears = useMemo(() => {
     const years = new Set();
 
@@ -315,8 +408,15 @@ const FinanceCharts = ({ darkMode }) => {
       }
     });
 
+    oldBatteries.forEach(b => {
+      const d = new Date(b.purchase_date || b.created_at);
+      if (!isNaN(d.getTime())) {
+        years.add(d.getFullYear());
+      }
+    });
+
     return Array.from(years).sort((a, b) => b - a);
-  }, [invoices, expenses]);
+  }, [invoices, expenses, oldBatteries]);
 
   const monthHasData = (m) => m.revenue > 0 || m.expenses > 0 || m.inventoryExpense > 0;
 
@@ -336,7 +436,10 @@ const FinanceCharts = ({ darkMode }) => {
       'Month': m.month,
       'Total Sales (Rs.)': m.revenue,
       'Total Expenses (Rs.)': m.expenses,
+      'Salary & Advance (Rs.)': m.salaryExpense,
       'Inventory Expense (Rs.)': m.inventoryExpense,
+      'Inventory Purchases (Rs.)': m.productExpense,
+      'Old Battery Purchases (Rs.)': m.oldBatteryExpense,
       'Profit (Rs.)': m.profit,
       'Net Profit (Rs.)': m.netProfit,
       'Items Sold': m.itemsSold,
@@ -348,10 +451,13 @@ const FinanceCharts = ({ darkMode }) => {
     // Sheet 2: Summary
     const summaryData = [
       { 'Metric': 'Total Sales', 'Value': `Rs. ${yearlyOverview.totalRevenue.toLocaleString()}` },
-      { 'Metric': 'Total Expenses', 'Value': `Rs. ${yearlyOverview.totalExpenses.toLocaleString()}` },
-      { 'Metric': 'Total Inventory Expense', 'Value': `Rs. ${yearlyOverview.totalInventoryExpense.toLocaleString()}` },
+      { 'Metric': 'Total Expenses (Incl. Salary & Advance)', 'Value': `Rs. ${yearlyOverview.totalExpenses.toLocaleString()}` },
+      { 'Metric': 'Salary & Advance Payments', 'Value': `Rs. ${yearlyOverview.totalSalaryExpense.toLocaleString()}` },
+      { 'Metric': 'Total Inventory Expense (Incl. Old Battery)', 'Value': `Rs. ${yearlyOverview.totalInventoryExpense.toLocaleString()}` },
+      { 'Metric': 'Inventory Purchases', 'Value': `Rs. ${yearlyOverview.totalProductExpense.toLocaleString()}` },
+      { 'Metric': 'Old Battery Purchases', 'Value': `Rs. ${yearlyOverview.totalOldBatteryExpense.toLocaleString()}` },
       { 'Metric': 'Profit (Products Sale)', 'Value': `Rs. ${yearlyOverview.totalProfit.toLocaleString()}` },
-      { 'Metric': 'Net Profit (Profit - Expenses)', 'Value': `Rs. ${yearlyOverview.totalNetProfit.toLocaleString()}` },
+      { 'Metric': 'Net Profit (Profit - Expenses - Inventory)', 'Value': `Rs. ${yearlyOverview.totalNetProfit.toLocaleString()}` },
       { 'Metric': 'Net Profit Margin', 'Value': `${yearlyOverview.profitMargin.toFixed(1)}%` },
       { 'Metric': 'Year', 'Value': selectedYear }
     ];
@@ -393,10 +499,14 @@ const FinanceCharts = ({ darkMode }) => {
     // Summary Stats
     doc.setFontSize(10);
     doc.text(`Total Sales: Rs. ${yearlyOverview.totalRevenue.toLocaleString()}`, 14, 30);
-    doc.text(`Total Expenses: Rs. ${yearlyOverview.totalExpenses.toLocaleString()}`, 14, 36);
-    doc.text(`Total Inventory Expense: Rs. ${yearlyOverview.totalInventoryExpense.toLocaleString()}`, 14, 42);
+    doc.text(`Total Expenses: Rs. ${yearlyOverview.totalExpenses.toLocaleString()}  [Salary & Advance: Rs. ${yearlyOverview.totalSalaryExpense.toLocaleString()}]`, 14, 36);
+    doc.text(
+      `Total Inventory Expense: Rs. ${yearlyOverview.totalInventoryExpense.toLocaleString()}  [Inventory: Rs. ${yearlyOverview.totalProductExpense.toLocaleString()} | Old Batt: Rs. ${yearlyOverview.totalOldBatteryExpense.toLocaleString()}]`,
+      14,
+      42
+    );
     doc.text(`Profit (Products Sale): Rs. ${yearlyOverview.totalProfit.toLocaleString()}`, 14, 48);
-    doc.text(`Net Profit (Profit - Expenses): Rs. ${yearlyOverview.totalNetProfit.toLocaleString()}  (${yearlyOverview.profitMargin.toFixed(1)}%)`, 14, 54);
+    doc.text(`Net Profit (Profit - Expenses - Inventory): Rs. ${yearlyOverview.totalNetProfit.toLocaleString()}  (${yearlyOverview.profitMargin.toFixed(1)}%)`, 14, 54);
 
     // Monthly Data Table
     const tableData = monthlyData.map(m => [
@@ -502,18 +612,22 @@ const FinanceCharts = ({ darkMode }) => {
           <p className="text-xs text-gray-400">Year {selectedYear}</p>
         </div>
 
-        {/* 2. Total Expenses (jaisa pehle tha) */}
+        {/* 2. Total Expenses (Manual + Salary/Advance) */}
         <div className={cardClass}>
           <p className="text-sm text-gray-500">Total Expenses</p>
           <p className="text-2xl font-bold text-red-500">Rs. {yearlyOverview.totalExpenses.toLocaleString()}</p>
-          <p className="text-xs text-gray-400">Year {selectedYear}</p>
+          <p className="text-xs text-gray-400">
+            Salary: Rs. {yearlyOverview.totalSalaryExpense.toLocaleString()} + Other: Rs. {(yearlyOverview.totalExpenses - yearlyOverview.totalSalaryExpense).toLocaleString()}
+          </p>
         </div>
 
-        {/* 3. Total Inventory Expense */}
+        {/* 3. Total Inventory Expense (Inventory + Old Battery) */}
         <div className={cardClass}>
           <p className="text-sm text-gray-500">Total Inventory Expense</p>
           <p className="text-2xl font-bold text-orange-500">Rs. {yearlyOverview.totalInventoryExpense.toLocaleString()}</p>
-          <p className="text-xs text-gray-400">Inventory purchase cost</p>
+          <p className="text-xs text-gray-400">
+            Inventory: Rs. {yearlyOverview.totalProductExpense.toLocaleString()} + Old Batt: Rs. {yearlyOverview.totalOldBatteryExpense.toLocaleString()}
+          </p>
         </div>
 
         {/* 4. Profit (products bechne se) */}
@@ -531,7 +645,7 @@ const FinanceCharts = ({ darkMode }) => {
           <p className={`text-2xl font-bold ${yearlyOverview.totalNetProfit >= 0 ? 'text-purple-500' : 'text-red-500'}`}>
             Rs. {yearlyOverview.totalNetProfit.toLocaleString()}
           </p>
-          <p className="text-xs text-gray-400">Profit - Expenses ({yearlyOverview.profitMargin.toFixed(1)}%)</p>
+          <p className="text-xs text-gray-400">Profit - Expenses - Inventory ({yearlyOverview.profitMargin.toFixed(1)}%)</p>
         </div>
       </div>
 

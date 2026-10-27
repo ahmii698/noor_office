@@ -237,11 +237,20 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
   const [mileageValue, setMileageValue] = useState('');
   const [mileageItem, setMileageItem] = useState(null);
   const [mileageItemType, setMileageItemType] = useState('service');
+
+  // ✅ Serial Number Modal states (Battery sell karte waqt har battery ka alag serial code)
+  const [isSerialModalOpen, setIsSerialModalOpen] = useState(false);
+  const [serialItem, setSerialItem] = useState(null);
+  const [serialQty, setSerialQty] = useState(1);
+  const [serialValues, setSerialValues] = useState(['']);
+  const [editingSerialId, setEditingSerialId] = useState(null);
   
   // Draft Bill states
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
-  // ✅ Trade-in (old battery) rows — sirf tab dikhengi jab cart mein Battery ho
+  // ✅ Trade-in (old battery) rows
+  // - Cart mein Battery ho to: trade-in discount ki tarah kaam karti hain
+  // - Cart khali ho to: "Only Old Battery Purchase" (direct khareedna) ke liye use hoti hain
   const [tradeInItems, setTradeInItems] = useState([makeTradeInRow()]);
   
   const isProcessingRef = useRef(false);
@@ -275,10 +284,16 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     return roundToTwo(total);
   }, [cart]);
 
-  // ✅ Trade-in (old battery) — sirf tab jab cart mein Battery ho
+  // ✅ Trade-in (old battery)
   const hasBatteryInCart = cart.some(i => i.type === 'product' && isBatteryProduct(i));
 
-  const validTradeIns = hasBatteryInCart
+  // ✅ NEW: Cart khali hai => sirf old battery khareedne ka mode (new battery sell kiye baghair)
+  const isOldBatteryOnlyMode = cart.length === 0;
+
+  // Trade-in rows tab valid maani jayengi jab: cart mein Battery ho YA only-old-battery mode ho
+  const tradeInActive = hasBatteryInCart || isOldBatteryOnlyMode;
+
+  const validTradeIns = tradeInActive
     ? tradeInItems.filter(row => row.name.trim() !== '' && parseFloat(row.price) > 0)
     : [];
 
@@ -568,7 +583,8 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
           type: item.type || 'service',
           mileage: item.mileage || null,
           category: item.category || null,
-          trade_in_amount: item.trade_in_amount ?? null
+          trade_in_amount: item.trade_in_amount ?? null,
+          serial_numbers: item.serial_numbers ?? null
         })),
         cart_summary: {
           total_items: cart.reduce((sum, i) => sum + i.quantity, 0),
@@ -821,8 +837,14 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
   };
 
   // Add to bill
+  // ✅ Battery par click => Serial modal
   // ✅ Mileage popup sirf: "oil change" (service), "tuning" (service), "oil" (product) par aayega
   const addToBill = (item, type) => {
+    if (type === 'product' && isBatteryProduct(item)) {
+      openSerialModal(item);
+      return;
+    }
+
     if (needsMileage(item, type)) {
       setMileageItem(item);
       setMileageItemType(type);
@@ -834,7 +856,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     addItemToBill(item, type);
   };
 
-  const addItemToBill = (item, type, mileage = null) => {
+  const addItemToBill = (item, type, mileage = null, extra = {}) => {
     const currentStock = type === 'product' ? getProductStock(item.id) : null;
     if (currentStock !== null && currentStock <= 0) {
       toast.error(`${item.name} is out of stock!`);
@@ -850,7 +872,8 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
       quantity: 1, 
       type: type,
       price: type === 'service' ? item.price : item.selling_price,
-      mileage: mileage
+      mileage: mileage,
+      ...extra // ✅ quantity + serial_numbers yahan override honge
     }]);
     toast.success(`${item.name} added`);
   };
@@ -904,6 +927,84 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     closeMileageModal();
   };
 
+  // ==================== ✅ SERIAL NUMBER (BATTERY) FUNCTIONS ====================
+  // existingCartItem diya ho to "Edit serial" mode, warna nayi battery add
+  const openSerialModal = (item, existingCartItem = null) => {
+    if (existingCartItem) {
+      setSerialItem(item);
+      setSerialQty(existingCartItem.quantity);
+      setSerialValues(
+        Array.from({ length: existingCartItem.quantity }, (_, i) => existingCartItem.serial_numbers?.[i] || '')
+      );
+      setEditingSerialId(existingCartItem.id);
+    } else {
+      if (getProductStock(item.id) <= 0) {
+        toast.error(`${item.name} is out of stock!`);
+        return;
+      }
+      if (cart.find(c => c.id === item.id && c.type === 'product')) {
+        toast.error(`${item.name} already added to bill`);
+        return;
+      }
+      setSerialItem(item);
+      setSerialQty(1);
+      setSerialValues(['']);
+      setEditingSerialId(null);
+    }
+    setIsSerialModalOpen(true);
+  };
+
+  const closeSerialModal = () => {
+    setIsSerialModalOpen(false);
+    setSerialItem(null);
+    setSerialQty(1);
+    setSerialValues(['']);
+    setEditingSerialId(null);
+  };
+
+  const changeSerialQty = (newQty) => {
+    const stock = getProductStock(serialItem.id);
+    if (newQty < 1) return;
+    if (newQty > stock) {
+      toast.error(`Only ${stock} items available in stock`);
+      return;
+    }
+    setSerialQty(newQty);
+    setSerialValues(prev => Array.from({ length: newQty }, (_, i) => prev[i] || ''));
+  };
+
+  const handleSerialSubmit = () => {
+    const trimmed = serialValues.map(s => s.trim());
+    if (trimmed.some(s => !s)) {
+      toast.error('Har battery ka serial code daalein');
+      return;
+    }
+    const lower = trimmed.map(s => s.toLowerCase());
+    if (new Set(lower).size !== lower.length) {
+      toast.error('Serial code duplicate hai');
+      return;
+    }
+    // doosri cart batteries ke serials se bhi match na ho
+    const others = cart
+      .filter(c => c.type === 'product' && c.serial_numbers && c.id !== editingSerialId)
+      .flatMap(c => c.serial_numbers.map(s => s.toLowerCase()));
+    if (lower.some(s => others.includes(s))) {
+      toast.error('Yeh serial code bill mein pehle se maujood hai');
+      return;
+    }
+
+    if (editingSerialId) {
+      setCart(cart.map(i =>
+        i.type === 'product' && i.id === editingSerialId
+          ? { ...i, quantity: serialQty, serial_numbers: trimmed }
+          : i
+      ));
+    } else {
+      addItemToBill(serialItem, 'product', null, { quantity: serialQty, serial_numbers: trimmed });
+    }
+    closeSerialModal();
+  };
+
   const updateQuantity = (id, newQuantity, type) => {
     if (newQuantity < 1) {
       removeFromBill(id, type);
@@ -916,9 +1017,20 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
         return;
       }
     }
-    setCart(cart.map(item => 
-      item.id === id && item.type === type ? { ...item, quantity: newQuantity } : item
-    ));
+    setCart(cart.map(item => {
+      if (item.id === id && item.type === type) {
+        // ✅ Battery ki quantity badle to serial array bhi sync ho
+        if (type === 'product' && isBatteryProduct(item)) {
+          return {
+            ...item,
+            quantity: newQuantity,
+            serial_numbers: Array.from({ length: newQuantity }, (_, i) => item.serial_numbers?.[i] || '')
+          };
+        }
+        return { ...item, quantity: newQuantity };
+      }
+      return item;
+    }));
   };
 
   const removeFromBill = (id, type) => {
@@ -982,6 +1094,7 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
         <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">
           ${item.name}
           ${item.mileage ? `<br/><span style="font-size:9px;color:#666;">Mileage: ${item.mileage} km</span>` : ''}
+          ${item.serial_numbers?.length ? `<br/><span style="font-size:9px;color:#666;">Serial: ${item.serial_numbers.join(', ')}</span>` : ''}
         </td>
         <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${getItemTypeLabel(item)}</td>
         <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity}</td>
@@ -1340,11 +1453,194 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
     toast.success('Print preview opened');
   };
 
+  // ==================== ✅ ONLY OLD BATTERY PURCHASE ====================
+  // Receipt HTML (sirf old battery khareedne ki receipt)
+  const buildOldBatteryReceiptHtml = (rows, total, receiptNo) => {
+    const dateStr = (customerDetails?.date ? new Date(customerDetails.date) : new Date())
+      .toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+
+    const rowsHtml = rows.map((row, idx) => `
+      <tr>
+        <td style="text-align:center;">${idx + 1}</td>
+        <td>${row.name.trim()}</td>
+        <td style="text-align:right;">Rs. ${(parseFloat(row.price) || 0).toLocaleString()}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Noorani Car AC - Old Battery Purchase</title>
+          <meta charset="UTF-8">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; background: #f0f0f0; }
+            .box { max-width: 800px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); overflow: hidden; }
+            .header { padding: 18px 20px; border-bottom: 2px solid #dc2626; display: flex; align-items: center; gap: 20px; }
+            .header img { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; border: 3px solid #dc2626; }
+            .header .txt { flex: 1; text-align: center; }
+            .header .shop { font-size: 24px; font-weight: bold; color: #1f2937; letter-spacing: 1px; }
+            .header .sub { font-size: 13px; color: #6b7280; }
+            .title { text-align: center; padding: 12px; font-weight: bold; font-size: 16px; color: #7c3aed; letter-spacing: 1px; }
+            .info { margin: 0 15px 15px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; font-size: 12px; }
+            .info div { padding: 2px 0; }
+            .info b { display: inline-block; min-width: 100px; color: #4b5563; }
+            table { width: calc(100% - 30px); margin: 0 15px 15px; border-collapse: collapse; }
+            th, td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; text-align: left; }
+            th { background: #1f2937; color: white; }
+            .total { margin: 0 15px 15px; padding: 10px 15px; border-top: 2px solid #dc2626; display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; }
+            .total span:last-child { color: #dc2626; }
+            .signature { margin: 15px; display: flex; justify-content: space-between; padding-top: 20px; font-size: 11px; }
+            .signature p { border-top: 1px solid #000; padding-top: 6px; min-width: 120px; }
+            .footer { padding: 12px 15px; background: #f8f9fa; border-top: 1px solid #e5e7eb; font-size: 11px; color: #4b5563; text-align: center; }
+            .actions { text-align: center; margin: 20px auto 0; padding: 15px; background: white; border-radius: 12px; max-width: 800px; }
+            .actions button { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; margin: 0 8px; color: white; }
+            .p { background: #dc2626; } .c { background: #6b7280; }
+            @media print { body { background: white; padding: 0; } .actions { display: none; } .box { box-shadow: none; border-radius: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <div class="header">
+              <img src="${logo}" alt="Logo" />
+              <div class="txt">
+                <div class="shop">NOORANI CAR A/C & AUTOS</div>
+                <div class="sub">Professional Auto Care Service</div>
+              </div>
+            </div>
+            <div class="title">OLD BATTERY PURCHASE RECEIPT</div>
+            <div class="info">
+              <div><b>Customer:</b> ${customerDetails?.name?.trim() || 'Walk-in'}</div>
+              <div><b>Phone:</b> ${customerDetails?.phone?.trim() || 'N/A'}</div>
+              <div><b>Receipt #:</b> ${receiptNo}</div>
+              <div><b>Date:</b> ${dateStr}</div>
+            </div>
+            <table>
+              <thead>
+                <tr><th style="text-align:center;width:30px;">#</th><th>Old Battery</th><th style="text-align:right;width:120px;">Purchase Price</th></tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+            <div class="total"><span>TOTAL PAID TO CUSTOMER</span><span>Rs. ${roundToTwo(total).toLocaleString()}</span></div>
+            <div class="signature">
+              <p>Customer Signature: _________________</p>
+              <p>Authorized Signature: _________________</p>
+            </div>
+            <div class="footer">
+              <div>Shop # 02, Hospital, Gulshan Luxury Apartments, Near Al Mustafa St, Gulshan 13-B Block 13 B Gulshan-e-Iqbal, Karachi</div>
+              <div style="margin-top:3px;">📞 0337 3267363</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="p" onclick="window.print()">🖨️ Print</button>
+            <button class="c" onclick="window.close()">✖ Close</button>
+          </div>
+          <script>setTimeout(function() { window.print(); }, 500);</script>
+        </body>
+      </html>
+    `;
+  };
+
+  // ✅ Direct old battery khareedo (bina new battery sell kiye) + optional receipt print
+  const handleOldBatteryPurchase = async (printAfter = false) => {
+    if (isProcessingRef.current) return;
+
+    const halfFilled = tradeInItems.find(row =>
+      (row.name.trim() !== '' && !(parseFloat(row.price) > 0)) ||
+      (row.name.trim() === '' && parseFloat(row.price) > 0)
+    );
+    if (halfFilled) {
+      toast.error('Har old battery ka name aur price dono bharein');
+      return;
+    }
+
+    const rows = tradeInItems.filter(row => row.name.trim() !== '' && parseFloat(row.price) > 0);
+    if (rows.length === 0) {
+      toast.error('Kam az kam aik old battery ka name aur price bharein');
+      return;
+    }
+
+    // Popup click ke saath hi kholna zaroori hai warna browser block kar deta hai
+    let printWindow = null;
+    if (printAfter) {
+      printWindow = window.open('', '_blank', 'width=800,height=600,scrollbars=yes');
+      if (!printWindow) {
+        toast.error('Please allow popups to print receipt');
+        return;
+      }
+    }
+
+    isProcessingRef.current = true;
+    setIsProcessing(true);
+
+    const customerName = customerDetails?.name?.trim() || 'Guest';
+    const customerPhone = customerDetails?.phone?.trim() || 'N/A';
+    const receiptNo = `OBP-${Date.now()}`;
+    const total = rows.reduce((sum, r) => sum + (parseFloat(r.price) || 0), 0);
+
+    const failedRows = [];
+    for (const row of rows) {
+      try {
+        await api.post('/old-batteries', {
+          battery_name: row.name.trim(),
+          trade_in_amount: parseFloat(row.price) || 0,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          note: `Direct old battery purchase (no new battery sale) — ${receiptNo}`,
+          purchase_date: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Error saving old battery purchase:', row, err);
+        failedRows.push(row);
+      }
+    }
+
+    if (failedRows.length === rows.length) {
+      toast.error('Old battery save nahi hui. Dobara try karein.');
+      if (printWindow) printWindow.close();
+    } else {
+      const savedRows = rows.filter(r => !failedRows.includes(r));
+      const savedTotal = savedRows.reduce((sum, r) => sum + (parseFloat(r.price) || 0), 0);
+
+      if (printWindow) {
+        printWindow.document.write(buildOldBatteryReceiptHtml(savedRows, savedTotal, receiptNo));
+        printWindow.document.close();
+        printWindow.focus();
+      }
+
+      if (failedRows.length > 0) {
+        toast.error(`Save nahi hui: ${failedRows.map(r => r.name.trim()).join(', ')}`);
+        setTradeInItems(failedRows.map(r => ({ ...r })));
+      } else {
+        toast.success(`✅ ${savedRows.length} old battery khareed li gayi`);
+        resetTradeInRows();
+        if (onPaymentSuccess) onPaymentSuccess();
+      }
+      await fetchOldBatteries();
+    }
+
+    setTimeout(() => {
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+    }, 500);
+  };
+
   // handlePayment — ✅ FIXED: Added customer_birthday in payload
   const handlePayment = async () => {
     if (isProcessingRef.current || paymentExecutedRef.current) return;
     if (cart.length === 0) {
       toast.error('No items in bill');
+      return;
+    }
+
+    // ✅ Battery serial validation: har battery ka serial code zaroori
+    const batteryMissingSerial = cart.find(i =>
+      i.type === 'product' && isBatteryProduct(i) &&
+      (!i.serial_numbers || i.serial_numbers.length !== i.quantity || i.serial_numbers.some(s => !s?.trim()))
+    );
+    if (batteryMissingSerial) {
+      toast.error(`"${batteryMissingSerial.name}" ke saare serial codes daalein`);
       return;
     }
     
@@ -1464,7 +1760,9 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
               : (isBatteryProduct(item) ? 'Battery' : 'Product'),
           price: roundToTwo(item.price),
           quantity: item.quantity,
-          mileage: item.mileage || null
+          mileage: item.mileage || null,
+          // ✅ Battery ke serial codes (baqi items ke liye null)
+          serial_numbers: item.type === 'product' && isBatteryProduct(item) ? item.serial_numbers : null
         }))
       };
       
@@ -1682,6 +1980,75 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
       : <div className="space-y-2">{cards}</div>;
   };
 
+  // ✅ Trade-in / Old battery rows editor (dono jagah use hota hai: cart wala trade-in + only old battery mode)
+  const renderTradeInEditor = ({ title, totalLabel, hint }) => (
+    <div className={`p-4 rounded-xl border ${darkMode ? 'border-gray-600 bg-gray-700/40' : 'border-gray-200 bg-gray-50'}`}>
+      <div className="flex justify-between items-center mb-3">
+        <label className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+          {title}
+        </label>
+        <button
+          type="button"
+          onClick={addTradeInRow}
+          disabled={isProcessing}
+          className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium hover:bg-red-600 transition flex items-center gap-1 shadow-md"
+        >
+          <FiPlus size={14} /> Add Battery
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {tradeInItems.map((row, idx) => (
+          <div key={row.rowId} className="flex gap-2 items-center">
+            <span className={`text-xs w-5 flex-shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{idx + 1}.</span>
+            <input
+              type="text"
+              placeholder="Battery name (e.g. Osaka)"
+              value={row.name}
+              onChange={(e) => updateTradeInRow(row.rowId, 'name', e.target.value)}
+              className={`flex-1 min-w-0 px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
+              disabled={isProcessing}
+            />
+            <input
+              type="number"
+              placeholder="Price"
+              value={row.price}
+              onChange={(e) => updateTradeInRow(row.rowId, 'price', e.target.value)}
+              className={`w-28 flex-shrink-0 px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
+              min="0"
+              step="0.01"
+              disabled={isProcessing}
+            />
+            <button
+              type="button"
+              onClick={() => removeTradeInRow(row.rowId)}
+              disabled={isProcessing || (tradeInItems.length === 1 && !row.name && !row.price)}
+              className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+              title="Remove"
+            >
+              <FiX size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {validTradeIns.length > 0 && (
+        <div className={`mt-3 pt-3 border-t flex justify-between items-center ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
+          <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            {totalLabel} ({validTradeIns.length} battery)
+          </span>
+          <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+            {isOldBatteryOnlyMode ? '' : '- '}Rs. {totalTradeIn.toLocaleString()}
+          </span>
+        </div>
+      )}
+
+      <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        {hint}
+      </p>
+    </div>
+  );
+
   const tabTitle = activeTab === 'services' ? 'Available Services' : activeTab === 'products' ? 'Parts & Accessories' : activeTab === 'oldbatteries' ? 'Old Batteries' : 'Batteries';
   const tabSearchLabel = activeTab === 'services' ? 'services' : activeTab === 'products' ? 'parts' : activeTab === 'oldbatteries' ? 'old batteries' : 'batteries';
 
@@ -1870,12 +2237,55 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
           
           <div className="p-4">
             {cart.length === 0 ? (
-              <div className="text-center py-16">
-                <div className="w-24 h-24 mx-auto bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-4">
-                  <FiShoppingCart className="text-4xl text-red-500" />
+              <div>
+                <div className="text-center py-8">
+                  <div className="w-24 h-24 mx-auto bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-4">
+                    <FiShoppingCart className="text-4xl text-red-500" />
+                  </div>
+                  <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Cart is empty</p>
+                  <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Click on services, parts, batteries or old batteries to add</p>
                 </div>
-                <p className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Cart is empty</p>
-                <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Click on services, parts, batteries or old batteries to add</p>
+
+                {/* ✅ ONLY OLD BATTERY PURCHASE — sirf Battery tab par dikhay (baqi tabs par nahi) */}
+                {activeTab === 'batteries' && (
+                  <div className={`mt-2 pt-4 border-t-2 ${darkMode ? 'border-gray-600' : 'border-gray-200'}`}>
+                    {renderTradeInEditor({
+                      title: '🔋 Only Old Battery Sell (Customer se old battery khareedein)',
+                      totalLabel: 'Total Payable to Customer',
+                      hint: '💡 New battery sell kiye baghair sirf old battery khareedni hai? Name aur price bharein, phir neeche button dabayein.'
+                    })}
+
+                    <div className="grid grid-cols-2 gap-2 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => handleOldBatteryPurchase(false)}
+                        disabled={isProcessing || validTradeIns.length === 0}
+                        className={`px-3 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 text-sm ${
+                          isProcessing || validTradeIns.length === 0
+                            ? 'bg-gray-400 cursor-not-allowed text-white'
+                            : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white'
+                        }`}
+                      >
+                        {isProcessing ? <FiLoader className="animate-spin" size={18} /> : <FiSave size={18} />}
+                        <span className="truncate">{isProcessing ? 'SAVING...' : 'BUY OLD BATTERY'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOldBatteryPurchase(true)}
+                        disabled={isProcessing || validTradeIns.length === 0}
+                        className={`px-3 py-3 rounded-xl font-semibold transition shadow-lg flex items-center justify-center gap-2 text-sm ${
+                          isProcessing || validTradeIns.length === 0
+                            ? 'bg-gray-400 cursor-not-allowed text-white'
+                            : 'bg-gray-800 hover:bg-gray-700 text-white'
+                        }`}
+                      >
+                        <FiPrinter size={18} />
+                        <span className="truncate">BUY & PRINT BILL</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -1930,6 +2340,21 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                             {getItemTypeLabel(item)} • Rs. {roundToTwo(item.price).toLocaleString()} each
                             {item.mileage && <span className="ml-2 text-blue-500">Mileage: {item.mileage} km</span>}
                           </p>
+                          {/* ✅ Battery serial codes + edit button */}
+                          {item.type === 'product' && isBatteryProduct(item) && (
+                            <div className="mt-1">
+                              <p className={`text-xs ${item.serial_numbers?.some(s => !s) ? 'text-red-500' : 'text-green-600'}`}>
+                                Serial: {item.serial_numbers?.filter(Boolean).join(', ') || 'missing'}
+                              </p>
+                              <button
+                                onClick={() => openSerialModal(item, item)}
+                                className="text-xs text-blue-500 underline"
+                                disabled={isProcessing}
+                              >
+                                Edit serial
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
@@ -1996,73 +2421,11 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
                   </div>
 
                   {/* ✅ TRADE-IN (OLD BATTERY) — sirf tab jab cart mein Battery ho */}
-                  {hasBatteryInCart && (
-                    <div className={`p-4 rounded-xl border ${darkMode ? 'border-gray-600 bg-gray-700/40' : 'border-gray-200 bg-gray-50'}`}>
-                      <div className="flex justify-between items-center mb-3">
-                        <label className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                          Trade-in Batteries (Old Battery)
-                        </label>
-                        <button
-                          type="button"
-                          onClick={addTradeInRow}
-                          disabled={isProcessing}
-                          className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-medium hover:bg-red-600 transition flex items-center gap-1 shadow-md"
-                        >
-                          <FiPlus size={14} /> Add Battery
-                        </button>
-                      </div>
-
-                      <div className="space-y-2">
-                        {tradeInItems.map((row, idx) => (
-                          <div key={row.rowId} className="flex gap-2 items-center">
-                            <span className={`text-xs w-5 flex-shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{idx + 1}.</span>
-                            <input
-                              type="text"
-                              placeholder="Battery name (e.g. Osaka)"
-                              value={row.name}
-                              onChange={(e) => updateTradeInRow(row.rowId, 'name', e.target.value)}
-                              className={`flex-1 min-w-0 px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
-                              disabled={isProcessing}
-                            />
-                            <input
-                              type="number"
-                              placeholder="Price"
-                              value={row.price}
-                              onChange={(e) => updateTradeInRow(row.rowId, 'price', e.target.value)}
-                              className={`w-28 flex-shrink-0 px-3 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition text-sm ${darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900'}`}
-                              min="0"
-                              step="0.01"
-                              disabled={isProcessing}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removeTradeInRow(row.rowId)}
-                              disabled={isProcessing || (tradeInItems.length === 1 && !row.name && !row.price)}
-                              className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
-                              title="Remove"
-                            >
-                              <FiX size={16} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-
-                      {validTradeIns.length > 0 && (
-                        <div className={`mt-3 pt-3 border-t flex justify-between items-center ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
-                          <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                            Trade-in Total ({validTradeIns.length} battery)
-                          </span>
-                          <span className={`font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
-                            - Rs. {totalTradeIn.toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-
-                      <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        💡 Har battery ka name aur price bharein. Add Battery se aur rows add karein.
-                      </p>
-                    </div>
-                  )}
+                  {hasBatteryInCart && renderTradeInEditor({
+                    title: 'Trade-in Batteries (Old Battery)',
+                    totalLabel: 'Trade-in Total',
+                    hint: '💡 Har battery ka name aur price bharein. Add Battery se aur rows add karein.'
+                  })}
                   
                   <div className="flex justify-between items-center py-2 border-t dark:border-gray-600">
                     <span className={`text-2xl font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Total Amount:</span>
@@ -2363,6 +2726,55 @@ const BillingInvoice = ({ customerDetails, darkMode, onPaymentSuccess, restoredD
               >
                 Don't enter mileage — add without it
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Serial Number Modal (Battery sell karte waqt har battery ka serial code) */}
+      {isSerialModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-xl max-w-md w-full p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold flex items-center gap-2">
+                <FiBattery className="text-red-500" /> {serialItem?.name}
+              </h3>
+              <button onClick={closeSerialModal} className="text-gray-500 hover:text-gray-700 text-2xl"><FiX /></button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Quantity</span>
+                <div className="flex items-center gap-2 bg-gray-200 dark:bg-gray-700 rounded-lg px-2 py-1">
+                  <button type="button" onClick={() => changeSerialQty(serialQty - 1)} className="w-7 h-7 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600">-</button>
+                  <span className="w-8 text-center font-medium">{serialQty}</span>
+                  <button type="button" onClick={() => changeSerialQty(serialQty + 1)} className="w-7 h-7 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600">+</button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                {serialValues.map((val, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <span className="text-xs w-5 text-gray-500">{idx + 1}.</span>
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={(e) => setSerialValues(prev => prev.map((v, i) => i === idx ? e.target.value : v))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSerialSubmit(); }}
+                      placeholder={`Battery ${idx + 1} serial code`}
+                      autoFocus={idx === 0}
+                      className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'border-gray-300'}`}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={closeSerialModal} className={`flex-1 px-4 py-2 rounded-lg transition ${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}>Cancel</button>
+                <button type="button" onClick={handleSerialSubmit} className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center justify-center gap-2 shadow-md">
+                  <FiCheckCircle /> {editingSerialId ? 'Update' : 'Add to Cart'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

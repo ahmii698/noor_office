@@ -17,6 +17,7 @@ class InvoiceItem extends Model
         'service_name', 
         'service_category',
         'mileage',        // ✅ ADDED
+        'serial_numbers', // ✅ NEW: battery serial codes
         'quantity', 
         'price', 
         'total'
@@ -27,6 +28,7 @@ class InvoiceItem extends Model
         'total' => 'decimal:2',
         'quantity' => 'integer',
         'mileage' => 'integer',  // ✅ ADDED
+        'serial_numbers' => 'array', // ✅ NEW: JSON <-> array automatic
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
     ];
@@ -143,12 +145,15 @@ class InvoiceItem extends Model
         return $info;
     }
 
-    // ✅ Get item summary with mileage
+    // ✅ Get item summary with mileage and serials
     public function getSummaryAttribute()
     {
         $summary = $this->service_name;
         if ($this->mileage) {
             $summary .= ' (Mileage: ' . number_format($this->mileage) . ' km)';
+        }
+        if (!empty($this->serial_numbers)) {
+            $summary .= ' (Serial: ' . implode(', ', $this->serial_numbers) . ')';
         }
         return $summary;
     }
@@ -207,6 +212,12 @@ class InvoiceItem extends Model
     public function scopeSearch($query, $search)
     {
         return $query->where('service_name', 'LIKE', "%{$search}%");
+    }
+
+    // ✅ NEW: Scope to find items by a battery serial number
+    public function scopeBySerial($query, $serial)
+    {
+        return $query->whereJsonContains('serial_numbers', $serial);
     }
 
     // ============================================================

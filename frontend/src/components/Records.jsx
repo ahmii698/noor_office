@@ -113,6 +113,20 @@ const roundToTwo = (num) => {
   return Math.round(num * 100) / 100;
 };
 
+// ✅ NEW: Serial numbers helper (array, JSON string ya comma separated string — teeno handle)
+const getSerials = (item) => {
+  let s = item?.serialNumbers;
+  if (!s) return [];
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch (e) {
+      return s.split(',').map((x) => x.trim()).filter(Boolean);
+    }
+  }
+  return Array.isArray(s) ? s.map((x) => String(x).trim()).filter(Boolean) : [];
+};
+
 const HIDDEN_INVOICES_KEY = 'noorani_hidden_invoices';
 
 const loadHiddenIds = () => {
@@ -207,7 +221,8 @@ const Records = ({ darkMode }) => {
             name: item.service_name,
             category: item.service_category,
             price: item.price,
-            quantity: item.quantity
+            quantity: item.quantity,
+            serialNumbers: item.serial_numbers || [] // ✅ NEW: battery serial codes
           })) || []
         }));
         setInvoices(transformedInvoices);
@@ -372,7 +387,9 @@ const Records = ({ darkMode }) => {
         (inv.customer?.phone || '').toLowerCase().includes(term) ||
         (inv.customer?.carNumber || '').toLowerCase().includes(term) ||
         inv.invoiceNo.toLowerCase().includes(term) ||
-        (inv.creatorName || '').toLowerCase().includes(term)
+        (inv.creatorName || '').toLowerCase().includes(term) ||
+        // ✅ NEW: serial number se bhi search ho sakay
+        inv.items.some(i => getSerials(i).some(s => s.toLowerCase().includes(term)))
       );
     }
     
@@ -578,6 +595,11 @@ const Records = ({ darkMode }) => {
         'Phone': inv.customer?.phone || 'N/A',
         'Car Number': inv.customer?.carNumber || 'N/A',
         'Services': inv.items.map(i => i.name).join(', '),
+        // ✅ NEW: Serial numbers column
+        'Serial No.': inv.items
+          .filter(i => getSerials(i).length > 0)
+          .map(i => `${i.name}: ${getSerials(i).join(', ')}`)
+          .join(' | ') || '-',
         'Subtotal': `Rs. ${(inv.subtotal || inv.total).toLocaleString()}`,
         'Discount': inv.discount > 0 ? `Rs. ${inv.discount.toLocaleString()}` : 'None',
         'Total': `Rs. ${inv.total.toLocaleString()}`,
@@ -597,9 +619,10 @@ const Records = ({ darkMode }) => {
     const doc = new jsPDF('landscape');
     doc.text(`All Invoice Records - ${getDateFilterLabel()}`, 14, 10);
     doc.autoTable({
-      head: [['Invoice #', 'Date & Time', 'Customer', 'Phone', 'Car No', 'Services', 'Subtotal', 'Discount', 'Total', 'Status', 'Created By']],
+      head: [['Invoice #', 'Date & Time', 'Customer', 'Phone', 'Car No', 'Services', 'Serial No.', 'Subtotal', 'Discount', 'Total', 'Status', 'Created By']],
       body: filteredInvoices.map(inv => {
         const date = toPakistanTime(inv.date) || new Date();
+        const serialsAll = inv.items.flatMap(i => getSerials(i)).join(', ') || '-';
         return [
           inv.invoiceNo,
           date.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }),
@@ -607,6 +630,7 @@ const Records = ({ darkMode }) => {
           inv.customer?.phone || 'N/A',
           inv.customer?.carNumber || 'N/A',
           inv.items.map(i => i.name).join(', ').substring(0, 30) + (inv.items.length > 2 ? '...' : ''),
+          serialsAll,
           `Rs. ${(inv.subtotal || inv.total).toLocaleString()}`,
           inv.discount > 0 ? `Rs. ${inv.discount.toLocaleString()}` : 'None',
           `Rs. ${inv.total.toLocaleString()}`,
@@ -644,7 +668,10 @@ const Records = ({ darkMode }) => {
     const cartItemsHtml = selectedInvoice.items.map((item, idx) => `
       <tr>
         <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${idx + 1}</td>
-        <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${item.name}</td>
+        <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">
+          ${item.name}
+          ${getSerials(item).length ? `<br/><span style="font-size:9px;color:#666;">Serial: ${getSerials(item).join(', ')}</span>` : ''}
+        </td>
         <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${item.category || 'Service'}</td>
         <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: center;">${item.quantity || 1}</td>
         <td style="padding: 6px 8px; border: 1px solid #e5e7eb; text-align: right;">Rs. ${(item.price || 0).toLocaleString()}</td>
@@ -909,7 +936,7 @@ const Records = ({ darkMode }) => {
             <FiSearch className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
             <input
               type="text"
-              placeholder="Search by Name, Phone, Car Number or Invoice #..."
+              placeholder="Search by Name, Phone, Car Number, Invoice # or Serial..."
               value={searchTerm}
               onChange={handleSearch}
               className={`w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none transition ${
@@ -1100,6 +1127,12 @@ const Records = ({ darkMode }) => {
                       <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {inv.items.slice(0, 2).map(i => i.name).join(', ')}
                         {inv.items.length > 2 && ` +${inv.items.length - 2} more`}
+                        {/* ✅ NEW: serial numbers table mein bhi dikhao */}
+                        {inv.items.some(i => getSerials(i).length > 0) && (
+                          <div className="text-xs font-mono text-blue-500 mt-1">
+                            Serial: {inv.items.flatMap(i => getSerials(i)).join(', ')}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 font-semibold text-red-500 whitespace-nowrap">Rs. {inv.total.toLocaleString()}</td>
                       <td className={`px-4 py-3 whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -1274,7 +1307,15 @@ const Records = ({ darkMode }) => {
                       {selectedInvoice.items.map((item, idx) => (
                         <tr key={idx}>
                           <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{idx + 1}</td>
-                          <td className={`px-4 py-2 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</td>
+                          <td className={`px-4 py-2 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {item.name}
+                            {/* ✅ NEW: Battery serial numbers */}
+                            {getSerials(item).length > 0 && (
+                              <div className="text-xs font-mono text-blue-500 mt-1">
+                                Serial: {getSerials(item).join(', ')}
+                              </div>
+                            )}
+                          </td>
                           <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.category || 'Service'}</td>
                           <td className="px-4 py-2 text-sm text-right font-semibold text-red-500">Rs. {item.price.toLocaleString()}</td>
                         </tr>

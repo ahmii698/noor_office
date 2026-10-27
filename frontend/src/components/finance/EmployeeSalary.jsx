@@ -106,6 +106,13 @@ const formatJoinDate = (dateString) => {
   }
 };
 
+// ✅ 'YYYY-MM-DD' ko 'DD-MM-YYYY' banao (timezone ka masla nahi)
+const formatDateOnly = (s) => {
+  if (!s) return '-';
+  const [y, m, d] = String(s).slice(0, 10).split('-');
+  return y && m && d ? `${d}-${m}-${y}` : '-';
+};
+
 const EmployeeSalary = ({ darkMode }) => {
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -152,6 +159,22 @@ const EmployeeSalary = ({ darkMode }) => {
   const [advanceData, setAdvanceData] = useState({ amount: '', note: '' });
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+
+  // ✅ LOAN states
+  const [isLoanModalOpen, setIsLoanModalOpen] = useState(false);
+  const [loanData, setLoanData] = useState({ amount: '', loan_date: '', note: '' });
+  const [isGivingLoan, setIsGivingLoan] = useState(false);
+
+  const [isLoanHistoryOpen, setIsLoanHistoryOpen] = useState(false);
+  const [loanHistory, setLoanHistory] = useState({
+    entries: [],
+    totals: { total_loan: 0, total_repaid: 0, balance: 0 }
+  });
+  const [loadingLoanHistory, setLoadingLoanHistory] = useState(false);
+
+  const [isRepayModalOpen, setIsRepayModalOpen] = useState(false);
+  const [repayData, setRepayData] = useState({ amount: '', payment_date: '', note: '' });
+  const [isRepaying, setIsRepaying] = useState(false);
 
   // Fetch employees
   const fetchEmployees = useCallback(async () => {
@@ -255,6 +278,8 @@ const EmployeeSalary = ({ darkMode }) => {
       'Monthly Salary (Rs.)': parseFloat(emp.monthly_salary).toLocaleString(),
       'Paid Amount (Rs.)': parseFloat(emp.paid_amount).toLocaleString(),
       'Balance (Rs.)': parseFloat(emp.balance_amount).toLocaleString(),
+      'Loan Balance (Rs.)': parseFloat(emp.loan_balance || 0).toLocaleString(),
+      'Last Loan Date': formatDateOnly(emp.last_loan_date),
       'Salary Date': emp.salary_date ? `${emp.salary_date}${getDaySuffix(emp.salary_date)}` : 'N/A',
       'Join Date': formatJoinDate(emp.join_date),
       'Status': emp.status || 'Pending',
@@ -267,6 +292,8 @@ const EmployeeSalary = ({ darkMode }) => {
       'Monthly Salary (Rs.)': statistics.totalSalary.toLocaleString(),
       'Paid Amount (Rs.)': statistics.totalPaid.toLocaleString(),
       'Balance (Rs.)': statistics.totalBalance.toLocaleString(),
+      'Loan Balance (Rs.)': employees.reduce((s, e) => s + (parseFloat(e.loan_balance) || 0), 0).toLocaleString(),
+      'Last Loan Date': '',
       'Salary Date': '',
       'Join Date': '',
       'Status': '',
@@ -332,26 +359,19 @@ const EmployeeSalary = ({ darkMode }) => {
       `Rs. ${parseFloat(emp.monthly_salary).toLocaleString()}`,
       `Rs. ${parseFloat(emp.paid_amount).toLocaleString()}`,
       `Rs. ${parseFloat(emp.balance_amount).toLocaleString()}`,
+      `Rs. ${parseFloat(emp.loan_balance || 0).toLocaleString()}`,
+      formatDateOnly(emp.last_loan_date),
       emp.salary_date ? `${emp.salary_date}${getDaySuffix(emp.salary_date)}` : 'N/A',
       formatJoinDate(emp.join_date),
       emp.status || 'Pending'
     ]);
 
     doc.autoTable({
-      head: [['Employee', 'Monthly Salary', 'Paid', 'Balance', 'Salary Date', 'Join Date', 'Status']],
+      head: [['Employee', 'Monthly Salary', 'Paid', 'Balance', 'Loan Balance', 'Last Loan', 'Salary Date', 'Join Date', 'Status']],
       body: tableData,
       startY: 34,
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [220, 38, 38] },
-      columnStyles: {
-        0: { cellWidth: 30 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 25 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 18 }
-      }
+      headStyles: { fillColor: [220, 38, 38] }
     });
 
     doc.save(`Employee_Salary_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -601,6 +621,143 @@ const EmployeeSalary = ({ darkMode }) => {
     }
   };
 
+  // ✅ Loan history fetch
+  const fetchLoanHistory = useCallback(async (id) => {
+    setLoadingLoanHistory(true);
+    try {
+      const response = await api.get(`/employee-loans/${id}/history`);
+      if (response.data.success) return response.data.data;
+    } catch (error) {
+      console.error('Error fetching loan history:', error);
+      toast.error('Failed to load loan history');
+    } finally {
+      setLoadingLoanHistory(false);
+    }
+    return null;
+  }, []);
+
+  const reloadLoanHistory = async (id) => {
+    const data = await fetchLoanHistory(id);
+    if (data) setLoanHistory({ entries: data.entries, totals: data.totals });
+  };
+
+  // ✅ Loan modal kholo (date khali)
+  const openLoanModal = (employee) => {
+    setSelectedEmployee(employee);
+    setLoanData({ amount: '', loan_date: '', note: '' });
+    setIsLoanModalOpen(true);
+  };
+
+  // ✅ Loan do
+  const handleGiveLoan = async (e) => {
+    e.preventDefault();
+    if (isGivingLoan) return;
+
+    const amount = parseFloat(loanData.amount);
+    if (!amount || amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+    if (!loanData.loan_date) {
+      toast.error('Please select the loan date');
+      return;
+    }
+
+    setIsGivingLoan(true);
+    try {
+      const response = await api.post('/employee-loans', {
+        employee_id: selectedEmployee.id,
+        amount,
+        loan_date: loanData.loan_date,
+        note: loanData.note || 'Loan'
+      });
+      if (response.data.success) {
+        toast.success(response.data.message || 'Loan recorded!');
+        await fetchEmployees();
+        if (isLoanHistoryOpen) await reloadLoanHistory(selectedEmployee.id);
+        setIsLoanModalOpen(false);
+        setLoanData({ amount: '', loan_date: '', note: '' });
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to give loan');
+    } finally {
+      setIsGivingLoan(false);
+    }
+  };
+
+  // ✅ Loan history modal kholo (naya eye button)
+  const openLoanHistory = async (employee) => {
+    setSelectedEmployee(employee);
+    setLoanHistory({ entries: [], totals: { total_loan: 0, total_repaid: 0, balance: 0 } });
+    setIsLoanHistoryOpen(true);
+    await reloadLoanHistory(employee.id);
+  };
+
+  // ✅ Wapsi modal kholo (date khali)
+  const openRepayModal = () => {
+    setRepayData({ amount: '', payment_date: '', note: '' });
+    setIsRepayModalOpen(true);
+  };
+
+  // ✅ Loan wapsi record karo
+  const handleRepayLoan = async (e) => {
+    e.preventDefault();
+    if (isRepaying) return;
+
+    const amount = parseFloat(repayData.amount);
+    if (!amount || amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+    if (!repayData.payment_date) {
+      toast.error('Please select the date');
+      return;
+    }
+    if (amount > loanHistory.totals.balance) {
+      toast.error(`Amount cannot exceed loan balance (Rs. ${formatCurrency(loanHistory.totals.balance)})`);
+      return;
+    }
+
+    setIsRepaying(true);
+    try {
+      const response = await api.post('/employee-loans/repay', {
+        employee_id: selectedEmployee.id,
+        amount,
+        payment_date: repayData.payment_date,
+        note: repayData.note || 'Loan repayment'
+      });
+      if (response.data.success) {
+        toast.success(response.data.message || 'Repayment recorded!');
+        await fetchEmployees();
+        await reloadLoanHistory(selectedEmployee.id);
+        setIsRepayModalOpen(false);
+        setRepayData({ amount: '', payment_date: '', note: '' });
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to record repayment');
+    } finally {
+      setIsRepaying(false);
+    }
+  };
+
+  // ✅ Loan / wapsi entry delete
+  const handleDeleteLoanEntry = async (entry) => {
+    if (!window.confirm('Are you sure you want to delete this entry?')) return;
+    try {
+      const url = entry.type === 'loan'
+        ? `/employee-loans/loan/${entry.id}`
+        : `/employee-loans/repayment/${entry.id}`;
+      const response = await api.delete(url);
+      if (response.data.success) {
+        toast.success(response.data.message || 'Deleted!');
+        await fetchEmployees();
+        await reloadLoanHistory(selectedEmployee.id);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete entry');
+    }
+  };
+
   // Get status badge
   const getStatusBadge = (status) => {
     const styles = {
@@ -718,6 +875,8 @@ const EmployeeSalary = ({ darkMode }) => {
                 <th className="employee-salary-text-right">Monthly Salary</th>
                 <th className="employee-salary-text-right">Paid</th>
                 <th className="employee-salary-text-right">Balance</th>
+                <th className="employee-salary-text-right">Loan Balance</th>
+                <th>Last Loan Date</th>
                 <th>Salary Date</th>
                 <th>Join Date</th>
                 <th>Status</th>
@@ -727,7 +886,7 @@ const EmployeeSalary = ({ darkMode }) => {
             <tbody>
               {currentEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="employee-salary-empty">
+                  <td colSpan="10" className="employee-salary-empty">
                     <FiInbox className="employee-salary-empty-icon" />
                     <p>No employees found</p>
                     <p className="employee-salary-empty-sub">Click "Add Employee" to create your first record</p>
@@ -756,6 +915,14 @@ const EmployeeSalary = ({ darkMode }) => {
                         <span className={`employee-salary-balance ${(parseFloat(employee.balance_amount) || 0) > 0 ? 'due' : 'paid'}`}>
                           Rs.{formatCurrency(employee.balance_amount)}
                         </span>
+                      </td>
+                      <td className="employee-salary-text-right">
+                        <span className={`employee-salary-balance ${(parseFloat(employee.loan_balance) || 0) > 0 ? 'due' : 'paid'}`}>
+                          Rs.{formatCurrency(employee.loan_balance)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="font-medium">{formatDateOnly(employee.last_loan_date)}</span>
                       </td>
                       <td>
                         {employee.salary_date ? (
@@ -842,6 +1009,24 @@ const EmployeeSalary = ({ darkMode }) => {
                             title="Give advance payment"
                           >
                             <FiGift /> Advance
+                          </button>
+
+                          {/* ✅ Give Loan */}
+                          <button
+                            onClick={() => openLoanModal(employee)}
+                            className="employee-salary-btn-loan"
+                            title="Give loan"
+                          >
+                            <FiDollarSign /> Loan
+                          </button>
+
+                          {/* ✅ Loan History (alag eye button) */}
+                          <button
+                            onClick={() => openLoanHistory(employee)}
+                            className="employee-salary-btn-loan-history"
+                            title="Loan History"
+                          >
+                            <FiEye />
                           </button>
                         </div>
                       </td>
@@ -1413,6 +1598,246 @@ const EmployeeSalary = ({ darkMode }) => {
                 <button type="button" onClick={() => setIsAdvanceModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
                 <button type="submit" className="employee-salary-btn-pay-submit" disabled={isAdvancing}>
                   {isAdvancing ? <><FiLoader className="animate-spin mr-2" /> Processing...</> : 'Give Advance'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Give Loan Modal */}
+      {isLoanModalOpen && selectedEmployee && (
+        <div className="employee-salary-modal-overlay">
+          <div className={`employee-salary-modal ${darkMode ? 'dark' : ''}`}>
+            <div className={`employee-salary-modal-header ${darkMode ? 'dark' : ''}`}>
+              <h2 className="employee-salary-modal-title">
+                <FiDollarSign className="employee-salary-modal-title-icon" /> Give Loan
+              </h2>
+              <button onClick={() => setIsLoanModalOpen(false)} className="employee-salary-modal-close">
+                <FiX />
+              </button>
+            </div>
+            <form onSubmit={handleGiveLoan} className="employee-salary-modal-body">
+              <div className="employee-salary-payment-summary">
+                <p className="employee-salary-payment-label">Employee</p>
+                <p className="employee-salary-payment-vendor">{selectedEmployee.name}</p>
+                <p className="employee-salary-payment-label">Current Loan Balance</p>
+                <p className="employee-salary-payment-balance">Rs.{formatCurrency(selectedEmployee.loan_balance)}</p>
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Loan Amount (Rs.) *</label>
+                <input
+                  type="number"
+                  value={loanData.amount}
+                  onChange={(e) => setLoanData({ ...loanData, amount: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  placeholder="Enter loan amount"
+                  min="1"
+                  step="0.01"
+                  required
+                />
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Loan Date *</label>
+                <input
+                  type="date"
+                  value={loanData.loan_date}
+                  onChange={(e) => setLoanData({ ...loanData, loan_date: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  required
+                />
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Note (Optional)</label>
+                <input
+                  type="text"
+                  value={loanData.note}
+                  onChange={(e) => setLoanData({ ...loanData, note: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  placeholder="Add a note"
+                />
+              </div>
+              <div className="employee-salary-form-actions">
+                <button type="button" onClick={() => setIsLoanModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
+                <button type="submit" className="employee-salary-btn-pay-submit" disabled={isGivingLoan}>
+                  {isGivingLoan ? <><FiLoader className="animate-spin mr-2" /> Saving...</> : 'Give Loan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Loan History Modal */}
+      {isLoanHistoryOpen && selectedEmployee && (
+        <div className="employee-salary-modal-overlay">
+          <div className={`employee-salary-modal ${darkMode ? 'dark' : ''}`}>
+            <div className={`employee-salary-modal-header ${darkMode ? 'dark' : ''}`}>
+              <div>
+                <h2 className="employee-salary-modal-title">
+                  <FiEye className="employee-salary-modal-title-icon" /> Loan History
+                </h2>
+                <p className="employee-salary-modal-subtitle">{selectedEmployee.name}</p>
+              </div>
+              <button onClick={() => setIsLoanHistoryOpen(false)} className="employee-salary-modal-close">
+                <FiX />
+              </button>
+            </div>
+            <div className="employee-salary-modal-body">
+              <div className="employee-salary-summary" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <div className="employee-salary-summary-item">
+                  <p className="employee-salary-summary-label">Total Loan Diya</p>
+                  <p className="employee-salary-summary-value total">Rs.{formatCurrency(loanHistory.totals.total_loan)}</p>
+                </div>
+                <div className="employee-salary-summary-item">
+                  <p className="employee-salary-summary-label">Total Wapas Aaya</p>
+                  <p className="employee-salary-summary-value paid">Rs.{formatCurrency(loanHistory.totals.total_repaid)}</p>
+                </div>
+                <div className="employee-salary-summary-item">
+                  <p className="employee-salary-summary-label">Baqi Balance</p>
+                  <p className="employee-salary-summary-value balance">Rs.{formatCurrency(loanHistory.totals.balance)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <h3 className="employee-salary-history-title" style={{ marginBottom: 0 }}>
+                  <FiCreditCard className="employee-salary-history-icon text-orange-500" /> Loan Entries
+                  <span className="ml-2 text-sm font-normal text-gray-500">({loanHistory.entries.length})</span>
+                </h3>
+                {loanHistory.totals.balance > 0 && (
+                  <button onClick={openRepayModal} className="employee-salary-btn-repay">
+                    <FiDollarSign /> Wapsi Lo
+                  </button>
+                )}
+              </div>
+
+              {loadingLoanHistory ? (
+                <div className="employee-salary-empty-history">
+                  <FiLoader className="employee-salary-empty-history-icon animate-spin" />
+                  <p>Loading loan history...</p>
+                </div>
+              ) : loanHistory.entries.length === 0 ? (
+                <div className="employee-salary-empty-history">
+                  <FiInbox className="employee-salary-empty-history-icon" />
+                  <p>No loan records yet</p>
+                </div>
+              ) : (
+                <div className="employee-salary-history-table-wrapper">
+                  <table className="employee-salary-history-table">
+                    <thead className={darkMode ? 'dark' : ''}>
+                      <tr>
+                        <th>#</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th className="employee-salary-text-right">Amount (Rs.)</th>
+                        <th className="employee-salary-text-right">Balance (Rs.)</th>
+                        <th>Note</th>
+                        <th>By</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loanHistory.entries.map((entry, idx) => (
+                        <tr key={`${entry.type}-${entry.id}`}>
+                          <td>{idx + 1}</td>
+                          <td><span className="font-medium">{formatDateOnly(entry.date)}</span></td>
+                          <td>
+                            <span className={`employee-salary-loan-tag ${entry.type}`}>
+                              {entry.type === 'loan' ? 'Loan Diya' : 'Wapsi'}
+                            </span>
+                          </td>
+                          <td className={`employee-salary-text-right ${entry.type === 'loan' ? 'employee-salary-loan-out' : 'employee-salary-amount-paid'}`}>
+                            {entry.type === 'loan' ? '+' : '-'}Rs.{formatCurrency(entry.amount)}
+                          </td>
+                          <td className="employee-salary-text-right">
+                            <span className={`employee-salary-balance ${entry.running_balance > 0 ? 'due' : 'paid'}`}>
+                              Rs.{formatCurrency(entry.running_balance)}
+                            </span>
+                          </td>
+                          <td>{entry.note || '-'}</td>
+                          <td>{entry.created_by || 'System'}</td>
+                          <td>
+                            <button
+                              onClick={() => handleDeleteLoanEntry(entry)}
+                              className="text-red-500 hover:text-red-700"
+                              title="Delete"
+                            >
+                              <FiTrash2 size={16} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className={`employee-salary-modal-footer ${darkMode ? 'dark' : ''}`}>
+              <button onClick={() => setIsLoanHistoryOpen(false)} className="employee-salary-btn-close">
+                <FiX /> Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Repay Loan Modal (history ke upar khulega) */}
+      {isRepayModalOpen && selectedEmployee && (
+        <div className="employee-salary-modal-overlay">
+          <div className={`employee-salary-modal ${darkMode ? 'dark' : ''}`}>
+            <div className={`employee-salary-modal-header ${darkMode ? 'dark' : ''}`}>
+              <h2 className="employee-salary-modal-title">
+                <FiDollarSign className="employee-salary-modal-title-icon" /> Loan Wapsi
+              </h2>
+              <button onClick={() => setIsRepayModalOpen(false)} className="employee-salary-modal-close">
+                <FiX />
+              </button>
+            </div>
+            <form onSubmit={handleRepayLoan} className="employee-salary-modal-body">
+              <div className="employee-salary-payment-summary">
+                <p className="employee-salary-payment-label">Employee</p>
+                <p className="employee-salary-payment-vendor">{selectedEmployee.name}</p>
+                <p className="employee-salary-payment-label">Baqi Loan Balance</p>
+                <p className="employee-salary-payment-balance">Rs.{formatCurrency(loanHistory.totals.balance)}</p>
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Amount Received (Rs.) *</label>
+                <input
+                  type="number"
+                  value={repayData.amount}
+                  onChange={(e) => setRepayData({ ...repayData, amount: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  placeholder="Enter amount"
+                  min="1"
+                  max={loanHistory.totals.balance}
+                  step="0.01"
+                  required
+                />
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Date *</label>
+                <input
+                  type="date"
+                  value={repayData.payment_date}
+                  onChange={(e) => setRepayData({ ...repayData, payment_date: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  required
+                />
+              </div>
+              <div className="employee-salary-form-group">
+                <label className={`employee-salary-form-label ${darkMode ? 'dark' : ''}`}>Note (Optional)</label>
+                <input
+                  type="text"
+                  value={repayData.note}
+                  onChange={(e) => setRepayData({ ...repayData, note: e.target.value })}
+                  className={`employee-salary-form-input ${darkMode ? 'dark' : ''}`}
+                  placeholder="Add a note"
+                />
+              </div>
+              <div className="employee-salary-form-actions">
+                <button type="button" onClick={() => setIsRepayModalOpen(false)} className="employee-salary-btn-cancel">Cancel</button>
+                <button type="submit" className="employee-salary-btn-pay-submit" disabled={isRepaying}>
+                  {isRepaying ? <><FiLoader className="animate-spin mr-2" /> Saving...</> : 'Save Repayment'}
                 </button>
               </div>
             </form>

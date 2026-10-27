@@ -9,7 +9,8 @@ import {
   FiAlertCircle, FiClock, FiArrowRight, FiLoader, FiUsers,
   FiCreditCard, FiCalendar, FiGift, FiChevronDown, FiChevronUp, FiFile,
   FiBattery, FiArchive, FiTruck, FiBookOpen, FiDownload, 
-  FiFileText as FiFileIcon, FiRefreshCw, FiClipboard
+  FiFileText as FiFileIcon, FiRefreshCw, FiClipboard,
+  FiEye, FiEyeOff
 } from 'react-icons/fi';
 import { 
   LineChart, Line, BarChart, Bar, AreaChart, Area,
@@ -135,6 +136,12 @@ const isBatteryItem = (item) => {
 const getNonBatteryItems = (items) => {
   if (!items || !Array.isArray(items)) return [];
   return items.filter(item => !isBatteryItem(item));
+};
+
+// ✅ Loan payment expense nahi hai (wapas aane wala paisa hai). Salary / advance expense hain.
+const isLoanPayment = (p) => {
+  const t = String(p?.payment_type || p?.type || '').toLowerCase();
+  return t.includes('loan');
 };
 
 // ✅ Inventory se bike hue saare items (battery bhi shamil).
@@ -292,6 +299,15 @@ const Dashboard = () => {
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
   const [oldBatteries, setOldBatteries] = useState([]);
+  // ✅ NEW: Credit vendors (vendor ko kitna dena baqi hai ye yahan se pata chalta hai)
+  const [creditVendors, setCreditVendors] = useState([]);
+  // ✅ NEW: Employees (salary + advance payments yahin se aate hain)
+  const [employees, setEmployees] = useState([]);
+
+  // ✅ NEW: Loan cards (by default hidden, Show button dabane par hi dikhenge)
+  const [showLoanCards, setShowLoanCards] = useState(false);
+  const [loadingLoanStats, setLoadingLoanStats] = useState(false);
+  const [loanStats, setLoanStats] = useState({ totalLoan: 0, totalRepaid: 0, balance: 0 });
 
   // ✅ URL badle to menu automatically sync ho.
   useEffect(() => {
@@ -369,9 +385,42 @@ const Dashboard = () => {
       });
   }, [productsArray, soldQtyByProduct, timeFilter, customDate]);
 
+  // ✅ Date filter ke hisab se credit records (created_at par)
+  const filteredCreditVendors = useMemo(() => {
+    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
+    return (Array.isArray(creditVendors) ? creditVendors : []).filter(v => {
+      if (!range) return true;
+      const d = new Date(v.created_at);
+      return !isNaN(d.getTime()) && d >= range.start && d <= range.end;
+    });
+  }, [creditVendors, timeFilter, customDate]);
+
+  // ✅ Vendor ko jo abhi dena baqi hai (ye expense nahi, ye udhaar hai)
+  // Yehi value "Inventory Credit Balance" card mein bhi dikhti hai (Credit page ke Total Balance jaisi)
+  const creditUnpaidTotal = useMemo(() =>
+    filteredCreditVendors.reduce((sum, v) => sum + (parseFloat(v.balance_amount) || 0), 0),
+    [filteredCreditVendors]
+  );
+
+  // ✅ NEW: "Inventory Cost" card - Inventory page wale card jaisa hi hisab:
+  // (purchase price x current stock), sirf active (non-hidden) products, date filter date_added par
+  const inventoryPurchaseCardTotal = useMemo(() => {
+    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
+
+    return activeProducts.reduce((sum, p) => {
+      if (range) {
+        if (!p.date_added) return sum;
+        const d = new Date(p.date_added);
+        if (!(d >= range.start && d <= range.end)) return sum;
+      }
+      return sum + (parseFloat(p.purchase_price) || 0) * (parseInt(p.quantity) || 0);
+    }, 0);
+  }, [activeProducts, timeFilter, customDate]);
+
+  // ✅ Inventory purchase expense = poori cost - vendor ka baqi balance (sirf paid wali raqam count hogi)
   const inventoryPurchaseTotal = useMemo(() =>
-    inventoryPurchases.reduce((sum, e) => sum + e.cost, 0),
-    [inventoryPurchases]
+    Math.max(0, inventoryPurchases.reduce((sum, e) => sum + e.cost, 0) - creditUnpaidTotal),
+    [inventoryPurchases, creditUnpaidTotal]
   );
 
   // Product name -> purchase price (profit calculation ke liye)
@@ -402,10 +451,66 @@ const Dashboard = () => {
     [filteredExpenses]
   );
 
-  // ✅ Expenses card = Manual expenses + Inventory purchase cost
+  // ✅ NEW: Salary + Advance payments (date filter payment_date par). Loan skip.
+  const filteredSalaryPayments = useMemo(() => {
+    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
+    const list = [];
+
+    (Array.isArray(employees) ? employees : []).forEach(emp => {
+      (Array.isArray(emp?.payments) ? emp.payments : []).forEach(p => {
+        if (!p || isLoanPayment(p)) return;
+
+        const raw = p.payment_date || p.date || p.created_at;
+        const d = raw ? new Date(raw) : null;
+        const validDate = d && !isNaN(d.getTime()) ? d : null;
+
+        if (range && !(validDate && validDate >= range.start && validDate <= range.end)) return;
+
+        list.push({ amount: parseFloat(p.amount) || 0, date: validDate });
+      });
+    });
+
+    return list;
+  }, [employees, timeFilter, customDate]);
+
+  const salaryPaymentsTotal = useMemo(() =>
+    filteredSalaryPayments.reduce((sum, p) => sum + p.amount, 0),
+    [filteredSalaryPayments]
+  );
+
+  // ✅ Old Batteries - date filter ke hisab se list (purchase date par)
+  const filteredOldBatteries = useMemo(() => {
+    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
+    return (Array.isArray(oldBatteries) ? oldBatteries : []).filter(b => {
+      if (!range) return true;
+      const d = new Date(b.purchase_date || b.created_at);
+      return !isNaN(d.getTime()) && d >= range.start && d <= range.end;
+    });
+  }, [oldBatteries, timeFilter, customDate]);
+
+  // ✅ Old Batteries card ke stats
+  // (totalExpensesSum se PEHLE define hona zaroori hai, kyunke purchaseTotal expenses mein use hota hai)
+  const oldBatteryStats = useMemo(() => {
+    const list = filteredOldBatteries;
+    const inStock = list.filter(b => b.status !== 'sold');
+    const sold = list.filter(b => b.status === 'sold');
+    const n = (v) => parseFloat(v) || 0;
+
+    return {
+      total: list.length,
+      inStockCount: inStock.length,
+      soldCount: sold.length,
+      purchaseTotal: list.reduce((s, b) => s + n(b.trade_in_amount), 0),
+      stockValue: inStock.reduce((s, b) => s + n(b.trade_in_amount), 0),
+      soldRevenue: sold.reduce((s, b) => s + n(b.selling_price), 0),
+      resaleProfit: sold.reduce((s, b) => s + n(b.profit), 0)
+    };
+  }, [filteredOldBatteries]);
+
+  // ✅ Expenses card = Manual expenses + Inventory purchase cost (sirf paid) + Old Battery purchase cost + Salary/Advance payments
   const totalExpensesSum = useMemo(() => 
-    manualExpensesSum + inventoryPurchaseTotal,
-    [manualExpensesSum, inventoryPurchaseTotal]
+    manualExpensesSum + inventoryPurchaseTotal + oldBatteryStats.purchaseTotal + salaryPaymentsTotal,
+    [manualExpensesSum, inventoryPurchaseTotal, oldBatteryStats.purchaseTotal, salaryPaymentsTotal]
   );
 
   // ✅ Discount ko 2 hisson mein baanta:
@@ -423,9 +528,10 @@ const Dashboard = () => {
   }, [filteredInvoices]);
 
   // ✅ Total Profit (cash-basis):
-//   Sale ka profit - Discount (trade-in dene par) + Old Battery bechne par poori raqam
-//   - Trade-in Only mein khareedi hui old battery ki raqam - Manual Expenses
+  //   Sale ka profit - Discount (trade-in dene par) + Old Battery bechne par poori raqam
+  //   - Trade-in Only mein khareedi hui old battery ki raqam - Manual Expenses - Salary/Advance payments
   // Inventory purchase cost yahan minus NAHI hoti (profit pehle hi selling - purchase se nikalta hai)
+  // Old battery purchase cost bhi yahan alag se minus NAHI hoti (Trade-in line / trade-in discount se pehle hi cut hoti hai)
   const totalProfitCalc = useMemo(() => {
     let grossProfit = 0;
 
@@ -436,37 +542,13 @@ const Dashboard = () => {
       });
     });
 
-    return grossProfit - manualExpensesSum - totalDiscount - tradeInDiscount;
-  }, [filteredInvoices, manualExpensesSum, purchaseMap, totalDiscount, tradeInDiscount]);
+    return grossProfit - manualExpensesSum - salaryPaymentsTotal - totalDiscount - tradeInDiscount;
+  }, [filteredInvoices, manualExpensesSum, salaryPaymentsTotal, purchaseMap, totalDiscount, tradeInDiscount]);
 
   const profitMargin = useMemo(() => 
     totalSales > 0 ? (totalProfitCalc / totalSales) * 100 : 0,
     [totalSales, totalProfitCalc]
   );
-
-  // ✅ Old Batteries card ke stats (purchase date ke hisab se filter)
-  const oldBatteryStats = useMemo(() => {
-    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
-    const list = (Array.isArray(oldBatteries) ? oldBatteries : []).filter(b => {
-      if (!range) return true;
-      const d = new Date(b.purchase_date || b.created_at);
-      return !isNaN(d.getTime()) && d >= range.start && d <= range.end;
-    });
-
-    const inStock = list.filter(b => b.status !== 'sold');
-    const sold = list.filter(b => b.status === 'sold');
-    const n = (v) => parseFloat(v) || 0;
-
-    return {
-      total: list.length,
-      inStockCount: inStock.length,
-      soldCount: sold.length,
-      purchaseTotal: list.reduce((s, b) => s + n(b.trade_in_amount), 0),
-      stockValue: inStock.reduce((s, b) => s + n(b.trade_in_amount), 0),
-      soldRevenue: sold.reduce((s, b) => s + n(b.selling_price), 0),
-      resaleProfit: sold.reduce((s, b) => s + n(b.profit), 0)
-    };
-  }, [oldBatteries, timeFilter, customDate]);
 
   const totalProductsCount = useMemo(() => activeProducts.length, [activeProducts]);
   const totalStock = useMemo(() => 
@@ -493,7 +575,7 @@ const Dashboard = () => {
     const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     monthOrder.forEach(m => {
-      monthly[m] = { sales: 0, profit: 0, expenses: 0, inventoryExpenses: 0, discount: 0, tradeIn: 0 };
+      monthly[m] = { sales: 0, profit: 0, expenses: 0, salary: 0, inventoryExpenses: 0, oldBatteryExpenses: 0, discount: 0, tradeIn: 0 };
     });
     
     // ✅ battery + old battery sales monthly sales/profit mein shamil
@@ -529,6 +611,15 @@ const Dashboard = () => {
       }
     });
 
+    // ✅ Salary / advance payments us mahine mein jodo jis mahine di gayi
+    filteredSalaryPayments.forEach(p => {
+      if (!p.date) return;
+      const month = p.date.toLocaleString('default', { month: 'short' });
+      if (monthly[month]) {
+        monthly[month].salary += p.amount;
+      }
+    });
+
     // ✅ Inventory purchase cost ko us mahine mein jodo jis mahine product add hua
     inventoryPurchases.forEach(entry => {
       if (!entry.date) return;
@@ -537,20 +628,40 @@ const Dashboard = () => {
         monthly[month].inventoryExpenses += entry.cost;
       }
     });
+
+    // ✅ Credit ka baqi balance us mahine ke inventory expense se minus karo (sirf paid wala count ho)
+    filteredCreditVendors.forEach(v => {
+      const d = new Date(v.created_at);
+      if (isNaN(d.getTime())) return;
+      const month = d.toLocaleString('default', { month: 'short' });
+      if (monthly[month]) {
+        monthly[month].inventoryExpenses -= parseFloat(v.balance_amount) || 0;
+      }
+    });
+
+    // ✅ Old battery purchase cost ko us mahine mein jodo jis mahine khareedi
+    filteredOldBatteries.forEach(b => {
+      const d = new Date(b.purchase_date || b.created_at);
+      if (isNaN(d.getTime())) return;
+      const month = d.toLocaleString('default', { month: 'short' });
+      if (monthly[month]) {
+        monthly[month].oldBatteryExpenses += parseFloat(b.trade_in_amount) || 0;
+      }
+    });
     
     return monthOrder.map(month => {
       const data = monthly[month];
       return {
         month,
         sales: data.sales,
-        // Net Profit = Gross Profit - Manual Expenses - Discount - Trade-in
-        profit: data.profit - data.expenses - data.discount - data.tradeIn,
-        // Chart par expenses = Manual + Inventory purchase
-        expenses: data.expenses + data.inventoryExpenses,
+        // Net Profit = Gross Profit - Manual Expenses - Salary/Advance - Discount - Trade-in
+        profit: data.profit - data.expenses - data.salary - data.discount - data.tradeIn,
+        // Chart par expenses = Manual + Salary/Advance + Inventory purchase (sirf paid) + Old battery purchase
+        expenses: data.expenses + data.salary + Math.max(0, data.inventoryExpenses) + data.oldBatteryExpenses,
         discount: data.discount
       };
     });
-  }, [filteredInvoices, filteredExpenses, purchaseMap, inventoryPurchases]);
+  }, [filteredInvoices, filteredExpenses, filteredSalaryPayments, purchaseMap, inventoryPurchases, filteredOldBatteries, filteredCreditVendors]);
 
   const productSalesData = useMemo(() => {
     const allProducts = activeProducts
@@ -623,14 +734,23 @@ const Dashboard = () => {
       'Metric': 'Profit Margin',
       'Value': `${profitMargin.toFixed(1)}%`
     }, {
-      'Metric': 'Total Expenses (Incl. Inventory Purchases)',
+      'Metric': 'Total Expenses (Incl. Inventory, Old Battery & Salary)',
       'Value': `Rs. ${totalExpensesSum.toLocaleString()}`
     }, {
       'Metric': 'Manual Expenses',
       'Value': `Rs. ${manualExpensesSum.toLocaleString()}`
     }, {
-      'Metric': 'Inventory Purchases',
+      'Metric': 'Salary & Advance Payments',
+      'Value': `Rs. ${salaryPaymentsTotal.toLocaleString()}`
+    }, {
+      'Metric': 'Inventory Purchases (Paid Only)',
       'Value': `Rs. ${inventoryPurchaseTotal.toLocaleString()}`
+    }, {
+      'Metric': 'Vendor Credit Unpaid (Not in Expenses)',
+      'Value': `Rs. ${creditUnpaidTotal.toLocaleString()}`
+    }, {
+      'Metric': 'Old Battery Purchases',
+      'Value': `Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()}`
     }, {
       'Metric': 'Total Discount',
       'Value': `Rs. ${totalDiscount.toLocaleString()}`
@@ -653,6 +773,16 @@ const Dashboard = () => {
       'Metric': 'Filter',
       'Value': getFilterLabel()
     }];
+
+    // ✅ Loan cards agar khule hue hain to unka data bhi Summary mein shamil
+    if (showLoanCards) {
+      summaryData.push(
+        { 'Metric': 'Total Loan Given', 'Value': `Rs. ${loanStats.totalLoan.toLocaleString()}` },
+        { 'Metric': 'Loan Recovered', 'Value': `Rs. ${loanStats.totalRepaid.toLocaleString()}` },
+        { 'Metric': 'Loan Remaining', 'Value': `Rs. ${loanStats.balance.toLocaleString()}` }
+      );
+    }
+
     const ws4 = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, ws4, 'Summary');
 
@@ -682,12 +812,18 @@ const Dashboard = () => {
     doc.setFontSize(10);
     doc.text(`Total Sales: Rs. ${totalSales.toLocaleString()}`, 14, 36);
     doc.text(`Total Profit (Net): Rs. ${totalProfitCalc.toLocaleString()} (${profitMargin.toFixed(1)}% margin)`, 14, 42);
-    doc.text(`Total Expenses (Incl. Inventory): Rs. ${totalExpensesSum.toLocaleString()}  [Manual: Rs. ${manualExpensesSum.toLocaleString()} | Inventory: Rs. ${inventoryPurchaseTotal.toLocaleString()}]`, 14, 48);
+    doc.text(`Total Expenses: Rs. ${totalExpensesSum.toLocaleString()}  [Manual: Rs. ${manualExpensesSum.toLocaleString()} | Inventory (Paid): Rs. ${inventoryPurchaseTotal.toLocaleString()} | Old Batt: Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()} | Salary: Rs. ${salaryPaymentsTotal.toLocaleString()}]`, 14, 48);
     doc.text(`Total Discount: Rs. ${totalDiscount.toLocaleString()}  |  Old Batteries: ${oldBatteryStats.total} (In Stock: ${oldBatteryStats.inStockCount}, Sold: ${oldBatteryStats.soldCount})`, 14, 54);
     doc.text(`Active Products: ${totalProductsCount} | Total Stock: ${totalStock} units`, 14, 60);
     doc.text(`Total Invoices: ${filteredInvoices.length}`, 14, 66);
 
     let startY = 74;
+
+    // ✅ Loan cards khule hon to PDF mein bhi line add karo
+    if (showLoanCards) {
+      doc.text(`Loan Given: Rs. ${loanStats.totalLoan.toLocaleString()}  |  Recovered: Rs. ${loanStats.totalRepaid.toLocaleString()}  |  Remaining: Rs. ${loanStats.balance.toLocaleString()}`, 14, 72);
+      startY = 80;
+    }
 
     doc.setFontSize(12);
     doc.setTextColor(59, 130, 246);
@@ -780,18 +916,70 @@ const Dashboard = () => {
     toast.success('Exported to PDF!');
   };
 
+  // ✅ NEW: Saare employees ka loan data jama karke 3 totals nikalta hai
+  // (Total Loan Diya, Total Wapas Aaya, Baqi Balance) - EmployeeSalary ke loan history API se
+  const fetchLoanStats = useCallback(async () => {
+    setLoadingLoanStats(true);
+    try {
+      const empRes = await api.get('/employees');
+      const list = Array.isArray(empRes.data?.data)
+        ? empRes.data.data
+        : (Array.isArray(empRes.data) ? empRes.data : []);
+
+      const results = await Promise.all(
+        list.map(emp =>
+          api.get(`/employee-loans/${emp.id}/history`)
+            .then(res => res.data?.data?.totals || null)
+            .catch(() => null)
+        )
+      );
+
+      const n = (v) => parseFloat(v) || 0;
+      const totals = results.reduce((acc, t) => {
+        if (!t) return acc;
+        acc.totalLoan += n(t.total_loan);
+        acc.totalRepaid += n(t.total_repaid);
+        acc.balance += n(t.balance);
+        return acc;
+      }, { totalLoan: 0, totalRepaid: 0, balance: 0 });
+
+      setLoanStats(totals);
+    } catch (err) {
+      console.error('Error fetching loan stats:', err);
+      toast.error('Failed to load loan data');
+    } finally {
+      setLoadingLoanStats(false);
+    }
+  }, []);
+
+  // ✅ NEW: Show / Hide button - Show dabane par hi data load hota hai
+  const handleToggleLoanCards = useCallback(() => {
+    if (showLoanCards) {
+      setShowLoanCards(false);
+    } else {
+      setShowLoanCards(true);
+      fetchLoanStats();
+    }
+  }, [showLoanCards, fetchLoanStats]);
+
   // ✅ silent=true hone par full-page loader nahi dikhega (refresh button ke liye)
   const fetchAllData = useCallback(async (silent = false) => {
     const abortController = new AbortController();
     if (!silent) setLoading(true);
     try {
-      const [productsRes, expensesRes, invoicesRes, servicesRes, oldBatteriesRes] = await Promise.all([
+      const [productsRes, expensesRes, invoicesRes, servicesRes, oldBatteriesRes, creditRes, employeesRes] = await Promise.all([
         api.get('/products', { signal: abortController.signal }),
         api.get('/expenses', { signal: abortController.signal }),
         api.get('/invoices', { signal: abortController.signal }),
         api.get('/services', { signal: abortController.signal }),
         // Old batteries fail ho to baqi dashboard na ruke
         api.get('/old-batteries', { params: { status: 'all' }, signal: abortController.signal })
+          .catch(() => ({ data: [] })),
+        // Credit vendors fail ho to baqi dashboard na ruke
+        api.get('/credit/vendors', { signal: abortController.signal })
+          .catch(() => ({ data: [] })),
+        // Employees fail ho to baqi dashboard na ruke
+        api.get('/employees', { signal: abortController.signal })
           .catch(() => ({ data: [] }))
       ]);
       
@@ -813,6 +1001,16 @@ const Dashboard = () => {
         ? oldBatteriesRes.data
         : (Array.isArray(oldBatteriesRes.data?.data) ? oldBatteriesRes.data.data : []);
       setOldBatteries(oldData);
+
+      const creditData = Array.isArray(creditRes.data)
+        ? creditRes.data
+        : (Array.isArray(creditRes.data?.data) ? creditRes.data.data : []);
+      setCreditVendors(creditData);
+
+      const empData = Array.isArray(employeesRes.data?.data)
+        ? employeesRes.data.data
+        : (Array.isArray(employeesRes.data) ? employeesRes.data : []);
+      setEmployees(empData);
       
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -825,6 +1023,8 @@ const Dashboard = () => {
           setInvoices([]);
           setServices([]);
           setOldBatteries([]);
+          setCreditVendors([]);
+          setEmployees([]);
         }
       }
     } finally {
@@ -846,12 +1046,14 @@ const Dashboard = () => {
     setRefreshing(true);
     try {
       await fetchAllData(true);
+      // Loan cards khule hon to unka data bhi fresh karo
+      if (showLoanCards) await fetchLoanStats();
       // Key change hone se current page (Billing, Inventory, Records etc.) dobara mount hoga aur apna data fresh fetch karega
       setRefreshKey(prev => prev + 1);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, fetchAllData]);
+  }, [refreshing, fetchAllData, showLoanCards, fetchLoanStats]);
 
   useEffect(() => {
     if (darkMode) {
@@ -1308,8 +1510,8 @@ const Dashboard = () => {
                   ))}
                 </div>
 
-                {/* STATS CARDS - Order: Sales, Expenses, Old Batteries, Discount, Profit, Active Products */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* STATS CARDS - Order: Sales, Expenses, Old Batteries, Discount, Profit, Active Products, Inventory Cost, Inventory Credit Balance */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                   <StatsCard 
                     title="Total Sales" 
                     value={`Rs. ${totalSales.toLocaleString()}`} 
@@ -1321,7 +1523,7 @@ const Dashboard = () => {
                   <StatsCard 
                     title="Total Expenses" 
                     value={`Rs. ${totalExpensesSum.toLocaleString()}`} 
-                    subtitle={`Inventory: Rs. ${inventoryPurchaseTotal.toLocaleString()} + Other: Rs. ${manualExpensesSum.toLocaleString()}`}
+                    subtitle={`Inventory (Paid): Rs. ${inventoryPurchaseTotal.toLocaleString()} + Old Batt: Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()} + Salary: Rs. ${salaryPaymentsTotal.toLocaleString()} + Other: Rs. ${manualExpensesSum.toLocaleString()}`}
                     icon={FiShoppingCart} 
                     color="from-blue-500 to-blue-600" 
                     darkMode={darkMode} 
@@ -1358,7 +1560,84 @@ const Dashboard = () => {
                     color="from-purple-500 to-purple-600" 
                     darkMode={darkMode} 
                   />
+                  {/* ✅ Inventory Cost card (pehle: Total Purchase Total) */}
+                  <StatsCard 
+                    title="Inventory Cost" 
+                    value={`Rs. ${inventoryPurchaseCardTotal.toLocaleString()}`} 
+                    subtitle="total purchases" 
+                    icon={FiShoppingCart} 
+                    color="from-indigo-500 to-indigo-600" 
+                    darkMode={darkMode} 
+                  />
+                  {/* ✅ Inventory Credit Balance card (pehle: Total Balance) */}
+                  <StatsCard 
+                    title="Inventory Credit Balance" 
+                    value={`Rs. ${creditUnpaidTotal.toLocaleString()}`} 
+                    subtitle="Remaining balance" 
+                    icon={FiCreditCard} 
+                    color="from-orange-500 to-orange-600" 
+                    darkMode={darkMode} 
+                  />
                 </div>
+
+                {/* ✅ NEW: LOAN CARDS - by default hidden, Show button se khulte hain */}
+                <div className={`flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                  <div className="flex items-center gap-2">
+                    <FiDollarSign className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Employee Loan Summary
+                    </span>
+                    {!showLoanCards && (
+                      <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        (hidden)
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleToggleLoanCards}
+                    disabled={loadingLoanStats}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 text-white shadow-md ${
+                      showLoanCards ? 'bg-gray-600 hover:bg-gray-700' : 'bg-red-500 hover:bg-red-600'
+                    } ${loadingLoanStats ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  >
+                    {loadingLoanStats ? (
+                      <><FiLoader className="animate-spin" /> Loading...</>
+                    ) : showLoanCards ? (
+                      <><FiEyeOff /> Hide</>
+                    ) : (
+                      <><FiEye /> Show</>
+                    )}
+                  </button>
+                </div>
+
+                {showLoanCards && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <StatsCard 
+                      title="Total Loan Given" 
+                      value={`Rs. ${loanStats.totalLoan.toLocaleString()}`} 
+                      subtitle="Ab tak diya hua total loan"
+                      icon={FiDollarSign} 
+                      color="from-amber-500 to-amber-600" 
+                      darkMode={darkMode} 
+                    />
+                    <StatsCard 
+                      title="Loan Recovered" 
+                      value={`Rs. ${loanStats.totalRepaid.toLocaleString()}`} 
+                      subtitle="Ab tak wapas mila"
+                      icon={FiCheckCircle} 
+                      color="from-emerald-500 to-emerald-600" 
+                      darkMode={darkMode} 
+                    />
+                    <StatsCard 
+                      title="Loan Remaining" 
+                      value={`Rs. ${loanStats.balance.toLocaleString()}`} 
+                      subtitle="Abhi lena baqi hai"
+                      icon={FiAlertCircle} 
+                      color="from-rose-500 to-rose-600" 
+                      darkMode={darkMode} 
+                    />
+                  </div>
+                )}
 
                 {/* CHARTS */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,13 +1,11 @@
-// src/components/BatteryOverview.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiCalendar, FiDollarSign, FiPackage, FiTrendingUp, FiTrendingDown, FiClock, FiBattery, FiDownload, FiFileText } from 'react-icons/fi';
+import { FiCalendar, FiDollarSign, FiPackage, FiTrendingUp, FiTrendingDown, FiClock, FiBattery, FiDownload, FiFileText, FiShoppingCart } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// ✅ CORRECT Karachi Timezone Helper Functions - NO MANUAL OFFSET
 const getKarachiDate = (dateString) => {
   if (!dateString) return null;
   const date = new Date(dateString);
@@ -48,7 +46,6 @@ const getYearStartKarachi = () => {
   return start;
 };
 
-// ✅ Format date in Karachi timezone
 const formatDateKarachi = (dateString) => {
   if (!dateString) return '-';
   const date = new Date(dateString);
@@ -62,11 +59,34 @@ const formatDateKarachi = (dateString) => {
 
 const normText = (s) => (s || '').toString().trim().toLowerCase();
 
-// ✅ Profit ka color: minus mein laal, warna hara
+// ✅ Serial numbers helper (array, JSON string ya comma separated string — teeno handle)
+const getSerials = (item) => {
+  let s = item?.serial_numbers;
+  if (!s) return [];
+  if (typeof s === 'string') {
+    try {
+      s = JSON.parse(s);
+    } catch (e) {
+      return s.split(',').map((x) => x.trim()).filter(Boolean);
+    }
+  }
+  return Array.isArray(s) ? s.map((x) => String(x).trim()).filter(Boolean) : [];
+};
+
+const serialText = (item) => getSerials(item).join(', ') || '-';
+
 const profitColor = (v) => (v < 0 ? 'text-red-500' : 'text-green-500');
 
-// ✅ Invoice ke discount_note se trade-in batteries nikalna
-// Format: "Battery Trade-in: old daewoo (Rs. 500), osaka (Rs. 300)"
+const emptyBucket = () => ({ total: 0, count: 0, items: 0, profit: 0, cost: 0 });
+
+const addToBucket = (bucket, stats) => {
+  bucket.total += stats.invTotal;
+  bucket.items += stats.invItems;
+  bucket.profit += stats.invProfit;
+  bucket.cost += stats.invCost;
+  bucket.count += 1;
+};
+
 const parseTradeInNote = (note) => {
   if (!note) return [];
   const afterColon = note.includes(':') ? note.slice(note.indexOf(':') + 1) : note;
@@ -88,21 +108,17 @@ const BatteryOverview = ({ darkMode }) => {
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [selectedYear, setSelectedYear] = useState(getTodayKarachi().getFullYear());
   const [batterySales, setBatterySales] = useState({
-    today: { total: 0, count: 0, items: 0, profit: 0 },
-    week: { total: 0, count: 0, items: 0, profit: 0 },
-    month: { total: 0, count: 0, items: 0, profit: 0 },
-    year: { total: 0, count: 0, items: 0, profit: 0 },
-    all: { total: 0, count: 0, items: 0, profit: 0 },
-    custom: { total: 0, count: 0, items: 0, profit: 0 }
+    today: emptyBucket(),
+    week: emptyBucket(),
+    month: emptyBucket(),
+    year: emptyBucket(),
+    all: emptyBucket(),
+    custom: emptyBucket()
   });
   const [recentSales, setRecentSales] = useState([]);
-  // ✅ Trade-in wali old batteries jo abhi stock mein hain (bikne par profit mein judengi)
   const [oldStockValue, setOldStockValue] = useState(0);
-  const [yearlyData, setYearlyData] = useState({ total: 0, count: 0, items: 0, profit: 0, details: [] });
+  const [yearlyData, setYearlyData] = useState({ total: 0, count: 0, items: 0, profit: 0, cost: 0, details: [] });
 
-  // ✅ Battery filter function
-  // Old battery KHAREEDNA (Trade-in) sale nahi hai — skip.
-  // Old battery BECHNA ('Old Battery Sale') sale hai — include.
   const isBatteryItem = (item) => {
     if (!item) return false;
     if (item.service_category === 'Trade-in') return false;
@@ -118,8 +134,6 @@ const BatteryOverview = ({ darkMode }) => {
     return items.filter(item => isBatteryItem(item));
   };
 
-  // ✅ Calculate the FINAL invoice total for battery items — subtracts
-  // any trade-in discount that was applied on the Battery Sale page.
   const calculateInvoiceBatteryTotal = (inv, batteryItems, rawItemsTotal) => {
     const invDiscount = parseFloat(inv.discount) || 0;
     const isOldBatterySale = batteryItems.some(item => item.service_category === 'Old Battery Sale');
@@ -132,17 +146,6 @@ const BatteryOverview = ({ darkMode }) => {
     return Math.max(0, rawItemsTotal - invDiscount);
   };
 
-  // ✅ Ek invoice ka total / items / profit.
-  //
-  // ✅ NAYA TRADE-IN RULE:
-  //   - Trade-in wali new battery sale ka profit = (final total) - (new battery ki purchase).
-  //     Yeh minus mein bhi ja sakta hai kyunke old battery ka paisa de diya, par wo abhi bik nahi.
-  //     Misal: new battery purchase 800, 1000 mein bechi, old 500 mein li → total 500, profit 500 - 800 = -300.
-  //   - Jab old battery bik jaati hai, us sale wale din POORI selling price profit mein judti hai
-  //     (kyunke uski cost pehle hi minus ho chuki hai). Misal: 700 mein biki → +700.
-  //     Total = -300 + 700 = 400.
-  //   - Agar old battery "Trade-in Only" se khareedi thi (kisi sale se minus nahi hui),
-  //     to uska profit = sell - purchase hi rahega.
   const calcInvoiceStats = (inv, batteryItems, productsMap, oldProfitMap) => {
     let rawTotal = 0, invItems = 0, totalCost = 0;
     const isOldSale = batteryItems.some(i => i.service_category === 'Old Battery Sale');
@@ -162,21 +165,20 @@ const BatteryOverview = ({ darkMode }) => {
     const invTotal = calculateInvoiceBatteryTotal(inv, batteryItems, rawTotal);
 
     let invProfit;
+    let invCost;
     if (isOldSale) {
       invProfit = oldProfitMap.get(inv.invoice_no) || 0;
+      invCost = invTotal - invProfit;
     } else {
-      invProfit = invTotal - totalCost; // e.g. 500 - 800 = -300
+      invProfit = invTotal - totalCost;
+      invCost = totalCost;
     }
 
     invProfit = Math.round(invProfit * 100) / 100;
-    return { invTotal, invProfit, invItems };
+    invCost = Math.round(invCost * 100) / 100;
+    return { invTotal, invProfit, invItems, invCost };
   };
 
-  // ✅ Har sold old battery ka profit nikalna:
-  //  - Agar wo kisi trade-in sale se aayi (discount_note match) → cost pehle hi minus ho chuki,
-  //    to profit = poori selling price
-  //  - Warna (Trade-in Only se khareedi) → profit = sell - purchase (backend wala profit)
-  // Match: battery name + trade-in amount (pehle customer bhi match, phir sirf name+amount)
   const buildOldProfitMap = (batteryInvoices, oldSold) => {
     const pool = [];
     batteryInvoices.forEach(inv => {
@@ -210,16 +212,15 @@ const BatteryOverview = ({ darkMode }) => {
       let contribution;
       if (match) {
         match.used = true;
-        contribution = parseFloat(b.selling_price) || 0; // poora paisa profit
+        contribution = parseFloat(b.selling_price) || 0;
       } else {
-        contribution = parseFloat(b.profit) || 0;        // sell - purchase
+        contribution = parseFloat(b.profit) || 0;
       }
       map.set(b.sold_invoice_no, (map.get(b.sold_invoice_no) || 0) + contribution);
     });
     return map;
   };
 
-  // ✅ Get date range for custom filter - WITH KARACHI TIMEZONE
   const getDateRange = (filter, customDateValue = null) => {
     const now = getTodayKarachi();
     const start = new Date(now);
@@ -237,12 +238,13 @@ const BatteryOverview = ({ darkMode }) => {
       case 'today':
         start.setHours(0, 0, 0, 0);
         break;
-      case 'week':
+      case 'week': {
         const day = now.getDay();
         const diff = (day === 0 ? 6 : day - 1);
         start.setDate(now.getDate() - diff);
         start.setHours(0, 0, 0, 0);
         break;
+      }
       case 'month':
         start.setDate(1);
         start.setHours(0, 0, 0, 0);
@@ -257,7 +259,6 @@ const BatteryOverview = ({ darkMode }) => {
     return { start, end: now };
   };
 
-  // ✅ Fetch battery sales
   const fetchBatterySales = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -270,66 +271,53 @@ const BatteryOverview = ({ darkMode }) => {
         api.get('/old-batteries', { params: { status: 'in_stock' } }).catch(() => ({ data: [] }))
       ]);
 
-      // ✅ Products
       let products = [];
       if (productsRes.data?.success && Array.isArray(productsRes.data.data)) {
         products = productsRes.data.data;
       } else if (Array.isArray(productsRes.data)) {
         products = productsRes.data;
-      } else {
-        products = [];
       }
 
-      // ✅ Invoices
       let invoices = [];
       if (Array.isArray(invoicesRes.data)) {
         invoices = invoicesRes.data;
       } else if (invoicesRes.data?.data && Array.isArray(invoicesRes.data.data)) {
         invoices = invoicesRes.data.data;
-      } else {
-        invoices = [];
       }
 
-      // ✅ Sold old batteries
       const oldSold = Array.isArray(oldRes.data) ? oldRes.data : (oldRes.data?.data || []);
 
-      // Create products map for profit calculation
       const productsMap = new Map();
       products.forEach(p => {
         productsMap.set(p.name, p);
       });
 
-      // Filter battery sales
       const batteryInvoices = invoices.filter(inv => {
         if (!inv.items) return false;
         return inv.items.some(item => isBatteryItem(item));
       });
 
-      // ✅ Old battery profit map: invoice_no -> profit
       const oldProfitMap = buildOldProfitMap(batteryInvoices, oldSold);
 
-      // ✅ Trade-in wali old batteries jo abhi stock mein hain
       const inStockOld = Array.isArray(stockRes.data) ? stockRes.data : (stockRes.data?.data || []);
       const stockVal = inStockOld
         .filter(b => /with purchase/i.test(b.note || ''))
         .reduce((s, b) => s + (parseFloat(b.trade_in_amount) || 0), 0);
       setOldStockValue(stockVal);
 
-      // ✅ Use Karachi timezone for calculations
       const todayStr = getTodayKarachiStr();
       const weekStart = getWeekStartKarachi();
       const monthStart = getMonthStartKarachi();
       const yearStart = getYearStartKarachi();
 
-      let todayTotal = 0, todayCount = 0, todayItems = 0, todayProfit = 0;
-      let weekTotal = 0, weekCount = 0, weekItems = 0, weekProfit = 0;
-      let monthTotal = 0, monthCount = 0, monthItems = 0, monthProfit = 0;
-      let yearTotal = 0, yearCount = 0, yearItems = 0, yearProfit = 0;
-      let allTotal = 0, allCount = 0, allItems = 0, allProfit = 0;
-      let customTotal = 0, customCount = 0, customItems = 0, customProfit = 0;
-      let recent = [];
+      const today = emptyBucket();
+      const week = emptyBucket();
+      const month = emptyBucket();
+      const year = emptyBucket();
+      const all = emptyBucket();
+      const custom = emptyBucket();
+      const recent = [];
 
-      // ✅ Custom date filter
       const customRange = timeFilter === 'custom' && customDate ? getDateRange('custom', customDate) : null;
 
       batteryInvoices.forEach(inv => {
@@ -339,115 +327,69 @@ const BatteryOverview = ({ darkMode }) => {
         const batteryItems = getBatteryItems(inv.items);
         if (batteryItems.length === 0) return;
 
-        const { invTotal, invProfit, invItems } = calcInvoiceStats(inv, batteryItems, productsMap, oldProfitMap);
+        const stats = calcInvoiceStats(inv, batteryItems, productsMap, oldProfitMap);
 
-        const detail = {
+        recent.push({
           invoiceNo: inv.invoice_no,
           customer: inv.customer_name || 'Walk-in',
           date: inv.invoice_date,
-          total: invTotal,
-          profit: invProfit,
-          items: invItems,
-          batteryItems: batteryItems
-        };
+          total: stats.invTotal,
+          profit: stats.invProfit,
+          cost: stats.invCost,
+          items: stats.invItems,
+          batteryItems
+        });
 
-        recent.push(detail);
-
-        allTotal += invTotal;
-        allItems += invItems;
-        allProfit += invProfit;
-        allCount++;
-
-        if (invDate >= yearStart) {
-          yearTotal += invTotal;
-          yearItems += invItems;
-          yearProfit += invProfit;
-          yearCount++;
-        }
-
-        if (invDate >= monthStart) {
-          monthTotal += invTotal;
-          monthItems += invItems;
-          monthProfit += invProfit;
-          monthCount++;
-        }
-
-        if (invDate >= weekStart) {
-          weekTotal += invTotal;
-          weekItems += invItems;
-          weekProfit += invProfit;
-          weekCount++;
-        }
+        addToBucket(all, stats);
+        if (invDate >= yearStart) addToBucket(year, stats);
+        if (invDate >= monthStart) addToBucket(month, stats);
+        if (invDate >= weekStart) addToBucket(week, stats);
 
         const invDateStr = invDate.toLocaleDateString('en-US', { timeZone: 'Asia/Karachi' });
-        if (invDateStr === todayStr) {
-          todayTotal += invTotal;
-          todayItems += invItems;
-          todayProfit += invProfit;
-          todayCount++;
-        }
+        if (invDateStr === todayStr) addToBucket(today, stats);
 
-        // ✅ Custom date check
-        if (customRange) {
-          if (invDate >= customRange.start && invDate <= customRange.end) {
-            customTotal += invTotal;
-            customItems += invItems;
-            customProfit += invProfit;
-            customCount++;
-          }
+        if (customRange && invDate >= customRange.start && invDate <= customRange.end) {
+          addToBucket(custom, stats);
         }
       });
 
       recent.sort((a, b) => new Date(b.date) - new Date(a.date));
       setRecentSales(recent.slice(0, 10));
 
-      setBatterySales({
-        today: { total: todayTotal, count: todayCount, items: todayItems, profit: todayProfit },
-        week: { total: weekTotal, count: weekCount, items: weekItems, profit: weekProfit },
-        month: { total: monthTotal, count: monthCount, items: monthItems, profit: monthProfit },
-        year: { total: yearTotal, count: yearCount, items: yearItems, profit: yearProfit },
-        all: { total: allTotal, count: allCount, items: allItems, profit: allProfit },
-        custom: { total: customTotal, count: customCount, items: customItems, profit: customProfit }
-      });
+      setBatterySales({ today, week, month, year, all, custom });
 
-      // ✅ Yearly data with Karachi timezone
       const yearInvoices = batteryInvoices.filter(inv => {
         if (!inv.invoice_date) return false;
         const invDate = getKarachiDate(inv.invoice_date);
         return invDate && invDate.getFullYear() === selectedYear;
       });
 
-      let yearlyTotal = 0, yearlyCount = 0, yearlyItems = 0, yearlyProfit = 0, yearlyDetails = [];
+      const yearly = { total: 0, count: 0, items: 0, profit: 0, cost: 0, details: [] };
 
       yearInvoices.forEach(inv => {
         const batteryItems = getBatteryItems(inv.items);
         if (batteryItems.length === 0) return;
 
-        const { invTotal, invProfit, invItems } = calcInvoiceStats(inv, batteryItems, productsMap, oldProfitMap);
+        const stats = calcInvoiceStats(inv, batteryItems, productsMap, oldProfitMap);
 
-        yearlyTotal += invTotal;
-        yearlyItems += invItems;
-        yearlyProfit += invProfit;
-        yearlyCount++;
-        yearlyDetails.push({
+        yearly.total += stats.invTotal;
+        yearly.items += stats.invItems;
+        yearly.profit += stats.invProfit;
+        yearly.cost += stats.invCost;
+        yearly.count += 1;
+        yearly.details.push({
           invoiceNo: inv.invoice_no,
           customer: inv.customer_name || 'Walk-in',
           date: inv.invoice_date,
-          total: invTotal,
-          profit: invProfit,
-          items: invItems,
-          batteryItems: batteryItems
+          total: stats.invTotal,
+          profit: stats.invProfit,
+          cost: stats.invCost,
+          items: stats.invItems,
+          batteryItems
         });
       });
 
-      setYearlyData({
-        total: yearlyTotal,
-        count: yearlyCount,
-        items: yearlyItems,
-        profit: yearlyProfit,
-        details: yearlyDetails
-      });
-
+      setYearlyData(yearly);
     } catch (err) {
       console.error('Error fetching battery sales:', err);
       setError('Failed to load battery sales data');
@@ -484,7 +426,6 @@ const BatteryOverview = ({ darkMode }) => {
     return labels[timeFilter] || 'All Time';
   };
 
-  // ✅ Handle custom date change
   const handleCustomDateChange = (e) => {
     const date = e.target.value;
     setCustomDate(date);
@@ -494,19 +435,16 @@ const BatteryOverview = ({ darkMode }) => {
     }
   };
 
-  // ✅ Toggle custom date picker
   const toggleCustomDate = () => {
     setShowCustomDate(!showCustomDate);
   };
 
-  // ✅ Clear custom date
   const clearCustomDate = () => {
     setCustomDate('');
     setTimeFilter('all');
     setShowCustomDate(false);
   };
 
-  // ✅ Export to Excel
   const exportToExcel = () => {
     if (yearlyData.details.length === 0) {
       toast.error('No battery sales data available for export');
@@ -521,11 +459,27 @@ const BatteryOverview = ({ darkMode }) => {
           'Customer': inv.customer,
           'Date': formatDateKarachi(inv.date),
           'Battery': item.service_name,
+          'Serial No.': serialText(item),
           'Quantity': item.quantity,
           'Price': `Rs. ${item.price.toLocaleString()}`,
-          'Final Total (after trade-in)': `Rs. ${inv.total.toLocaleString()}`
+          'Purchase Cost': `Rs. ${inv.cost.toLocaleString()}`,
+          'Final Total (after trade-in)': `Rs. ${inv.total.toLocaleString()}`,
+          'Profit': `Rs. ${inv.profit.toLocaleString()}`
         });
       });
+    });
+
+    exportData.push({
+      'Invoice #': '',
+      'Customer': '',
+      'Date': '',
+      'Battery': 'TOTAL',
+      'Serial No.': '',
+      'Quantity': yearlyData.items,
+      'Price': '',
+      'Purchase Cost': `Rs. ${yearlyData.cost.toLocaleString()}`,
+      'Final Total (after trade-in)': `Rs. ${yearlyData.total.toLocaleString()}`,
+      'Profit': `Rs. ${yearlyData.profit.toLocaleString()}`
     });
 
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -535,7 +489,6 @@ const BatteryOverview = ({ darkMode }) => {
     toast.success('Exported to Excel successfully!');
   };
 
-  // ✅ Export to PDF
   const exportToPDF = () => {
     if (yearlyData.details.length === 0) {
       toast.error('No battery sales data available for export');
@@ -553,15 +506,31 @@ const BatteryOverview = ({ darkMode }) => {
           inv.customer,
           formatDateKarachi(inv.date),
           item.service_name,
+          serialText(item),
           item.quantity,
           `Rs. ${item.price.toLocaleString()}`,
-          `Rs. ${inv.total.toLocaleString()}`
+          `Rs. ${inv.cost.toLocaleString()}`,
+          `Rs. ${inv.total.toLocaleString()}`,
+          `Rs. ${inv.profit.toLocaleString()}`
         ]);
       });
     });
 
+    tableData.push([
+      '',
+      '',
+      '',
+      'TOTAL',
+      '',
+      yearlyData.items,
+      '',
+      `Rs. ${yearlyData.cost.toLocaleString()}`,
+      `Rs. ${yearlyData.total.toLocaleString()}`,
+      `Rs. ${yearlyData.profit.toLocaleString()}`
+    ]);
+
     doc.autoTable({
-      head: [['Invoice', 'Customer', 'Date', 'Battery', 'Qty', 'Price', 'Final Total']],
+      head: [['Invoice', 'Customer', 'Date', 'Battery', 'Serial No.', 'Qty', 'Price', 'Purchase Cost', 'Final Total', 'Profit']],
       body: tableData,
       startY: 20,
     });
@@ -582,9 +551,35 @@ const BatteryOverview = ({ darkMode }) => {
 
   const currentSales = getCurrentSales();
 
+  const quickCard = (title, icon, bucket, extra) => (
+    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+        {icon} {title}
+        {extra}
+      </h4>
+      <div className="space-y-2">
+        <div className="flex justify-between">
+          <span className="text-sm opacity-70">Sales</span>
+          <span className="font-bold">Rs. {bucket.total.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-sm opacity-70">Purchase Cost</span>
+          <span className="font-bold text-orange-500">Rs. {bucket.cost.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-sm opacity-70">Batteries</span>
+          <span className="font-bold">{bucket.items}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-sm opacity-70">Profit</span>
+          <span className={`font-bold ${profitColor(bucket.profit)}`}>Rs. {bucket.profit.toLocaleString()}</span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-      {/* Filter Buttons with Custom Date */}
       <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="flex items-center gap-2 mr-4">
           <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -606,7 +601,6 @@ const BatteryOverview = ({ darkMode }) => {
           </button>
         ))}
 
-        {/* ✅ Custom Date Button */}
         <button
           onClick={toggleCustomDate}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
@@ -620,7 +614,6 @@ const BatteryOverview = ({ darkMode }) => {
           📅 Custom Date
         </button>
 
-        {/* ✅ Custom Date Input */}
         {showCustomDate && (
           <div className="flex items-center gap-2">
             <input
@@ -646,8 +639,7 @@ const BatteryOverview = ({ darkMode }) => {
         </span>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
           <div className="flex justify-between items-start">
             <div>
@@ -656,6 +648,17 @@ const BatteryOverview = ({ darkMode }) => {
               <p className="text-xs opacity-75 mt-1">{currentSales.count} invoices</p>
             </div>
             <FiDollarSign className="text-3xl opacity-50" />
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-lg">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm opacity-90">Purchase Cost</p>
+              <p className="text-3xl font-bold mt-2">Rs. {currentSales.cost.toLocaleString()}</p>
+              <p className="text-xs opacity-75 mt-1">Maal kitne ka liya</p>
+            </div>
+            <FiShoppingCart className="text-3xl opacity-50" />
           </div>
         </div>
 
@@ -687,71 +690,25 @@ const BatteryOverview = ({ darkMode }) => {
         </div>
       </div>
 
-      {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-            <FiClock className="text-blue-500" /> Today's Battery Sales
-            <span className="text-xs text-green-500">(Karachi Time)</span>
-          </h4>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Sales</span>
-              <span className="font-bold">Rs. {batterySales.today.total.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Batteries</span>
-              <span className="font-bold">{batterySales.today.items}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Profit</span>
-              <span className={`font-bold ${profitColor(batterySales.today.profit)}`}>Rs. {batterySales.today.profit.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-            <FiTrendingUp className="text-green-500" /> This Week's Battery Sales
-          </h4>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Sales</span>
-              <span className="font-bold">Rs. {batterySales.week.total.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Batteries</span>
-              <span className="font-bold">{batterySales.week.items}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Profit</span>
-              <span className={`font-bold ${profitColor(batterySales.week.profit)}`}>Rs. {batterySales.week.profit.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-            <FiTrendingDown className="text-red-500" /> This Month's Battery Sales
-          </h4>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Sales</span>
-              <span className="font-bold">Rs. {batterySales.month.total.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Batteries</span>
-              <span className="font-bold">{batterySales.month.items}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm opacity-70">Profit</span>
-              <span className={`font-bold ${profitColor(batterySales.month.profit)}`}>Rs. {batterySales.month.profit.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
+        {quickCard(
+          "Today's Battery Sales",
+          <FiClock className="text-blue-500" />,
+          batterySales.today,
+          <span className="text-xs text-green-500">(Karachi Time)</span>
+        )}
+        {quickCard(
+          "This Week's Battery Sales",
+          <FiTrendingUp className="text-green-500" />,
+          batterySales.week
+        )}
+        {quickCard(
+          "This Month's Battery Sales",
+          <FiTrendingDown className="text-red-500" />,
+          batterySales.month
+        )}
       </div>
 
-      {/* Yearly Report */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <div className="px-6 py-4 flex flex-wrap justify-between items-center gap-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -778,10 +735,14 @@ const BatteryOverview = ({ darkMode }) => {
         </div>
 
         <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <p className="text-sm opacity-70">Total Sales</p>
               <p className="text-2xl font-bold text-blue-500">Rs. {yearlyData.total.toLocaleString()}</p>
+            </div>
+            <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+              <p className="text-sm opacity-70">Purchase Cost</p>
+              <p className="text-2xl font-bold text-orange-500">Rs. {yearlyData.cost.toLocaleString()}</p>
             </div>
             <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <p className="text-sm opacity-70">Total Invoices</p>
@@ -801,15 +762,18 @@ const BatteryOverview = ({ darkMode }) => {
                   <th className="px-4 py-3 text-left">Invoice</th>
                   <th className="px-4 py-3 text-left">Customer</th>
                   <th className="px-4 py-3 text-left">Battery</th>
+                  <th className="px-4 py-3 text-left">Serial No.</th>
                   <th className="px-4 py-3 text-center">Qty</th>
                   <th className="px-4 py-3 text-right">Price</th>
+                  <th className="px-4 py-3 text-right">Purchase Cost</th>
                   <th className="px-4 py-3 text-right">Final Total</th>
+                  <th className="px-4 py-3 text-right">Profit</th>
                 </tr>
               </thead>
               <tbody>
                 {yearlyData.details.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-4 py-8 text-center">No battery sales found for {selectedYear}</td>
+                    <td colSpan="10" className="px-4 py-8 text-center">No battery sales found for {selectedYear}</td>
                   </tr>
                 ) : (
                   yearlyData.details.slice(0, 10).map((inv, idx) => (
@@ -819,9 +783,12 @@ const BatteryOverview = ({ darkMode }) => {
                         <td className="px-4 py-3 font-mono text-sm">{inv.invoiceNo}</td>
                         <td className="px-4 py-3">{inv.customer}</td>
                         <td className="px-4 py-3">{item.service_name}</td>
+                        <td className="px-4 py-3 font-mono text-sm">{serialText(item)}</td>
                         <td className="px-4 py-3 text-center">{item.quantity}</td>
                         <td className="px-4 py-3 text-right">Rs. {item.price.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-orange-500">Rs. {inv.cost.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right font-semibold">Rs. {inv.total.toLocaleString()}</td>
+                        <td className={`px-4 py-3 text-right font-semibold ${profitColor(inv.profit)}`}>Rs. {inv.profit.toLocaleString()}</td>
                       </tr>
                     ))
                   ))
@@ -829,8 +796,10 @@ const BatteryOverview = ({ darkMode }) => {
               </tbody>
               <tfoot className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                 <tr>
-                  <td colSpan="6" className="px-4 py-3 text-right font-bold">Total:</td>
+                  <td colSpan="7" className="px-4 py-3 text-right font-bold">Total:</td>
+                  <td className="px-4 py-3 text-right font-bold text-orange-500">Rs. {yearlyData.cost.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right font-bold text-blue-500">Rs. {yearlyData.total.toLocaleString()}</td>
+                  <td className={`px-4 py-3 text-right font-bold ${profitColor(yearlyData.profit)}`}>Rs. {yearlyData.profit.toLocaleString()}</td>
                 </tr>
               </tfoot>
             </table>

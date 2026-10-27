@@ -8,6 +8,38 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 // ============================================================
+// OLD BATTERY API ENDPOINT (Dashboard wala hi route)
+// ============================================================
+const OLD_BATTERY_ENDPOINT = '/old-batteries';
+
+// ============================================================
+// 💼 SALARY HELPERS (Dashboard jaisa hi rule)
+// Salary + Advance = expense, Loan = expense NAHI (wapas aane wala paisa)
+// ============================================================
+const isLoanPayment = (p) =>
+  String(p?.payment_type || p?.type || '').toLowerCase().includes('loan');
+
+// Employees ki salary/advance payments ko expense-entries mein badalta hai
+const salaryPaymentsAsExpenses = (employees) => {
+  const list = [];
+  (Array.isArray(employees) ? employees : []).forEach(emp => {
+    (Array.isArray(emp?.payments) ? emp.payments : []).forEach(p => {
+      if (!p || isLoanPayment(p)) return;
+      const isAdvance = String(p?.payment_type || p?.type || '').toLowerCase().includes('advance');
+      list.push({
+        id: `salary-${emp.id}-${p.id}`,
+        description: `${isAdvance ? 'Advance' : 'Salary'} - ${emp.name}`,
+        category: isAdvance ? 'Advance' : 'Salary',
+        amount: parseFloat(p.amount) || 0,
+        date: p.payment_date || p.date || p.created_at,
+        isSalary: true
+      });
+    });
+  });
+  return list;
+};
+
+// ============================================================
 // 🕒 KARACHI TIMEZONE HELPERS (Asia/Karachi, UTC+5, no DST)
 // Saari date filtering 'YYYY-MM-DD' strings par hoti hai jo Karachi ke
 // hisab se nikalti hain, isliye browser/server timezone ka asar nahi padta.
@@ -67,10 +99,13 @@ const formatDisplayDate = (value) => {
 
 // ============================================================
 // ✅ SALES / PROFIT LOGIC (Dashboard ke bilkul barabar)
-//  - Battery aur Old Battery Sale ab sales mein shamil
+//  - Battery aur Old Battery Sale sales mein shamil
 //  - Trade-in (customer se old battery khareedna) sales mein nahi, uski raqam profit se minus
 //  - Battery bechte waqt old battery ki value (trade-in discount) asli Discount mein nahi ginti,
 //    magar profit se kat jati hai
+//  - Old Battery ki khareedi (trade_in_amount) Expenses / Inventory Purchased mein dikhti hai.
+//    Profit se ALAG minus NAHI hoti, kyunke woh Trade-in line / trade-in discount se pehle hi cut chuki hoti hai
+//    (Dashboard ki tarah)
 // ============================================================
 
 // Kya is invoice ka discount asal mein battery trade-in hai?
@@ -167,8 +202,9 @@ const aggregateInvoices = (invoicesList, productsMap) => {
   return { total, items, count: details.length, profit, discount, tradeIn, details };
 };
 
-// Net Profit = Lines ka profit - Expenses - Asli Discount - Trade-in
-const netProfitOf = (agg, expenses = 0) => agg.profit - expenses - agg.discount - agg.tradeIn;
+// Net Profit = Lines ka profit - Expenses - Asli Discount - Trade-in  (Dashboard ke barabar)
+const netProfitOf = (agg, expenses = 0) =>
+  agg.profit - expenses - agg.discount - agg.tradeIn;
 
 const emptyAgg = { total: 0, items: 0, count: 0, profit: 0, discount: 0, tradeIn: 0, details: [] };
 
@@ -224,7 +260,7 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   });
 };
 
-// ✅ Helper: Inventory Purchased (jo paisay actually nikal chuke hain) - ab BATTERY bhi shamil
+// ✅ Helper: Inventory Purchased (jo paisay actually nikal chuke hain) - BATTERY bhi shamil
 //  1) Cash purchase (vendor se link nahi): purchase_price × KHAREEDI HUI quantity
 //     Kharidi hui quantity = abhi ki stock + ab tak bika hua maal
 //  2) Vendor/credit purchase: sirf wo paisay jo vendor ko diye gaye
@@ -280,6 +316,23 @@ const getInventoryCost = (products, creditRecords, invoices, filter, customDate 
   });
 
   return cashTotal + creditPaidTotal;
+};
+
+// ✅ Khareedi hui purani batteries ki cost (Dashboard ki tarah)
+//  - Price field: trade_in_amount (har record 1 battery hai)
+//  - Date field : purchase_date || created_at
+//  range = { start, end } ya null (null = All Time)
+const getOldBatteryCost = (oldBatteries, range = null) => {
+  return (oldBatteries || []).reduce((sum, b) => {
+    if (!b) return sum;
+
+    if (range) {
+      const raw = b.purchase_date || b.created_at;
+      if (!raw || !isInRange(toKarachiDateStr(raw), range)) return sum;
+    }
+
+    return sum + (parseFloat(b.trade_in_amount) || 0);
+  }, 0);
 };
 
 // Display helpers for table rows
@@ -518,14 +571,18 @@ const FinanceOverview = ({ darkMode }) => {
   const [products, setProducts] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
-  // ✅ Vendor/credit records (paid_amount + payments) - inventory purchased ke liye
+  // Vendor/credit records (paid_amount + payments) - inventory purchased ke liye
   const [creditRecords, setCreditRecords] = useState([]);
+  // Khareedi hui purani batteries (cost = trade_in_amount)
+  const [oldBatteries, setOldBatteries] = useState([]);
   
   const [filteredSalesData, setFilteredSalesData] = useState(emptyAgg);
   const [filteredExpenseData, setFilteredExpenseData] = useState([]);
   const [filteredStats, setFilteredStats] = useState({
     expenses: 0,
     expenseCount: 0,
+    salary: 0,
+    salaryCount: 0,
     profit: 0,
     discount: 0
   });
@@ -601,10 +658,16 @@ const FinanceOverview = ({ darkMode }) => {
     const sales = aggregateInvoices(filteredInvoices, productsMap);
     
     let expenseTotal = 0;
+    let salaryTotal = 0;
+    let salaryCount = 0;
     const expenseList = [];
     filteredExpenses.forEach(exp => {
       const amount = parseFloat(exp.amount) || 0;
       expenseTotal += amount;
+      if (exp.isSalary) {
+        salaryTotal += amount;
+        salaryCount++;
+      }
       expenseList.push({
         id: exp.id,
         description: exp.description,
@@ -618,11 +681,13 @@ const FinanceOverview = ({ darkMode }) => {
       sales,
       expenses: expenseList,
       expenseTotal: expenseTotal,
-      expenseCount: expenseList.length
+      expenseCount: expenseList.length,
+      salaryTotal,
+      salaryCount
     };
   }, [timeFilter, customDate]);
 
-  // ✅ Products API response shape ko safely handle karega
+  // Products API response shape ko safely handle karega
   const fetchProducts = useCallback(async (signal) => {
     try {
       const response = await api.get('/products', { signal });
@@ -646,7 +711,7 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, []);
 
-  // ✅ Credit vendor records (paid_amount + payments) - vendor ko diye hue paisay ke liye
+  // Credit vendor records (paid_amount + payments) - vendor ko diye hue paisay ke liye
   const fetchCreditRecords = useCallback(async (signal) => {
     try {
       const response = await api.get('/credit/vendors', { signal });
@@ -663,6 +728,47 @@ const FinanceOverview = ({ darkMode }) => {
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('Error fetching credit vendors:', err);
+      }
+      return [];
+    }
+  }, []);
+
+  // Old batteries - Dashboard ki tarah status 'all' bhejte hain taake sold wali bhi aayein
+  const fetchOldBatteries = useCallback(async (signal) => {
+    try {
+      const response = await api.get(OLD_BATTERY_ENDPOINT, {
+        params: { status: 'all' },
+        signal
+      });
+      const raw = response.data;
+
+      const list = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.batteries)
+        ? raw.batteries
+        : [];
+
+      setOldBatteries(list);
+      return list;
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching old batteries:', err);
+      }
+      return [];
+    }
+  }, []);
+
+  // Employees (salary + advance payments yahin se aate hain) - Dashboard wala hi route
+  const fetchEmployees = useCallback(async (signal) => {
+    try {
+      const response = await api.get('/employees', { signal });
+      const raw = response.data;
+      return Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error fetching employees:', err);
       }
       return [];
     }
@@ -706,12 +812,17 @@ const FinanceOverview = ({ darkMode }) => {
     setError(null);
     
     try {
-      const [productsList, expensesList, invoicesList] = await Promise.all([
+      const [productsList, manualExpenses, invoicesList, , , employeesList] = await Promise.all([
         fetchProducts(abortController.signal),
         fetchExpenses(abortController.signal),
         fetchInvoices(abortController.signal),
-        fetchCreditRecords(abortController.signal)
+        fetchCreditRecords(abortController.signal),
+        fetchOldBatteries(abortController.signal),
+        fetchEmployees(abortController.signal)
       ]);
+
+      // Manual expenses + Salary/Advance payments (Loan shamil nahi)
+      const expensesList = [...manualExpenses, ...salaryPaymentsAsExpenses(employeesList)];
       
       const productsMap = new Map();
       productsList.forEach(p => {
@@ -725,8 +836,9 @@ const FinanceOverview = ({ darkMode }) => {
       setFilteredStats({
         expenses: filtered.expenseTotal,
         expenseCount: filtered.expenseCount,
-        // ✅ Net Profit = Sales Profit - (Expenses + Asli Discount + Trade-in)
-        // (inventory purchase yahan minus nahi hoti - profit already sale - purchase se nikal raha hai)
+        salary: filtered.salaryTotal,
+        salaryCount: filtered.salaryCount,
+        // Net Profit (Dashboard ke barabar: old battery alag minus nahi hoti)
         profit: netProfitOf(filtered.sales, filtered.expenseTotal),
         discount: filtered.sales.discount
       });
@@ -790,7 +902,7 @@ const FinanceOverview = ({ darkMode }) => {
       setTodayExpenseDetails(todayExpList);
       setWeekExpenseDetails(weekExpList);
       setMonthExpenseDetails(monthExpList);
-      
+
       setStats({
         todayExpenses: todayExp,
         todayExpenseCount: todayExpCount,
@@ -826,7 +938,7 @@ const FinanceOverview = ({ darkMode }) => {
     }
     
     return () => abortController.abort();
-  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, fetchCreditRecords, calculateFilteredData, timeFilter, customDate]);
+  }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, fetchCreditRecords, fetchOldBatteries, fetchEmployees, calculateFilteredData, timeFilter, customDate]);
 
   useEffect(() => {
     const cleanup = loadAllData();
@@ -845,6 +957,7 @@ const FinanceOverview = ({ darkMode }) => {
     return items;
   }, [selectedYearData.details]);
 
+  // Selected year: sirf Discount + Trade-in minus (old battery alag minus nahi, Dashboard ki tarah)
   const yearDeductions = (selectedYearData.discount || 0) + (selectedYearData.tradeIn || 0);
   const yearNetProfit = selectedYearData.profit - yearDeductions;
 
@@ -873,18 +986,31 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, [currentPage, totalPages]);
 
-  // ✅ Inventory Purchased: cash purchases (khareedi hui poori quantity ki cost) + vendor ko diye hue paisay
-  // (Battery bhi shamil, Karachi time)
-  const inventoryCost = useMemo(
-    () => getInventoryCost(products, creditRecords, invoices, timeFilter, customDate || null),
-    [products, creditRecords, invoices, timeFilter, customDate]
+  // Selected filter ki old battery khareedi (trade_in_amount)
+  const oldBatteryCost = useMemo(
+    () => getOldBatteryCost(
+      oldBatteries,
+      timeFilter !== 'all' ? getDateRange(timeFilter, customDate || null) : null
+    ),
+    [oldBatteries, timeFilter, customDate]
   );
 
-  // ✅ Expenses card = Manual expenses + Inventory Purchased
+  // ✅ Inventory Purchased: cash purchases (khareedi hui poori quantity ki cost) + vendor ko diye hue paisay
+  //    + old batteries ki khareedi (Karachi time)
+  const inventoryCost = useMemo(
+    () => getInventoryCost(products, creditRecords, invoices, timeFilter, customDate || null) + oldBatteryCost,
+    [products, creditRecords, invoices, timeFilter, customDate, oldBatteryCost]
+  );
+
+  // ✅ Expenses card = Manual expenses + Inventory Purchased (old batteries samet)
   const totalExpensesWithInventory = useMemo(
     () => filteredStats.expenses + inventoryCost,
     [filteredStats.expenses, inventoryCost]
   );
+
+  // ✅ Final Profit = Sales Profit - (Manual Expenses + Discount + Trade-in)
+  //    Old battery ki cost yahan dobara minus NAHI hoti (Dashboard ke barabar)
+  const finalProfit = filteredStats.profit;
 
   const exportToExcel = useCallback(() => {
     if (flattenedItems.length === 0) {
@@ -1021,7 +1147,7 @@ const FinanceOverview = ({ darkMode }) => {
         </span>
       </div>
 
-      {/* ✅ Top 5 Cards - ek hi line mein (chhote): Sales, Expenses, Inventory Purchased, Discount Given, Profit */}
+      {/* Top 5 Cards - ek hi line mein (chhote): Sales, Expenses, Inventory Purchased, Discount Given, Profit */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
           compact
@@ -1036,7 +1162,7 @@ const FinanceOverview = ({ darkMode }) => {
           expanded={showAllDetails}
         />
 
-        {/* ✅ 2nd: Expenses = Manual expenses + Inventory Purchased (battery bhi) */}
+        {/* 2nd: Expenses = Manual expenses + Inventory Purchased (battery + old battery bhi) */}
         <StatCard
           compact
           gradient="from-red-500 to-red-600"
@@ -1045,12 +1171,13 @@ const FinanceOverview = ({ darkMode }) => {
           mainValue={`Rs. ${totalExpensesWithInventory.toLocaleString()}`}
           subLines={[
             `Inventory: Rs. ${inventoryCost.toLocaleString()}`,
-            `Other: Rs. ${filteredStats.expenses.toLocaleString()} (${filteredStats.expenseCount} transactions)`
+            `Salary: Rs. ${filteredStats.salary.toLocaleString()} (${filteredStats.salaryCount} payments)`,
+            `Other: Rs. ${(filteredStats.expenses - filteredStats.salary).toLocaleString()} (${filteredStats.expenseCount - filteredStats.salaryCount} transactions)`
           ]}
           expanded={showAllDetails}
         />
 
-        {/* ✅ 3rd: Inventory Purchased (khareedi hui poori quantity + vendor ko diye hue paisay) */}
+        {/* 3rd: Inventory Purchased (khareedi hui poori quantity + vendor ko diye hue paisay + old batteries) */}
         <StatCard
           compact
           gradient="from-orange-500 to-orange-600"
@@ -1058,12 +1185,13 @@ const FinanceOverview = ({ darkMode }) => {
           title="Inventory Purchased"
           mainValue={`Rs. ${inventoryCost.toLocaleString()}`}
           subLines={[
-            'Total khareedi (bika hua + bacha hua)'
+            'Total khareedi (bika hua + bacha hua)',
+            `Old Batteries: Rs. ${oldBatteryCost.toLocaleString()}`
           ]}
           expanded={showAllDetails}
         />
 
-        {/* ✅ 4th: Discount Given (sirf asli discount, trade-in nahi) */}
+        {/* 4th: Discount Given (sirf asli discount, trade-in nahi) */}
         <StatCard
           compact
           gradient="from-sky-400 to-sky-500"
@@ -1076,13 +1204,13 @@ const FinanceOverview = ({ darkMode }) => {
           expanded={showAllDetails}
         />
 
-        {/* ✅ 5th: Profit = Sales Profit - (Expenses + Discount + Trade-in) */}
+        {/* 5th: Profit = Sales Profit - (Manual Expenses + Discount + Trade-in) */}
         <StatCard
           compact
-          gradient={filteredStats.profit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'}
+          gradient={finalProfit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'}
           icon={FiTrendingUp}
           title={`${getFilterLabel()} Profit`}
-          mainValue={`Rs. ${filteredStats.profit.toLocaleString()}`}
+          mainValue={`Rs. ${finalProfit.toLocaleString()}`}
           subLines={[
             'After expenses, discount & trade-in'
           ]}
@@ -1245,7 +1373,7 @@ const FinanceOverview = ({ darkMode }) => {
         </>
       )}
 
-      {/* Monthly Breakdown - Net Profit = Sales Profit - (Expenses + Discount + Trade-in) */}
+      {/* Monthly Breakdown - Net Profit = Sales Profit - (Manual Expenses + Discount + Trade-in) */}
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
         <h3 className={`font-semibold mb-4 flex items-center gap-2 flex-wrap ${darkMode ? 'text-white' : 'text-gray-900'}`}>
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
@@ -1258,12 +1386,12 @@ const FinanceOverview = ({ darkMode }) => {
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Sales</p>
             <p className={`text-xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {filteredSalesData.total.toLocaleString()}</p>
           </div>
-          {/* ✅ Expenses = Manual expenses + Inventory Purchased */}
+          {/* Expenses = Manual expenses + Inventory Purchased (old batteries samet) */}
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expenses (incl. Inventory)</p>
             <p className={`text-xl font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {totalExpensesWithInventory.toLocaleString()}</p>
             <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              Inventory: Rs. {inventoryCost.toLocaleString()} + Other: Rs. {filteredStats.expenses.toLocaleString()}
+              Inventory: Rs. {inventoryCost.toLocaleString()} + Salary: Rs. {filteredStats.salary.toLocaleString()} + Other: Rs. {(filteredStats.expenses - filteredStats.salary).toLocaleString()}
             </p>
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
@@ -1272,8 +1400,8 @@ const FinanceOverview = ({ darkMode }) => {
           </div>
           <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Net Profit</p>
-            <p className={`text-xl font-bold ${filteredStats.profit >= 0 ? (darkMode ? 'text-green-400' : 'text-green-500') : (darkMode ? 'text-red-400' : 'text-red-500')}`}>
-              Rs. {filteredStats.profit.toLocaleString()}
+            <p className={`text-xl font-bold ${finalProfit >= 0 ? (darkMode ? 'text-green-400' : 'text-green-500') : (darkMode ? 'text-red-400' : 'text-red-500')}`}>
+              Rs. {finalProfit.toLocaleString()}
             </p>
           </div>
         </div>

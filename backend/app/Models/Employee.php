@@ -50,39 +50,74 @@ class Employee extends Model
     }
 
     // =========================================================================
+    // ✅ LOAN SYSTEM (salary system se bilkul alag)
+    // =========================================================================
+
+    // ✅ Loans diye gaye
+    public function loans(): HasMany
+    {
+        return $this->hasMany(EmployeeLoan::class, 'employee_id');
+    }
+
+    // ✅ Loan ki wapsi
+    public function loanPayments(): HasMany
+    {
+        return $this->hasMany(EmployeeLoanPayment::class, 'employee_id');
+    }
+
+    // ✅ Loan balance = total loan diya - total wapas aaya
+    public function getLoanBalanceAttribute()
+    {
+        $given = (float) $this->loans()->sum('amount');
+        $repaid = (float) $this->loanPayments()->sum('amount');
+        return round($given - $repaid, 2);
+    }
+
+    // ✅ Aakhri loan kis date ko diya (Y-m-d) ya null
+    public function getLastLoanDateAttribute()
+    {
+        $date = $this->loans()->max('loan_date');
+        return $date ? Carbon::parse($date)->format('Y-m-d') : null;
+    }
+
+    // =========================================================================
     // ✅ MONTH-BASED SALARY SYSTEM
     // =========================================================================
 
     /**
-     * ✅ FIXED: First salary cycle month, based on join_date AND salary_date.
+     * ✅ FIXED: First salary cycle month, based on join_date AND salary_date,
+     * but never earlier than the system start month (config app.salary_system_start).
      *
      * Join 17 Sep, salary_date 15 → 15 Sep already passed before joining,
      *                               so first cycle = Oct (15 Oct).
      * Join 10 Sep, salary_date 15 → first cycle = Sep (15 Sep).
      *
+     * ✅ NEW: Old employees (joined 2019, 2020, etc.) start from the system
+     * start month (Oct 2026), so old months are not counted as due.
+     *
      * Returns the first day of that month (Carbon).
      */
     public function getFirstCycleMonth(): Carbon
     {
+        $floor = Carbon::parse(config('app.salary_system_start', '2026-10-01'))->startOfMonth();
+
         if (!$this->join_date) {
-            return now()->startOfMonth();
+            return now()->startOfMonth()->lt($floor) ? $floor->copy() : now()->startOfMonth();
         }
 
         $join = $this->join_date->copy();
         $start = $join->copy()->startOfMonth();
 
-        if (!$this->salary_date) {
-            return $start;
+        if ($this->salary_date) {
+            $effectiveDay = min($this->salary_date, $join->daysInMonth);
+
+            // Salary date of the join month already passed → start from next month
+            if ($join->day > $effectiveDay) {
+                $start = $start->addMonthNoOverflow();
+            }
         }
 
-        $effectiveDay = min($this->salary_date, $join->daysInMonth);
-
-        // Salary date of the join month already passed → start from next month
-        if ($join->day > $effectiveDay) {
-            return $start->addMonthNoOverflow();
-        }
-
-        return $start;
+        return $start->lt($floor) ? $floor->copy() : $start;
     }
 
     /**
@@ -379,6 +414,8 @@ class Employee extends Model
             'payments_count' => $this->payments()->count(),
             'total_paid_all_time' => (float) $this->total_paid_all_time,
             'advance_balance' => (float) $this->advance_balance,
+            'loan_balance' => (float) $this->loan_balance,       // ✅ NEW
+            'last_loan_date' => $this->last_loan_date,           // ✅ NEW
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

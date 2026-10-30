@@ -1,4 +1,3 @@
-// src/components/Dashboard.jsx
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -23,7 +22,6 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// Lazy load heavy components
 const Inventory = lazy(() => import('./Inventory'));
 const FinanceOverview = lazy(() => import('./finance/FinanceOverview'));
 const FinanceExpenses = lazy(() => import('./finance/FinanceExpenses'));
@@ -39,27 +37,22 @@ const DiscardedBillsPage = lazy(() => import('./billing/DiscardedBillsPage'));
 const EstimatedBill = lazy(() => import('./EstimatedBill'));
 const BatteryPage = lazy(() => import('./BatteryPage'));
 const EstimateRecords = lazy(() => import('./EstimateRecords'));
-
-// Battery Overview & Charts
 const BatteryOverview = lazy(() => import('./BatteryOverview'));
 const BatteryCharts = lazy(() => import('./BatteryCharts'));
-
-// Old Batteries
 const OldBatteries = lazy(() => import('./OldBatteries'));
-
-// ✅ Car Pages
 const CarPurchase = lazy(() => import('./CarPurchase'));
 const CarSell = lazy(() => import('./CarSell'));
 const CarRecords = lazy(() => import('./CarRecords'));
-
-// ✅ NEW: Product Record (Admin only)
 const ProductRecord = lazy(() => import('./ProductRecord'));
+const CashInHand = lazy(() => import('./CashInHand'));
+const InventoryHistory = lazy(() => import('./InventoryHistory')); // ✅ NEW
 
-// ✅ NEW: URL <-> Menu mapping (URL hi activeMenu ka source hai)
 const PATH_TO_MENU = {
   '/dashboard': 'all-data',
   '/inventory': 'inventory',
   '/product-record': 'product-record',
+  '/inventory-history': 'inventory-history', // ✅ NEW
+  '/cash-in-hand': 'cash-in-hand',
   '/finance': 'finance-overview',
   '/finance-expenses': 'finance-expenses',
   '/finance-charts': 'finance-charts',
@@ -82,6 +75,9 @@ const PATH_TO_MENU = {
   '/discarded': 'discarded',
 };
 
+// ✅ Ye paths sirf admin ke liye hain
+const ADMIN_ONLY_PATHS = ['/product-record', '/cash-in-hand', '/inventory-history']; // ✅ inventory-history added
+
 const MENU_TO_PATH = Object.fromEntries(
   Object.entries(PATH_TO_MENU).map(([path, menu]) => [menu, path])
 );
@@ -100,7 +96,6 @@ const getMenuFromPath = (pathname, role) => {
   return PATH_TO_MENU[pathname] || fallback;
 };
 
-// Loading fallback component
 const LoadingFallback = ({ darkMode }) => (
   <div className={`flex items-center justify-center h-96 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
     <div className="text-center">
@@ -110,13 +105,12 @@ const LoadingFallback = ({ darkMode }) => (
   </div>
 );
 
-// Memoized Stats Card Component
 const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkMode }) => (
-  <div className={`bg-gradient-to-r ${color} rounded-2xl p-6 text-white shadow-lg`}>
+  <div className={`bg-gradient-to-r ${color} rounded-2xl p-5 text-white shadow-lg`}>
     <div className="flex justify-between items-start">
       <div>
         <p className="text-sm opacity-90">{title}</p>
-        <p className="text-3xl font-bold mt-2">{value}</p>
+        <p className="text-2xl font-bold mt-2">{value}</p>
         {subtitle && <p className="text-xs opacity-75 mt-1">{subtitle}</p>}
       </div>
       <Icon className="text-3xl opacity-50" />
@@ -124,49 +118,16 @@ const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkM
   </div>
 ));
 
-// ✅ Battery filter function - Battery items ko detect karega
-const isBatteryItem = (item) => {
-  if (!item) return false;
-  return item.service_category === 'Battery' || 
-         item.service_name?.toLowerCase().includes('battery');
-};
-
-// ✅ Helper: Get non-battery items from invoice
-// (ab sirf Discount ke liye use hota hai: battery invoice ka trade-in discount dashboard discount mein nahi ginta)
-const getNonBatteryItems = (items) => {
-  if (!items || !Array.isArray(items)) return [];
-  return items.filter(item => !isBatteryItem(item));
-};
-
-// ✅ Loan payment expense nahi hai (wapas aane wala paisa hai). Salary / advance expense hain.
 const isLoanPayment = (p) => {
   const t = String(p?.payment_type || p?.type || '').toLowerCase();
   return t.includes('loan');
 };
 
-// ✅ Inventory se bike hue saare items (battery bhi shamil).
-// Trade-in aur Old Battery Sale inventory ka maal nahi hain, isliye skip.
-// Sales, Profit aur Expense teeno isi se calculate hote hain.
-const getSoldInventoryItems = (items) => {
-  if (!items || !Array.isArray(items)) return [];
-  return items.filter(item =>
-    item &&
-    item.service_category !== 'Trade-in' &&
-    item.service_category !== 'Old Battery Sale'
-  );
-};
-
-// ✅ Sales mein har line shamil, sirf 'Trade-in' (customer se old battery khareedna) skip.
-// Old Battery Sale (purani battery bechna) bhi sales mein ginti hai.
 const getSalesItems = (items) => {
   if (!items || !Array.isArray(items)) return [];
   return items.filter(item => item && item.service_category !== 'Trade-in');
 };
 
-// ✅ Cash-basis profit per line:
-//  - Normal / Battery item      : (selling - purchase) x qty
-//  - Old Battery Sale           : poori selling price (iski cost pehle hi discount / trade-in mein cut chuki hai)
-//  - Trade-in (old battery kharidi, cash diya) : minus (kharidi hui raqam)
 const calcItemProfit = (item, purchaseMap) => {
   const qty = parseInt(item.quantity) || 0;
   const price = parseFloat(item.price) || 0;
@@ -178,8 +139,6 @@ const calcItemProfit = (item, purchaseMap) => {
   return (price - purchasePrice) * qty;
 };
 
-// ✅ Kya is invoice ka discount asal mein battery trade-in hai? (customer ki purani battery ki value)
-// BatteryPage trade-in ko discount field + note mein save karta hai. Ye "asli discount" nahi hota.
 const isTradeInInvoice = (inv) => {
   const note = (inv?.discount_note || '').toLowerCase();
   if (note.includes('trade-in') || note.includes('old battery purchase')) return true;
@@ -188,7 +147,6 @@ const isTradeInInvoice = (inv) => {
   return items.length > 0 && items.every(it => it && it.service_category === 'Battery');
 };
 
-// Helper: Get date range for filter
 const getDateRange = (filter, customDate = null) => {
   const now = new Date();
   const start = new Date();
@@ -226,7 +184,6 @@ const getDateRange = (filter, customDate = null) => {
   return { start, end: now };
 };
 
-// Helper: Filter invoices by date range
 const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   if (filter === 'all') return invoices;
   const range = getDateRange(filter, customDate);
@@ -238,7 +195,6 @@ const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   });
 };
 
-// Helper: Filter expenses by date range
 const filterExpensesByDate = (expenses, filter, customDate = null) => {
   if (filter === 'all') return expenses;
   const range = getDateRange(filter, customDate);
@@ -250,7 +206,6 @@ const filterExpensesByDate = (expenses, filter, customDate = null) => {
   });
 };
 
-// Filter / chart type button definitions
 const TIME_FILTERS = [
   { id: 'all', label: 'All Time' },
   { id: 'today', label: 'Today' },
@@ -272,7 +227,6 @@ const Dashboard = () => {
 
   const [userRole, setUserRole] = useState(getStoredRole());
 
-  // ✅ activeMenu ab URL se nikalta hai (purana getDefaultMenu hata diya)
   const [activeMenu, setActiveMenu] = useState(() =>
     getMenuFromPath(location.pathname, getStoredRole())
   );
@@ -290,7 +244,6 @@ const Dashboard = () => {
   const [chartType, setChartType] = useState('line');
   const [isLowStockOpen, setIsLowStockOpen] = useState(false);
 
-  // ✅ Refresh button states
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -298,24 +251,18 @@ const Dashboard = () => {
   const [expenses, setExpenses] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [services, setServices] = useState([]);
-  const [oldBatteries, setOldBatteries] = useState([]);
-  // ✅ NEW: Credit vendors (vendor ko kitna dena baqi hai ye yahan se pata chalta hai)
-  const [creditVendors, setCreditVendors] = useState([]);
-  // ✅ NEW: Employees (salary + advance payments yahin se aate hain)
   const [employees, setEmployees] = useState([]);
 
-  // ✅ NEW: Loan cards (by default hidden, Show button dabane par hi dikhenge)
   const [showLoanCards, setShowLoanCards] = useState(false);
   const [loadingLoanStats, setLoadingLoanStats] = useState(false);
   const [loanStats, setLoanStats] = useState({ totalLoan: 0, totalRepaid: 0, balance: 0 });
 
-  // ✅ URL badle to menu automatically sync ho.
   useEffect(() => {
     const role = getStoredRole();
     setUserRole(role);
 
-    // Employee admin-only page par na jaye
-    if (location.pathname === '/product-record' && role !== 'admin') {
+    // ✅ Admin-only pages (product-record, cash-in-hand, inventory-history): employee ko dashboard par bhejo
+    if (ADMIN_ONLY_PATHS.includes(location.pathname) && role !== 'admin') {
       navigate('/dashboard', { replace: true });
       return;
     }
@@ -323,7 +270,6 @@ const Dashboard = () => {
     setActiveMenu(getMenuFromPath(location.pathname, role));
   }, [location.pathname, navigate]);
 
-  // ✅ Dashboard ke andar ke buttons ke liye (URL bhi badalta hai)
   const goToMenu = useCallback((id) => {
     const path = MENU_TO_PATH[id];
     if (path) navigate(path);
@@ -346,84 +292,12 @@ const Dashboard = () => {
   );
 
   const activeProducts = useMemo(() => {
-    const filtered = productsArray.filter(p => {
+    return productsArray.filter(p => {
       const isHidden = p.is_hidden === true || p.is_hidden === 1;
       return !isHidden;
     });
-    return filtered;
   }, [productsArray]);
 
-  // ✅ Har product ki ab tak ki total bikri hui quantity (saare invoices se, filter ke baghair)
-  // Kharidi hui quantity = abhi ki stock + ab tak bika hua maal
-  const soldQtyByProduct = useMemo(() => {
-    const map = {};
-    invoicesArray.forEach(inv => {
-      getSoldInventoryItems(inv.items).forEach(item => {
-        const key = item.service_name;
-        if (!key) return;
-        map[key] = (map[key] || 0) + (parseInt(item.quantity) || 0);
-      });
-    });
-    return map;
-  }, [invoicesArray]);
-
-  // ✅ Inventory purchase cost (purchase price x kharidi hui quantity) - date filter ke sath
-  const inventoryPurchases = useMemo(() => {
-    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
-
-    return productsArray
-      .map(p => {
-        const rawDate = p.date_added || p.created_at || null;
-        const purchasedQty = (parseInt(p.quantity) || 0) + (soldQtyByProduct[p.name] || 0);
-        const cost = (parseFloat(p.purchase_price) || 0) * purchasedQty;
-        return { product: p, date: rawDate ? new Date(rawDate) : null, cost };
-      })
-      .filter(entry => {
-        if (!range) return true;
-        if (!entry.date) return false;
-        return entry.date >= range.start && entry.date <= range.end;
-      });
-  }, [productsArray, soldQtyByProduct, timeFilter, customDate]);
-
-  // ✅ Date filter ke hisab se credit records (created_at par)
-  const filteredCreditVendors = useMemo(() => {
-    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
-    return (Array.isArray(creditVendors) ? creditVendors : []).filter(v => {
-      if (!range) return true;
-      const d = new Date(v.created_at);
-      return !isNaN(d.getTime()) && d >= range.start && d <= range.end;
-    });
-  }, [creditVendors, timeFilter, customDate]);
-
-  // ✅ Vendor ko jo abhi dena baqi hai (ye expense nahi, ye udhaar hai)
-  // Yehi value "Inventory Credit Balance" card mein bhi dikhti hai (Credit page ke Total Balance jaisi)
-  const creditUnpaidTotal = useMemo(() =>
-    filteredCreditVendors.reduce((sum, v) => sum + (parseFloat(v.balance_amount) || 0), 0),
-    [filteredCreditVendors]
-  );
-
-  // ✅ NEW: "Inventory Cost" card - Inventory page wale card jaisa hi hisab:
-  // (purchase price x current stock), sirf active (non-hidden) products, date filter date_added par
-  const inventoryPurchaseCardTotal = useMemo(() => {
-    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
-
-    return activeProducts.reduce((sum, p) => {
-      if (range) {
-        if (!p.date_added) return sum;
-        const d = new Date(p.date_added);
-        if (!(d >= range.start && d <= range.end)) return sum;
-      }
-      return sum + (parseFloat(p.purchase_price) || 0) * (parseInt(p.quantity) || 0);
-    }, 0);
-  }, [activeProducts, timeFilter, customDate]);
-
-  // ✅ Inventory purchase expense = poori cost - vendor ka baqi balance (sirf paid wali raqam count hogi)
-  const inventoryPurchaseTotal = useMemo(() =>
-    Math.max(0, inventoryPurchases.reduce((sum, e) => sum + e.cost, 0) - creditUnpaidTotal),
-    [inventoryPurchases, creditUnpaidTotal]
-  );
-
-  // Product name -> purchase price (profit calculation ke liye)
   const purchaseMap = useMemo(() => {
     const map = {};
     activeProducts.forEach(p => {
@@ -432,7 +306,6 @@ const Dashboard = () => {
     return map;
   }, [activeProducts]);
 
-  // ✅ Total Sales = battery sales + old battery sales bhi (Trade-in purchase lines skip)
   const totalSales = useMemo(() => {
     let total = 0;
     filteredInvoices.forEach(inv => {
@@ -445,13 +318,11 @@ const Dashboard = () => {
     return total;
   }, [filteredInvoices]);
 
-  // Manual expenses (jo Expenses page se add hue)
   const manualExpensesSum = useMemo(() => 
     filteredExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0),
     [filteredExpenses]
   );
 
-  // ✅ NEW: Salary + Advance payments (date filter payment_date par). Loan skip.
   const filteredSalaryPayments = useMemo(() => {
     const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
     const list = [];
@@ -478,44 +349,11 @@ const Dashboard = () => {
     [filteredSalaryPayments]
   );
 
-  // ✅ Old Batteries - date filter ke hisab se list (purchase date par)
-  const filteredOldBatteries = useMemo(() => {
-    const range = timeFilter === 'all' ? null : getDateRange(timeFilter, customDate || null);
-    return (Array.isArray(oldBatteries) ? oldBatteries : []).filter(b => {
-      if (!range) return true;
-      const d = new Date(b.purchase_date || b.created_at);
-      return !isNaN(d.getTime()) && d >= range.start && d <= range.end;
-    });
-  }, [oldBatteries, timeFilter, customDate]);
-
-  // ✅ Old Batteries card ke stats
-  // (totalExpensesSum se PEHLE define hona zaroori hai, kyunke purchaseTotal expenses mein use hota hai)
-  const oldBatteryStats = useMemo(() => {
-    const list = filteredOldBatteries;
-    const inStock = list.filter(b => b.status !== 'sold');
-    const sold = list.filter(b => b.status === 'sold');
-    const n = (v) => parseFloat(v) || 0;
-
-    return {
-      total: list.length,
-      inStockCount: inStock.length,
-      soldCount: sold.length,
-      purchaseTotal: list.reduce((s, b) => s + n(b.trade_in_amount), 0),
-      stockValue: inStock.reduce((s, b) => s + n(b.trade_in_amount), 0),
-      soldRevenue: sold.reduce((s, b) => s + n(b.selling_price), 0),
-      resaleProfit: sold.reduce((s, b) => s + n(b.profit), 0)
-    };
-  }, [filteredOldBatteries]);
-
-  // ✅ Expenses card = Manual expenses + Inventory purchase cost (sirf paid) + Old Battery purchase cost + Salary/Advance payments
   const totalExpensesSum = useMemo(() => 
-    manualExpensesSum + inventoryPurchaseTotal + oldBatteryStats.purchaseTotal + salaryPaymentsTotal,
-    [manualExpensesSum, inventoryPurchaseTotal, oldBatteryStats.purchaseTotal, salaryPaymentsTotal]
+    manualExpensesSum + salaryPaymentsTotal,
+    [manualExpensesSum, salaryPaymentsTotal]
   );
 
-  // ✅ Discount ko 2 hisson mein baanta:
-  //  - totalDiscount  : asli discount jo tumne customer ko diya (Discount card mein yehi dikhta hai)
-  //  - tradeInDiscount: battery bechte waqt old battery ki value (Discount card mein NAHI ginta, sirf profit mein cut hota hai)
   const { totalDiscount, tradeInDiscount } = useMemo(() => {
     let real = 0;
     let tradeIn = 0;
@@ -527,11 +365,6 @@ const Dashboard = () => {
     return { totalDiscount: real, tradeInDiscount: tradeIn };
   }, [filteredInvoices]);
 
-  // ✅ Total Profit (cash-basis):
-  //   Sale ka profit - Discount (trade-in dene par) + Old Battery bechne par poori raqam
-  //   - Trade-in Only mein khareedi hui old battery ki raqam - Manual Expenses - Salary/Advance payments
-  // Inventory purchase cost yahan minus NAHI hoti (profit pehle hi selling - purchase se nikalta hai)
-  // Old battery purchase cost bhi yahan alag se minus NAHI hoti (Trade-in line / trade-in discount se pehle hi cut hoti hai)
   const totalProfitCalc = useMemo(() => {
     let grossProfit = 0;
 
@@ -575,10 +408,9 @@ const Dashboard = () => {
     const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
     monthOrder.forEach(m => {
-      monthly[m] = { sales: 0, profit: 0, expenses: 0, salary: 0, inventoryExpenses: 0, oldBatteryExpenses: 0, discount: 0, tradeIn: 0 };
+      monthly[m] = { sales: 0, profit: 0, expenses: 0, salary: 0, discount: 0, tradeIn: 0 };
     });
     
-    // ✅ battery + old battery sales monthly sales/profit mein shamil
     filteredInvoices.forEach(inv => {
       if (inv.invoice_date) {
         const date = new Date(inv.invoice_date);
@@ -611,41 +443,11 @@ const Dashboard = () => {
       }
     });
 
-    // ✅ Salary / advance payments us mahine mein jodo jis mahine di gayi
     filteredSalaryPayments.forEach(p => {
       if (!p.date) return;
       const month = p.date.toLocaleString('default', { month: 'short' });
       if (monthly[month]) {
         monthly[month].salary += p.amount;
-      }
-    });
-
-    // ✅ Inventory purchase cost ko us mahine mein jodo jis mahine product add hua
-    inventoryPurchases.forEach(entry => {
-      if (!entry.date) return;
-      const month = entry.date.toLocaleString('default', { month: 'short' });
-      if (monthly[month]) {
-        monthly[month].inventoryExpenses += entry.cost;
-      }
-    });
-
-    // ✅ Credit ka baqi balance us mahine ke inventory expense se minus karo (sirf paid wala count ho)
-    filteredCreditVendors.forEach(v => {
-      const d = new Date(v.created_at);
-      if (isNaN(d.getTime())) return;
-      const month = d.toLocaleString('default', { month: 'short' });
-      if (monthly[month]) {
-        monthly[month].inventoryExpenses -= parseFloat(v.balance_amount) || 0;
-      }
-    });
-
-    // ✅ Old battery purchase cost ko us mahine mein jodo jis mahine khareedi
-    filteredOldBatteries.forEach(b => {
-      const d = new Date(b.purchase_date || b.created_at);
-      if (isNaN(d.getTime())) return;
-      const month = d.toLocaleString('default', { month: 'short' });
-      if (monthly[month]) {
-        monthly[month].oldBatteryExpenses += parseFloat(b.trade_in_amount) || 0;
       }
     });
     
@@ -654,14 +456,12 @@ const Dashboard = () => {
       return {
         month,
         sales: data.sales,
-        // Net Profit = Gross Profit - Manual Expenses - Salary/Advance - Discount - Trade-in
         profit: data.profit - data.expenses - data.salary - data.discount - data.tradeIn,
-        // Chart par expenses = Manual + Salary/Advance + Inventory purchase (sirf paid) + Old battery purchase
-        expenses: data.expenses + data.salary + Math.max(0, data.inventoryExpenses) + data.oldBatteryExpenses,
+        expenses: data.expenses + data.salary,
         discount: data.discount
       };
     });
-  }, [filteredInvoices, filteredExpenses, filteredSalaryPayments, purchaseMap, inventoryPurchases, filteredOldBatteries, filteredCreditVendors]);
+  }, [filteredInvoices, filteredExpenses, filteredSalaryPayments, purchaseMap]);
 
   const productSalesData = useMemo(() => {
     const allProducts = activeProducts
@@ -687,7 +487,18 @@ const Dashboard = () => {
 
   const COLORS = useMemo(() => ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#06b6d4', '#8b5cf6', '#ec4899', '#14b8a6', '#f43f5e'], []);
 
-  // ========== EXCEL EXPORT ==========
+  const getFilterLabel = useCallback(() => {
+    const labels = {
+      all: 'All Time',
+      today: 'Today',
+      week: 'This Week',
+      month: 'This Month',
+      year: 'This Year',
+      custom: `Custom: ${customDate || 'Select Date'}`
+    };
+    return labels[timeFilter] || 'All Time';
+  }, [timeFilter, customDate]);
+
   const exportToExcel = () => {
     const hasData = filteredInvoices.length > 0 || filteredExpenses.length > 0 || activeProducts.length > 0;
     
@@ -734,7 +545,7 @@ const Dashboard = () => {
       'Metric': 'Profit Margin',
       'Value': `${profitMargin.toFixed(1)}%`
     }, {
-      'Metric': 'Total Expenses (Incl. Inventory, Old Battery & Salary)',
+      'Metric': 'Total Expenses (Manual + Salary)',
       'Value': `Rs. ${totalExpensesSum.toLocaleString()}`
     }, {
       'Metric': 'Manual Expenses',
@@ -743,23 +554,8 @@ const Dashboard = () => {
       'Metric': 'Salary & Advance Payments',
       'Value': `Rs. ${salaryPaymentsTotal.toLocaleString()}`
     }, {
-      'Metric': 'Inventory Purchases (Paid Only)',
-      'Value': `Rs. ${inventoryPurchaseTotal.toLocaleString()}`
-    }, {
-      'Metric': 'Vendor Credit Unpaid (Not in Expenses)',
-      'Value': `Rs. ${creditUnpaidTotal.toLocaleString()}`
-    }, {
-      'Metric': 'Old Battery Purchases',
-      'Value': `Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()}`
-    }, {
       'Metric': 'Total Discount',
       'Value': `Rs. ${totalDiscount.toLocaleString()}`
-    }, {
-      'Metric': 'Old Batteries (Total / In Stock / Sold)',
-      'Value': `${oldBatteryStats.total} / ${oldBatteryStats.inStockCount} / ${oldBatteryStats.soldCount}`
-    }, {
-      'Metric': 'Old Batteries Purchase / Sold Revenue',
-      'Value': `Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()} / Rs. ${oldBatteryStats.soldRevenue.toLocaleString()}`
     }, {
       'Metric': 'Active Products',
       'Value': totalProductsCount
@@ -774,7 +570,6 @@ const Dashboard = () => {
       'Value': getFilterLabel()
     }];
 
-    // ✅ Loan cards agar khule hue hain to unka data bhi Summary mein shamil
     if (showLoanCards) {
       summaryData.push(
         { 'Metric': 'Total Loan Given', 'Value': `Rs. ${loanStats.totalLoan.toLocaleString()}` },
@@ -790,7 +585,6 @@ const Dashboard = () => {
     toast.success('Exported to Excel!');
   };
 
-  // ========== PDF EXPORT ==========
   const exportToPDF = () => {
     const hasData = filteredInvoices.length > 0 || filteredExpenses.length > 0 || activeProducts.length > 0;
     
@@ -812,14 +606,13 @@ const Dashboard = () => {
     doc.setFontSize(10);
     doc.text(`Total Sales: Rs. ${totalSales.toLocaleString()}`, 14, 36);
     doc.text(`Total Profit (Net): Rs. ${totalProfitCalc.toLocaleString()} (${profitMargin.toFixed(1)}% margin)`, 14, 42);
-    doc.text(`Total Expenses: Rs. ${totalExpensesSum.toLocaleString()}  [Manual: Rs. ${manualExpensesSum.toLocaleString()} | Inventory (Paid): Rs. ${inventoryPurchaseTotal.toLocaleString()} | Old Batt: Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()} | Salary: Rs. ${salaryPaymentsTotal.toLocaleString()}]`, 14, 48);
-    doc.text(`Total Discount: Rs. ${totalDiscount.toLocaleString()}  |  Old Batteries: ${oldBatteryStats.total} (In Stock: ${oldBatteryStats.inStockCount}, Sold: ${oldBatteryStats.soldCount})`, 14, 54);
+    doc.text(`Total Expenses: Rs. ${totalExpensesSum.toLocaleString()}  [Manual: Rs. ${manualExpensesSum.toLocaleString()} | Salary: Rs. ${salaryPaymentsTotal.toLocaleString()}]`, 14, 48);
+    doc.text(`Total Discount: Rs. ${totalDiscount.toLocaleString()}`, 14, 54);
     doc.text(`Active Products: ${totalProductsCount} | Total Stock: ${totalStock} units`, 14, 60);
     doc.text(`Total Invoices: ${filteredInvoices.length}`, 14, 66);
 
     let startY = 74;
 
-    // ✅ Loan cards khule hon to PDF mein bhi line add karo
     if (showLoanCards) {
       doc.text(`Loan Given: Rs. ${loanStats.totalLoan.toLocaleString()}  |  Recovered: Rs. ${loanStats.totalRepaid.toLocaleString()}  |  Remaining: Rs. ${loanStats.balance.toLocaleString()}`, 14, 72);
       startY = 80;
@@ -916,8 +709,6 @@ const Dashboard = () => {
     toast.success('Exported to PDF!');
   };
 
-  // ✅ NEW: Saare employees ka loan data jama karke 3 totals nikalta hai
-  // (Total Loan Diya, Total Wapas Aaya, Baqi Balance) - EmployeeSalary ke loan history API se
   const fetchLoanStats = useCallback(async () => {
     setLoadingLoanStats(true);
     try {
@@ -952,7 +743,6 @@ const Dashboard = () => {
     }
   }, []);
 
-  // ✅ NEW: Show / Hide button - Show dabane par hi data load hota hai
   const handleToggleLoanCards = useCallback(() => {
     if (showLoanCards) {
       setShowLoanCards(false);
@@ -962,23 +752,15 @@ const Dashboard = () => {
     }
   }, [showLoanCards, fetchLoanStats]);
 
-  // ✅ silent=true hone par full-page loader nahi dikhega (refresh button ke liye)
   const fetchAllData = useCallback(async (silent = false) => {
     const abortController = new AbortController();
     if (!silent) setLoading(true);
     try {
-      const [productsRes, expensesRes, invoicesRes, servicesRes, oldBatteriesRes, creditRes, employeesRes] = await Promise.all([
+      const [productsRes, expensesRes, invoicesRes, servicesRes, employeesRes] = await Promise.all([
         api.get('/products', { signal: abortController.signal }),
         api.get('/expenses', { signal: abortController.signal }),
         api.get('/invoices', { signal: abortController.signal }),
         api.get('/services', { signal: abortController.signal }),
-        // Old batteries fail ho to baqi dashboard na ruke
-        api.get('/old-batteries', { params: { status: 'all' }, signal: abortController.signal })
-          .catch(() => ({ data: [] })),
-        // Credit vendors fail ho to baqi dashboard na ruke
-        api.get('/credit/vendors', { signal: abortController.signal })
-          .catch(() => ({ data: [] })),
-        // Employees fail ho to baqi dashboard na ruke
         api.get('/employees', { signal: abortController.signal })
           .catch(() => ({ data: [] }))
       ]);
@@ -988,24 +770,12 @@ const Dashboard = () => {
         productsData = productsRes.data.data;
       } else if (Array.isArray(productsRes.data)) {
         productsData = productsRes.data;
-      } else {
-        productsData = [];
       }
       
       setProducts(productsData);
       setExpenses(Array.isArray(expensesRes.data) ? expensesRes.data : []);
       setInvoices(Array.isArray(invoicesRes.data) ? invoicesRes.data : []);
       setServices(Array.isArray(servicesRes.data) ? servicesRes.data : []);
-
-      const oldData = Array.isArray(oldBatteriesRes.data)
-        ? oldBatteriesRes.data
-        : (Array.isArray(oldBatteriesRes.data?.data) ? oldBatteriesRes.data.data : []);
-      setOldBatteries(oldData);
-
-      const creditData = Array.isArray(creditRes.data)
-        ? creditRes.data
-        : (Array.isArray(creditRes.data?.data) ? creditRes.data.data : []);
-      setCreditVendors(creditData);
 
       const empData = Array.isArray(employeesRes.data?.data)
         ? employeesRes.data.data
@@ -1016,14 +786,11 @@ const Dashboard = () => {
       if (err.name !== 'AbortError') {
         console.error('Error fetching data:', err);
         toast.error('Failed to load data');
-        // Silent refresh par purana data na uray, isliye sirf normal load par clear karo
         if (!silent) {
           setProducts([]);
           setExpenses([]);
           setInvoices([]);
           setServices([]);
-          setOldBatteries([]);
-          setCreditVendors([]);
           setEmployees([]);
         }
       }
@@ -1040,15 +807,12 @@ const Dashboard = () => {
     };
   }, [fetchAllData]);
 
-  // ✅ Refresh button handler - page reload kiye baghair data dobara load karta hai
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
       await fetchAllData(true);
-      // Loan cards khule hon to unka data bhi fresh karo
       if (showLoanCards) await fetchLoanStats();
-      // Key change hone se current page (Billing, Inventory, Records etc.) dobara mount hoga aur apna data fresh fetch karega
       setRefreshKey(prev => prev + 1);
     } finally {
       setRefreshing(false);
@@ -1142,6 +906,8 @@ const Dashboard = () => {
       'all-data': 'Complete Business Overview',
       inventory: 'Inventory Management',
       'product-record': 'Product Record',
+      'inventory-history': 'Inventory History', // ✅ NEW
+      'cash-in-hand': 'Cash in Hand',
       'finance-overview': 'Finance Dashboard',
       'finance-expenses': 'Expenses Management',
       'finance-charts': 'Financial Charts & Analytics',
@@ -1171,6 +937,8 @@ const Dashboard = () => {
       'all-data': 'Everything at a glance - Sales, Expenses, Products, Invoices',
       inventory: 'Manage products, track purchases and sales',
       'product-record': 'Sold products ka poora record - purchase, selling, discount aur profit',
+      'inventory-history': 'Balance sheet - paisa kahan laga, cash in hand aur owner capital', // ✅ NEW
+      'cash-in-hand': 'Cash add / withdraw karo - ye amount Inventory History ke Cash in Hand me judti hai',
       'finance-overview': 'View daily, weekly and monthly financial overview',
       'finance-expenses': 'Add, edit and manage all expenses',
       'finance-charts': 'Visualize financial data with interactive charts', 
@@ -1200,6 +968,8 @@ const Dashboard = () => {
       'all-data': <FiBarChart2 className="text-2xl" />,
       inventory: <FiPackage className="text-2xl" />,
       'product-record': <FiClipboard className="text-2xl" />,
+      'inventory-history': <FiClock className="text-2xl" />, // ✅ NEW
+      'cash-in-hand': <FiDollarSign className="text-2xl" />,
       'finance-overview': <FiDollarSign className="text-2xl" />,
       'finance-expenses': <FiFileText className="text-2xl" />,
       'finance-charts': <FiBarChart2 className="text-2xl" />,
@@ -1223,18 +993,6 @@ const Dashboard = () => {
     };
     return icons[activeMenu] || <FiPackage className="text-2xl" />;
   }, [activeMenu]);
-
-  const getFilterLabel = useCallback(() => {
-    const labels = {
-      all: 'All Time',
-      today: 'Today',
-      week: 'This Week',
-      month: 'This Month',
-      year: 'This Year',
-      custom: `Custom: ${customDate || 'Select Date'}`
-    };
-    return labels[timeFilter] || 'All Time';
-  }, [timeFilter, customDate]);
 
   const handleCustomDateChange = (e) => {
     const date = e.target.value;
@@ -1333,7 +1091,6 @@ const Dashboard = () => {
 
   const hasData = filteredInvoices.length > 0 || filteredExpenses.length > 0 || activeProducts.length > 0;
 
-  // ✅ Product Record page par header ke Excel/PDF buttons us page ka export chalate hain
   const isProductRecord = activeMenu === 'product-record';
   const handleHeaderExcel = () => {
     if (isProductRecord) window.dispatchEvent(new CustomEvent('product-record-export', { detail: 'excel' }));
@@ -1345,7 +1102,6 @@ const Dashboard = () => {
   };
   const exportDisabled = !isProductRecord && !hasData;
 
-  // Shared button style for filter / chart type buttons
   const pillClass = (active) =>
     `px-4 py-2 rounded-lg text-sm font-medium transition ${
       active
@@ -1378,7 +1134,6 @@ const Dashboard = () => {
         />
         
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header */}
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-sm px-6 py-3 flex justify-between items-center border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="flex items-center gap-3">
               <button
@@ -1398,7 +1153,6 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {/* Refresh Button */}
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
@@ -1439,17 +1193,13 @@ const Dashboard = () => {
               >
                 {darkMode ? <FiSun className="text-xl" /> : <FiMoon className="text-xl" />}
               </button>
-           
             </div>
           </div>
 
-          {/* Content */}
           <div className={`flex-1 overflow-y-auto p-8 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
             
-            {/* ALL DATA VIEW - Admin only */}
             {activeMenu === 'all-data' && userRole !== 'employee' && (
               <div className="space-y-6">
-                {/* FILTER BUTTONS */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2 mr-4">
                     <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -1493,7 +1243,6 @@ const Dashboard = () => {
                   </span>
                 </div>
 
-                {/* CHART TYPE BUTTONS */}
                 <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2 mr-4">
                     <FiBarChart2 className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -1510,8 +1259,7 @@ const Dashboard = () => {
                   ))}
                 </div>
 
-                {/* STATS CARDS - Order: Sales, Expenses, Old Batteries, Discount, Profit, Active Products, Inventory Cost, Inventory Credit Balance */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                   <StatsCard 
                     title="Total Sales" 
                     value={`Rs. ${totalSales.toLocaleString()}`} 
@@ -1523,17 +1271,9 @@ const Dashboard = () => {
                   <StatsCard 
                     title="Total Expenses" 
                     value={`Rs. ${totalExpensesSum.toLocaleString()}`} 
-                    subtitle={`Inventory (Paid): Rs. ${inventoryPurchaseTotal.toLocaleString()} + Old Batt: Rs. ${oldBatteryStats.purchaseTotal.toLocaleString()} + Salary: Rs. ${salaryPaymentsTotal.toLocaleString()} + Other: Rs. ${manualExpensesSum.toLocaleString()}`}
+                    subtitle={`Salary: Rs. ${salaryPaymentsTotal.toLocaleString()} + Other: Rs. ${manualExpensesSum.toLocaleString()}`}
                     icon={FiShoppingCart} 
                     color="from-blue-500 to-blue-600" 
-                    darkMode={darkMode} 
-                  />
-                  <StatsCard 
-                    title="Old Batteries" 
-                    value={`${oldBatteryStats.total} ${oldBatteryStats.total === 1 ? 'battery' : 'batteries'}`} 
-                    subtitle={`In stock: ${oldBatteryStats.inStockCount} • Sold: ${oldBatteryStats.soldCount}`}
-                    icon={FiBattery} 
-                    color="from-teal-500 to-teal-600" 
                     darkMode={darkMode} 
                   />
                   <StatsCard 
@@ -1560,27 +1300,8 @@ const Dashboard = () => {
                     color="from-purple-500 to-purple-600" 
                     darkMode={darkMode} 
                   />
-                  {/* ✅ Inventory Cost card (pehle: Total Purchase Total) */}
-                  <StatsCard 
-                    title="Inventory Cost" 
-                    value={`Rs. ${inventoryPurchaseCardTotal.toLocaleString()}`} 
-                    subtitle="total purchases" 
-                    icon={FiShoppingCart} 
-                    color="from-indigo-500 to-indigo-600" 
-                    darkMode={darkMode} 
-                  />
-                  {/* ✅ Inventory Credit Balance card (pehle: Total Balance) */}
-                  <StatsCard 
-                    title="Inventory Credit Balance" 
-                    value={`Rs. ${creditUnpaidTotal.toLocaleString()}`} 
-                    subtitle="Remaining balance" 
-                    icon={FiCreditCard} 
-                    color="from-orange-500 to-orange-600" 
-                    darkMode={darkMode} 
-                  />
                 </div>
 
-                {/* ✅ NEW: LOAN CARDS - by default hidden, Show button se khulte hain */}
                 <div className={`flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className="flex items-center gap-2">
                     <FiDollarSign className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
@@ -1639,7 +1360,6 @@ const Dashboard = () => {
                   </div>
                 )}
 
-                {/* CHARTS */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className={`lg:col-span-2 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                     <div className="flex justify-between items-center mb-4">
@@ -1705,7 +1425,6 @@ const Dashboard = () => {
                   )}
                 </div>
 
-                {/* Recent Invoices */}
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center`}>
                     <h3 className={`font-semibold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
@@ -1762,7 +1481,6 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Low Stock Alerts */}
                 <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                   <div 
                     className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center cursor-pointer hover:opacity-80 transition`}
@@ -1836,7 +1554,6 @@ const Dashboard = () => {
                   )}
                 </div>
 
-                {/* Quick Actions */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <button onClick={() => goToMenu('billing')} className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition shadow-md flex items-center justify-center gap-2">
                     <FiFileText /> New Bill
@@ -1857,16 +1574,23 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Other Components with Suspense for lazy loading */}
-            {/* ✅ key={refreshKey}: Refresh dabane par current page dobara mount hoga aur fresh data lega */}
             <Suspense key={refreshKey} fallback={<LoadingFallback darkMode={darkMode} />}>
               {activeMenu === 'inventory' && (
                 <Inventory products={productsArray} darkMode={darkMode} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} />
               )}
 
-              {/* ✅ NEW: Product Record - Admin only */}
               {activeMenu === 'product-record' && userRole === 'admin' && (
                 <ProductRecord darkMode={darkMode} />
+              )}
+
+              {/* ✅ NEW: Inventory History - sirf admin */}
+              {activeMenu === 'inventory-history' && userRole === 'admin' && (
+                <InventoryHistory darkMode={darkMode} />
+              )}
+
+              {/* Cash in Hand - sirf admin */}
+              {activeMenu === 'cash-in-hand' && userRole === 'admin' && (
+                <CashInHand darkMode={darkMode} />
               )}
               
               {activeMenu === 'finance-overview' && userRole !== 'employee' && (

@@ -5,7 +5,7 @@ import {
   FiChevronDown, FiChevronUp, FiList, FiPieChart, 
   FiTrendingUp, FiHome, FiBell, FiUser, FiUsers, 
   FiLogOut, FiCreditCard, FiClock, FiFile,
-  FiArchive, FiTruck, FiBookOpen, FiClipboard
+  FiArchive, FiTruck, FiBookOpen, FiClipboard, FiBriefcase
 } from 'react-icons/fi';
 import { FaCar } from 'react-icons/fa';
 import { HiMenu, HiX } from 'react-icons/hi';
@@ -67,12 +67,14 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   };
 
   // ✅ Inventory Submenu - click par hi dikhega (Finance ki tarah)
-  // Admin: Overview + Battery Record/Sale + Product/Sale Record | Employee: Overview + Battery Record/Sale
+  // Admin: Overview + Battery Record/Sale + Product/Sale Record + Inventory History
+  // Employee: Overview + Battery Record/Sale
   const inventorySubmenu = isAdmin
     ? [
         { id: 'inventory', label: 'Overview', icon: FiList, path: '/inventory' },
         { id: 'old-batteries', label: 'Battery Record/Sale', icon: FiArchive, path: '/old-batteries' },
         { id: 'product-record', label: 'Product/Sale Record', icon: FiClipboard, path: '/product-record' },
+        { id: 'inventory-history', label: 'Inventory History', icon: FiClock, path: '/inventory-history' }, // ✅ NEW
       ]
     : [
         { id: 'inventory', label: 'Overview', icon: FiList, path: '/inventory' },
@@ -102,7 +104,8 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
   // ✅ Admin menu items (full access)
   const adminMenuItems = [
     { id: 'all-data', label: 'Dashboard', icon: FiHome, path: '/dashboard' },
-    { id: 'inventory', label: 'Inventory', icon: FiPackage, hasSubmenu: true }, // 👈 submenu: Overview, Battery Record/Sale, Product/Sale Record
+    { id: 'inventory', label: 'Inventory', icon: FiPackage, hasSubmenu: true }, // 👈 submenu: Overview, Battery Record/Sale, Product/Sale Record, Inventory History
+    { id: 'cash-in-hand', label: 'Cash in Hand', icon: FiBriefcase, path: '/cash-in-hand' }, // ✅ Inventory se bahar, alag item
     { id: 'finance', label: 'Finance', icon: FiDollarSign, hasSubmenu: true },
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'car', label: 'Car', icon: FaCar, hasSubmenu: true },
@@ -116,7 +119,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
 
   // ✅ Employee menu items — Product Record & Estimate Records removed
   const employeeMenuItems = [
-    { id: 'inventory', label: 'Inventory', icon: FiPackage, hasSubmenu: true }, // 👈 submenu: Overview, Battery Record/Sale (Product/Sale Record sirf admin)
+    { id: 'inventory', label: 'Inventory', icon: FiPackage, hasSubmenu: true }, // 👈 submenu: Overview, Battery Record/Sale (baqi sirf admin)
     { id: 'billing', label: 'Billing', icon: FiFileText, path: '/billing' },
     { id: 'car', label: 'Car', icon: FaCar, hasSubmenu: true },
     { id: 'estimate', label: 'Estimate', icon: FiFile, path: '/estimate', badge: estimateCount },
@@ -281,7 +284,7 @@ const Sidebar = ({ activeMenu, setActiveMenu, isOpen, setIsOpen, darkMode }) => 
         setIsFinanceOpen(!isFinanceOpen);
         if (!isFinanceOpen && !isFinanceActive()) {
           setActiveMenu('finance-overview');
-          goTo('/finance'); // ✅ NEW: URL bhi badlo, warna URL aur menu sync se bahar ho jate hain
+          goTo('/finance'); // ✅ URL bhi badlo, warna URL aur menu sync se bahar ho jate hain
         }
       }
     } else {

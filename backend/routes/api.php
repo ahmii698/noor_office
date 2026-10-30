@@ -19,6 +19,7 @@ use App\Http\Controllers\EstimateController;
 use App\Http\Controllers\OldBatteryController; // ✅ NEW
 use App\Http\Controllers\CarPurchaseController; // ✅ NEW
 use App\Http\Controllers\CarSellController; // ✅ NEW
+use App\Http\Controllers\CashInHandController; // ✅ NEW: cash in hand
 
 /*
 |--------------------------------------------------------------------------
@@ -235,6 +236,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/low-stock', [DashboardController::class, 'lowStockProducts']);
     });
     
+    // ✅ CASH IN HAND ROUTES (admin cash add/withdraw + history)
+    Route::get('/cash-in-hand', [CashInHandController::class, 'index']);
+    Route::post('/cash-in-hand', [CashInHandController::class, 'store']);
+    
     // INVOICES ROUTES
     Route::prefix('invoices')->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
@@ -266,11 +271,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::prefix('saved-carts')->group(function () {
         Route::get('/', [SavedCartController::class, 'index']);
         Route::get('/count', [SavedCartController::class, 'count']);
+        Route::delete('/clear-all', [SavedCartController::class, 'clearAll']); // must be above /{id}
         Route::get('/{id}', [SavedCartController::class, 'show']);
         Route::post('/', [SavedCartController::class, 'store']);
         Route::post('/{id}/restore', [SavedCartController::class, 'restore']);
         Route::delete('/{id}', [SavedCartController::class, 'destroy']);
-        Route::delete('/clear-all', [SavedCartController::class, 'clearAll']);
     });
     
     // Additional Stats Routes

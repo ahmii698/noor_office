@@ -75,7 +75,7 @@ const PATH_TO_MENU = {
   '/discarded': 'discarded',
 };
 
-// ✅ Ye paths sirf admin ke liye hain
+// ✅ These paths are admin-only
 const ADMIN_ONLY_PATHS = ['/product-record', '/cash-in-hand', '/inventory-history']; // ✅ inventory-history added
 
 const MENU_TO_PATH = Object.fromEntries(
@@ -261,7 +261,7 @@ const Dashboard = () => {
     const role = getStoredRole();
     setUserRole(role);
 
-    // ✅ Admin-only pages (product-record, cash-in-hand, inventory-history): employee ko dashboard par bhejo
+    // ✅ Admin-only pages (product-record, cash-in-hand, inventory-history): redirect employees to the dashboard
     if (ADMIN_ONLY_PATHS.includes(location.pathname) && role !== 'admin') {
       navigate('/dashboard', { replace: true });
       return;
@@ -936,9 +936,9 @@ const Dashboard = () => {
     const descriptions = {
       'all-data': 'Everything at a glance - Sales, Expenses, Products, Invoices',
       inventory: 'Manage products, track purchases and sales',
-      'product-record': 'Sold products ka poora record - purchase, selling, discount aur profit',
-      'inventory-history': 'Balance sheet - paisa kahan laga, cash in hand aur owner capital', // ✅ NEW
-      'cash-in-hand': 'Cash add / withdraw karo - ye amount Inventory History ke Cash in Hand me judti hai',
+      'product-record': 'Complete record of sold products - purchase, selling, discount and profit',
+      'inventory-history': 'Balance sheet - where the money is invested, cash in hand and owner capital', // ✅ NEW
+      'cash-in-hand': 'Add or withdraw cash - this amount is reflected in Cash in Hand on the Inventory History page',
       'finance-overview': 'View daily, weekly and monthly financial overview',
       'finance-expenses': 'Add, edit and manage all expenses',
       'finance-charts': 'Visualize financial data with interactive charts', 
@@ -1336,7 +1336,7 @@ const Dashboard = () => {
                     <StatsCard 
                       title="Total Loan Given" 
                       value={`Rs. ${loanStats.totalLoan.toLocaleString()}`} 
-                      subtitle="Ab tak diya hua total loan"
+                      subtitle="Total loan given to date"
                       icon={FiDollarSign} 
                       color="from-amber-500 to-amber-600" 
                       darkMode={darkMode} 
@@ -1344,7 +1344,7 @@ const Dashboard = () => {
                     <StatsCard 
                       title="Loan Recovered" 
                       value={`Rs. ${loanStats.totalRepaid.toLocaleString()}`} 
-                      subtitle="Ab tak wapas mila"
+                      subtitle="Total recovered to date"
                       icon={FiCheckCircle} 
                       color="from-emerald-500 to-emerald-600" 
                       darkMode={darkMode} 
@@ -1352,7 +1352,7 @@ const Dashboard = () => {
                     <StatsCard 
                       title="Loan Remaining" 
                       value={`Rs. ${loanStats.balance.toLocaleString()}`} 
-                      subtitle="Abhi lena baqi hai"
+                      subtitle="Still to be recovered"
                       icon={FiAlertCircle} 
                       color="from-rose-500 to-rose-600" 
                       darkMode={darkMode} 
@@ -1583,12 +1583,12 @@ const Dashboard = () => {
                 <ProductRecord darkMode={darkMode} />
               )}
 
-              {/* ✅ NEW: Inventory History - sirf admin */}
+              {/* ✅ NEW: Inventory History - admin only */}
               {activeMenu === 'inventory-history' && userRole === 'admin' && (
                 <InventoryHistory darkMode={darkMode} />
               )}
 
-              {/* Cash in Hand - sirf admin */}
+              {/* Cash in Hand - admin only */}
               {activeMenu === 'cash-in-hand' && userRole === 'admin' && (
                 <CashInHand darkMode={darkMode} />
               )}

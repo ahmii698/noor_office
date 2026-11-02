@@ -34,7 +34,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     date: getLocalDate()
   });
   
-  // ✅ LOCKED Date & Time - live clock, user change nahi kar sakta
+  // ✅ LOCKED Date & Time - live clock, the user cannot change it
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -239,11 +239,11 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
     searchCustomerHistory();
   }, [customerDetails.phone]);
 
-  // ✅ Handle submit - date & time AUTOMATIC us waqt ka jab bill ban raha hai
+  // ✅ Handle submit - date & time are set AUTOMATICALLY at the moment the bill is created
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // ✅ Submit ke exact waqt ka time (user ka edit kiya hua nahi)
+    // ✅ Time at the exact moment of submit (not user-edited)
     const submitNow = new Date();
     const dateTimeStr = `${getLocalDate(submitNow)} ${getLocalTime(submitNow)}`; // "YYYY-MM-DD HH:MM:SS"
     
@@ -477,7 +477,7 @@ const CustomerForm = ({ onCustomerSubmit, initialData, darkMode }) => {
               </div>
             </div>
             <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex items-center gap-1`}>
-              <FiLock className="text-xs" /> Bill banne ke waqt ki date & time automatically lagegi, isay change nahi kiya ja sakta
+              <FiLock className="text-xs" /> The date & time of bill creation is applied automatically and cannot be changed
             </p>
           </div>
         </div>

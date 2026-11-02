@@ -1,10 +1,10 @@
 // src/components/Reminders.jsx
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { 
+import {
   FiBell, FiCalendar, FiUser, FiPhone, FiMail, FiTruck,
-  FiCheck, FiX, FiRefreshCw, FiGift, FiUsers, FiTool, 
-  FiDroplet, FiEdit2, FiSend, FiMessageSquare, 
+  FiCheck, FiX, FiRefreshCw, FiGift, FiUsers, FiTool,
+  FiDroplet, FiEdit2, FiSend, FiMessageSquare,
   FiClock, FiAlertTriangle, FiMessageCircle, FiTrash2,
   FiStar, FiHeart, FiDollarSign, FiEdit,
   FiEye, FiFileText, FiDownload
@@ -77,20 +77,20 @@ const Reminders = ({ darkMode }) => {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      
+
       const birthdayRes = await api.get('/birthday-reminders/today');
       setBirthdayCustomers(birthdayRes.data.birthday_customers || []);
-      
+
       const serviceRes = await api.get('/service-reminders/all');
       setTuningReminders(serviceRes.data.tuning || []);
       setOilChangeReminders(serviceRes.data.oil_change || []);
       setMessages(serviceRes.data.messages || {});
-      
+
       if (isAdmin) {
         const paymentRes = await api.get('/pending-payments');
         setPendingPayments(paymentRes.data.data || []);
       }
-      
+
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to load reminders');
@@ -153,13 +153,13 @@ const Reminders = ({ darkMode }) => {
 
   const sendWhatsApp = (phone, message) => {
     let cleanPhone = phone.replace(/\D/g, '');
-    
+
     if (cleanPhone.startsWith('0')) {
       cleanPhone = '92' + cleanPhone.substring(1);
     } else if (!cleanPhone.startsWith('92') && cleanPhone.length > 0) {
       cleanPhone = '92' + cleanPhone;
     }
-    
+
     const encodedMessage = encodeURIComponent(message);
     window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedMessage}`, '_blank');
   };
@@ -195,7 +195,7 @@ const Reminders = ({ darkMode }) => {
   const clearBirthdayReminder = async (id, customerName) => {
     try {
       await api.delete(`/birthday-reminders/${id}`);
-      toast.success(`✅ ${customerName} ka birthday reminder clear ho gaya!`);
+      toast.success(`✅ Birthday reminder for ${customerName} has been cleared!`);
       fetchAllData();
       window.dispatchEvent(new Event('reminder-update'));
     } catch (error) {
@@ -211,7 +211,7 @@ const Reminders = ({ darkMode }) => {
   const clearServiceReminder = async (id, customerName, type) => {
     try {
       await api.delete(`/service-reminders/${id}`);
-      toast.success(`✅ ${customerName} ka ${type} reminder clear ho gaya!`);
+      toast.success(`✅ ${type} reminder for ${customerName} has been cleared!`);
       fetchAllData();
       window.dispatchEvent(new Event('reminder-update'));
     } catch (error) {
@@ -229,7 +229,7 @@ const Reminders = ({ darkMode }) => {
       toast.error('Only admin can record payments');
       return;
     }
-    
+
     if (!paymentAmount || parseFloat(paymentAmount) <= 0) {
       toast.error('Please enter a valid amount');
       return;
@@ -255,13 +255,13 @@ const Reminders = ({ darkMode }) => {
     try {
       const paymentMethodDisplay = getPaymentMethodDisplay();
       const currentDateTime = new Date().toISOString();
-      
-      await api.put(`/pending-payments/${selectedPayment.id}`, { 
+
+      await api.put(`/pending-payments/${selectedPayment.id}`, {
         amount,
         payment_method: paymentMethodDisplay,
         paid_at: currentDateTime
       });
-      
+
       const formattedTime = new Date(currentDateTime).toLocaleString('en-US', {
         month: '2-digit',
         day: '2-digit',
@@ -271,7 +271,7 @@ const Reminders = ({ darkMode }) => {
         hour12: true,
         timeZone: 'Asia/Karachi'
       });
-      
+
       toast.success(`✅ Rs. ${amount.toLocaleString()} payment recorded via ${paymentMethodDisplay} at ${formattedTime}!`);
       setShowPaymentModal(false);
       setSelectedPayment(null);
@@ -388,8 +388,8 @@ const Reminders = ({ darkMode }) => {
     }));
 
     const wb = XLSX.utils.book_new();
-    const tabLabel = activeTab === 'birthday' ? 'Birthday' : 
-                     activeTab === 'tuning' ? 'Tuning' : 
+    const tabLabel = activeTab === 'birthday' ? 'Birthday' :
+                     activeTab === 'tuning' ? 'Tuning' :
                      activeTab === 'oil_change' ? 'Oil Change' : 'Pending Payments';
     XLSX.utils.book_append_sheet(wb, ws, tabLabel);
     XLSX.writeFile(wb, `${tabLabel}_Reminders_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -405,17 +405,17 @@ const Reminders = ({ darkMode }) => {
 
     const isBirthday = activeTab === 'birthday';
     const isPending = activeTab === 'pending_payments';
-    const tabLabel = activeTab === 'birthday' ? 'Birthday' : 
-                     activeTab === 'tuning' ? 'Tuning' : 
+    const tabLabel = activeTab === 'birthday' ? 'Birthday' :
+                     activeTab === 'tuning' ? 'Tuning' :
                      activeTab === 'oil_change' ? 'Oil Change' : 'Pending Payments';
 
     const doc = new jsPDF('landscape', 'mm', 'a4');
-    
+
     doc.setFontSize(16);
     doc.text(`${tabLabel} Reminders Report`, 14, 15);
     doc.setFontSize(10);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 22);
-    
+
     let tableData;
     let headers;
 
@@ -501,8 +501,8 @@ const Reminders = ({ darkMode }) => {
               onClick={exportToExcel}
               disabled={currentData.length === 0}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
-                darkMode 
-                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                darkMode
+                  ? 'bg-green-600 hover:bg-green-700 text-white'
                   : 'bg-green-500 hover:bg-green-600 text-white'
               } ${currentData.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -512,8 +512,8 @@ const Reminders = ({ darkMode }) => {
               onClick={exportToPDF}
               disabled={currentData.length === 0}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 ${
-                darkMode 
-                  ? 'bg-red-600 hover:bg-red-700 text-white' 
+                darkMode
+                  ? 'bg-red-600 hover:bg-red-700 text-white'
                   : 'bg-red-500 hover:bg-red-600 text-white'
               } ${currentData.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
@@ -622,7 +622,7 @@ const Reminders = ({ darkMode }) => {
                     const car = isBirthday ? item.car_number || 'N/A' : item.car_number || 'N/A';
                     const date = isBirthday ? item.birthday : item.service_date;
                     const daysAgo = isBirthday ? 0 : getDaysAgo(item.service_date);
-                    
+
                     let message = '';
                     if (isBirthday) {
                       message = messages.birthday?.message_template || 'Happy Birthday {customer_name}!';
@@ -630,7 +630,7 @@ const Reminders = ({ darkMode }) => {
                     } else if (!isPending) {
                       message = generateMessage(item, activeTab);
                     }
-                    
+
                     return (
                       <tr key={item.id || index} className={`${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}>
                         <td className={`px-4 py-3 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{index + 1}</td>
@@ -664,7 +664,7 @@ const Reminders = ({ darkMode }) => {
                             </td>
                             <td className="px-4 py-3 text-sm">
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                item.remaining_amount > 0 
+                                item.remaining_amount > 0
                                   ? darkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-500/20 text-red-500'
                                   : darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-500/20 text-green-500'
                               }`}>
@@ -682,7 +682,7 @@ const Reminders = ({ darkMode }) => {
                             <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDate(date)}</td>
                             <td className="px-4 py-3 text-sm">
                               <span className={`px-2 py-1 rounded-full text-xs ${
-                                daysAgo >= 180 
+                                daysAgo >= 180
                                   ? darkMode ? 'bg-red-500/20 text-red-400' : 'bg-red-500/20 text-red-500'
                                   : darkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-500/20 text-yellow-600'
                               }`}>
@@ -856,8 +856,8 @@ const Reminders = ({ darkMode }) => {
                 <FiDollarSign className="text-red-500" />
                 Record Payment
               </h3>
-              <button 
-                onClick={() => { setShowPaymentModal(false); setSelectedPayment(null); setPaymentAmount(''); setPaymentMethod('cash'); setSelectedBank(''); }} 
+              <button
+                onClick={() => { setShowPaymentModal(false); setSelectedPayment(null); setPaymentAmount(''); setPaymentMethod('cash'); setSelectedBank(''); }}
                 className={`text-2xl ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <FiX />
@@ -1026,8 +1026,8 @@ const Reminders = ({ darkMode }) => {
                 <FiClock className="text-purple-500" />
                 Payment History - {selectedInvoiceNo}
               </h3>
-              <button 
-                onClick={() => { setShowHistoryModal(false); setPaymentHistory([]); }} 
+              <button
+                onClick={() => { setShowHistoryModal(false); setPaymentHistory([]); }}
                 className={`text-2xl ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <FiX />

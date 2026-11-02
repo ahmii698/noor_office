@@ -6,6 +6,22 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
+// Single statistics card used for all stat boxes
+// (white in light mode, dark in dark mode, one amber accent for every icon)
+const StatCard = ({ title, value, note, icon: Icon, darkMode, children }) => (
+  <div className={`rounded-xl p-4 border shadow-sm ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+    <div className="flex items-center gap-2">
+      <span className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm ${darkMode ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+        <Icon />
+      </span>
+      <p className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{title}</p>
+    </div>
+    <p className={`text-2xl font-bold mt-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{value}</p>
+    <p className={`text-xs font-medium mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{note}</p>
+    {children}
+  </div>
+);
+
 const getKarachiDate = (dateString) => {
   if (!dateString) return null;
   const date = new Date(dateString);
@@ -59,7 +75,7 @@ const formatDateKarachi = (dateString) => {
 
 const normText = (s) => (s || '').toString().trim().toLowerCase();
 
-// ✅ Serial numbers helper (array, JSON string ya comma separated string — teeno handle)
+// Serial numbers helper (handles an array, a JSON string, or a comma separated string)
 const getSerials = (item) => {
   let s = item?.serial_numbers;
   if (!s) return [];
@@ -564,7 +580,7 @@ const BatteryOverview = ({ darkMode }) => {
         </div>
         <div className="flex justify-between">
           <span className="text-sm opacity-70">Purchase Cost</span>
-          <span className="font-bold text-orange-500">Rs. {bucket.cost.toLocaleString()}</span>
+          <span className="font-bold">Rs. {bucket.cost.toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-sm opacity-70">Batteries</span>
@@ -635,71 +651,61 @@ const BatteryOverview = ({ darkMode }) => {
 
         <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
           Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
-          <span className="ml-2 text-green-500">(Karachi Time)</span>
+          <span className="ml-2 text-red-500">(Karachi Time)</span>
         </span>
       </div>
 
+      {/* STATISTICS CARDS (one style for all) */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Total Sales</p>
-              <p className="text-3xl font-bold mt-2">Rs. {currentSales.total.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">{currentSales.count} invoices</p>
-            </div>
-            <FiDollarSign className="text-3xl opacity-50" />
-          </div>
-        </div>
+        <StatCard
+          darkMode={darkMode}
+          title="Total Sales"
+          value={`Rs. ${currentSales.total.toLocaleString()}`}
+          note={`${currentSales.count} invoices`}
+          icon={FiDollarSign}
+        />
 
-        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Purchase Cost</p>
-              <p className="text-3xl font-bold mt-2">Rs. {currentSales.cost.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">Maal kitne ka liya</p>
-            </div>
-            <FiShoppingCart className="text-3xl opacity-50" />
-          </div>
-        </div>
+        <StatCard
+          darkMode={darkMode}
+          title="Purchase Cost"
+          value={`Rs. ${currentSales.cost.toLocaleString()}`}
+          note="Cost of purchased stock"
+          icon={FiShoppingCart}
+        />
 
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Batteries Sold</p>
-              <p className="text-3xl font-bold mt-2">{currentSales.items}</p>
-              <p className="text-xs opacity-75 mt-1">Units</p>
-            </div>
-            <FiPackage className="text-3xl opacity-50" />
-          </div>
-        </div>
+        <StatCard
+          darkMode={darkMode}
+          title="Batteries Sold"
+          value={currentSales.items}
+          note="Units"
+          icon={FiPackage}
+        />
 
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Total Profit</p>
-              <p className="text-3xl font-bold mt-2">Rs. {currentSales.profit.toLocaleString()}</p>
-              <p className="text-xs opacity-75 mt-1">From battery sales</p>
-              {oldStockValue > 0 && (
-                <p className="text-xs mt-2 bg-white/20 rounded-lg px-2 py-1 inline-block">
-                  📦 Rs. {oldStockValue.toLocaleString()} ki old batteries stock mein — bikne par profit mein judega
-                </p>
-              )}
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
+        <StatCard
+          darkMode={darkMode}
+          title="Total Profit"
+          value={`Rs. ${currentSales.profit.toLocaleString()}`}
+          note="From battery sales"
+          icon={FiTrendingUp}
+        >
+          {oldStockValue > 0 && (
+            <p className={`text-xs mt-2 rounded-lg px-2 py-1 inline-block ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+              📦 Rs. {oldStockValue.toLocaleString()} worth of old batteries in stock. Profit will be added once they are sold.
+            </p>
+          )}
+        </StatCard>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {quickCard(
           "Today's Battery Sales",
-          <FiClock className="text-blue-500" />,
+          <FiClock className="text-red-500" />,
           batterySales.today,
-          <span className="text-xs text-green-500">(Karachi Time)</span>
+          <span className="text-xs text-red-500">(Karachi Time)</span>
         )}
         {quickCard(
           "This Week's Battery Sales",
-          <FiTrendingUp className="text-green-500" />,
+          <FiTrendingUp className="text-red-500" />,
           batterySales.week
         )}
         {quickCard(
@@ -713,7 +719,7 @@ const BatteryOverview = ({ darkMode }) => {
         <div className="px-6 py-4 flex flex-wrap justify-between items-center gap-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <FiBattery className="text-red-500" /> Battery Sales Report
-            <span className="text-xs text-green-500 font-normal">(Karachi Time)</span>
+            <span className="text-xs text-red-500 font-normal">(Karachi Time)</span>
           </h3>
           <div className="flex flex-wrap items-center gap-3">
             <select
@@ -738,19 +744,19 @@ const BatteryOverview = ({ darkMode }) => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <p className="text-sm opacity-70">Total Sales</p>
-              <p className="text-2xl font-bold text-blue-500">Rs. {yearlyData.total.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-red-500">Rs. {yearlyData.total.toLocaleString()}</p>
             </div>
             <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <p className="text-sm opacity-70">Purchase Cost</p>
-              <p className="text-2xl font-bold text-orange-500">Rs. {yearlyData.cost.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-red-500">Rs. {yearlyData.cost.toLocaleString()}</p>
             </div>
             <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <p className="text-sm opacity-70">Total Invoices</p>
-              <p className="text-2xl font-bold">{yearlyData.count}</p>
+              <p className="text-2xl font-bold text-red-500">{yearlyData.count}</p>
             </div>
             <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
               <p className="text-sm opacity-70">Total Batteries</p>
-              <p className="text-2xl font-bold">{yearlyData.items}</p>
+              <p className="text-2xl font-bold text-red-500">{yearlyData.items}</p>
             </div>
           </div>
 
@@ -786,7 +792,7 @@ const BatteryOverview = ({ darkMode }) => {
                         <td className="px-4 py-3 font-mono text-sm">{serialText(item)}</td>
                         <td className="px-4 py-3 text-center">{item.quantity}</td>
                         <td className="px-4 py-3 text-right">Rs. {item.price.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-orange-500">Rs. {inv.cost.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right font-semibold">Rs. {inv.cost.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right font-semibold">Rs. {inv.total.toLocaleString()}</td>
                         <td className={`px-4 py-3 text-right font-semibold ${profitColor(inv.profit)}`}>Rs. {inv.profit.toLocaleString()}</td>
                       </tr>
@@ -797,8 +803,8 @@ const BatteryOverview = ({ darkMode }) => {
               <tfoot className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                 <tr>
                   <td colSpan="7" className="px-4 py-3 text-right font-bold">Total:</td>
-                  <td className="px-4 py-3 text-right font-bold text-orange-500">Rs. {yearlyData.cost.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-bold text-blue-500">Rs. {yearlyData.total.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right font-bold">Rs. {yearlyData.cost.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right font-bold">Rs. {yearlyData.total.toLocaleString()}</td>
                   <td className={`px-4 py-3 text-right font-bold ${profitColor(yearlyData.profit)}`}>Rs. {yearlyData.profit.toLocaleString()}</td>
                 </tr>
               </tfoot>

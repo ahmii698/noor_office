@@ -9,7 +9,12 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import api from "../services/api"; // <-- apne folder ke hisaab se path theek kar lena
 
 /* Ek page par kitne records dikhane hain */
@@ -34,6 +39,10 @@ const fmtDate = (d) => {
   };
 };
 
+/* Expense page ki fixed categories (ExpensesRecord.jsx wali hi) */
+const FIXED_CATEGORIES = ["Rent", "Utilities", "Salary", "Office", "Staff"];
+
+/* ✅ Order: ... Cash in Hand -> Total Inventory Cost -> Expense -> Profit (sab se aakhir mein) */
 const COLUMNS = [
   { label: "S.No", align: "left" },
   { label: "Date", align: "left" },
@@ -44,10 +53,12 @@ const COLUMNS = [
   { label: "Quantity", align: "right" },
   { label: "Cash In", align: "right" },
   { label: "Cash Out", align: "right" },
-  { label: "Vend Pay", align: "right" },
-  { label: "Owner Capital", align: "right" },
-  { label: "Inventory Cost", align: "right" },
+  { label: "Vendor Payable Inventory", align: "right" },
+  { label: "Cash Inventory", align: "right" },
   { label: "Cash in Hand", align: "right" },
+  { label: "Total Inventory Cost", align: "right" },
+  { label: "Expense", align: "right" }, // ✅ Total Inventory Cost ke baad
+  { label: "Profit", align: "right" }, // ✅ sab se aakhir mein
 ];
 
 const alignCls = { left: "text-left", right: "text-right" };
@@ -59,6 +70,7 @@ const RANK = {
   credit: 2,
   sell: 3,
   vendorPay: 4,
+  expense: 5, // ✅ naya
 };
 
 /* ---------- API response ko array banane ke helpers ---------- */
@@ -99,7 +111,15 @@ const parseManualCash = (res) => {
 };
 
 /* ---------- Sab sources se ledger rows banana ---------- */
-const buildEntries = ({ products, vendors, invoices, cashEntries, manualCash }) => {
+const buildEntries = ({
+  products,
+  vendors,
+  invoices,
+  cashEntries,
+  manualCash,
+  expenses = [],
+  employees = [],
+}) => {
   const entries = [];
 
   /* Sale ke items ka naam -> kitna bika (cash purchase qty nikalne ke liye) */
@@ -213,12 +233,24 @@ const buildEntries = ({ products, vendors, invoices, cashEntries, manualCash }) 
       const unit = parseFloat(item.price ?? item.unit_price ?? item.selling_price) || 0;
       const key = (item.service_name || "").toLowerCase().trim();
 
+      const hasProfitField =
+        item.profit !== undefined && item.profit !== null && !isNaN(parseFloat(item.profit));
+
       let cost;
-      if (item.profit !== undefined && item.profit !== null && !isNaN(parseFloat(item.profit))) {
+      if (hasProfitField) {
         cost = unit * qty - parseFloat(item.profit);
       } else {
         cost = (parseFloat(item.purchase_price ?? item.cost_price ?? purchaseByName[key]) || 0) * qty;
       }
+
+      /* ✅ Profit = selling price - purchase price.
+         Sirf un items ka jin ki purchase cost maloom hai (services ka profit nahi ginte). */
+      const knownCost =
+        hasProfitField ||
+        item.purchase_price != null ||
+        item.cost_price != null ||
+        purchaseByName[key] !== undefined;
+      const profit = knownCost ? unit * qty - cost : 0;
 
       entries.push({
         key: `inv-${inv.id}-${idx}`,
@@ -233,9 +265,63 @@ const buildEntries = ({ products, vendors, invoices, cashEntries, manualCash }) 
         qty,
         cashIn: cost,
         cashOut: 0,
+        profit, // ✅ naya
         ownerDelta: 0,
         ownerReturn: cost, // maal bika to owner ka lagaya hua capital wapas nikal aaya
         costDelta: -cost, // maal bika -> inventory cost kam hui
+        payableDelta: 0,
+        isVendor: false,
+      });
+    });
+  });
+
+  /* 3b) ✅ EXPENSES - fixed + extra (Expenses page ki entries) */
+  expenses.forEach((ex) => {
+    const amount = parseFloat(ex.amount) || 0;
+    if (amount <= 0) return;
+    const date = ex.expense_date || ex.date || ex.created_at;
+    const isFixed = FIXED_CATEGORIES.includes(ex.category);
+    entries.push({
+      key: `exp-${ex.id}`,
+      rank: RANK.expense,
+      id: Number(ex.id) || 0,
+      ts: toTime(date),
+      date,
+      invoiceNo: "-",
+      details: isFixed ? "Fixed Expense" : "Extra Expense",
+      product: ex.description ? `${ex.description} (${ex.category || "General"})` : ex.category || "-",
+      price: 0,
+      qty: 0,
+      cashIn: 0,
+      cashOut: 0,
+      expense: amount,
+      ownerDelta: 0,
+      payableDelta: 0,
+      isVendor: false,
+    });
+  });
+
+  /* 3c) ✅ EMPLOYEE SALARY - har payment apni date par */
+  employees.forEach((emp) => {
+    (Array.isArray(emp.payments) ? emp.payments : []).forEach((p) => {
+      const amount = parseFloat(p.amount) || 0;
+      if (amount <= 0) return;
+      const date = p.payment_date || p.created_at;
+      entries.push({
+        key: `sal-${emp.id}-${p.id}`,
+        rank: RANK.expense,
+        id: Number(p.id) || 0,
+        ts: toTime(date),
+        date,
+        invoiceNo: "-",
+        details: "Salary",
+        product: emp.name || "-",
+        price: 0,
+        qty: 0,
+        cashIn: 0,
+        cashOut: 0,
+        expense: amount,
+        ownerDelta: 0,
         payableDelta: 0,
         isVendor: false,
       });
@@ -334,6 +420,8 @@ export default function InventoryHistory() {
     invoices: [],
     cashEntries: [],
     manualCash: 0,
+    expenses: [], // ✅ naya
+    employees: [], // ✅ naya
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -345,11 +433,13 @@ export default function InventoryHistory() {
     setLoading(true);
     setError("");
     try {
-      const [prodRes, vendRes, invRes, cashRes] = await Promise.all([
+      const [prodRes, vendRes, invRes, cashRes, expRes, empRes] = await Promise.all([
         api.get("/products", { params: { show_hidden: "true" } }),
         api.get("/credit/vendors"),
         api.get("/invoices"),
         api.get("/cash-in-hand").catch(() => null),
+        api.get("/expenses").catch(() => null), // ✅ naya
+        api.get("/employees").catch(() => null), // ✅ naya
       ]);
       setRaw({
         products: toArray(prodRes),
@@ -357,6 +447,8 @@ export default function InventoryHistory() {
         invoices: toArray(invRes),
         cashEntries: cashRes ? parseCashEntries(cashRes) : [],
         manualCash: cashRes ? parseManualCash(cashRes) : 0,
+        expenses: expRes ? toArray(expRes) : [],
+        employees: empRes ? toArray(empRes) : [],
       });
       /* Refresh ke baad dobara aakhri page (sab se naye records) par jao */
       jumpedToLast.current = false;
@@ -400,6 +492,8 @@ export default function InventoryHistory() {
     () => ({
       cashIn: rows.reduce((s, r) => s + r.cashIn, 0),
       cashOut: rows.reduce((s, r) => s + r.cashOut, 0),
+      expense: rows.reduce((s, r) => s + (r.expense || 0), 0), // ✅ naya
+      profit: rows.reduce((s, r) => s + (r.profit || 0), 0), // ✅ naya
       vendorPay: rows.reduce((s, r) => s + r.payableDelta, 0),
       ownerCapital: rows.length ? rows[rows.length - 1].ownerCapital : 0,
       inventoryCost: rows.length ? rows[rows.length - 1].inventoryCost : 0,
@@ -433,6 +527,75 @@ export default function InventoryHistory() {
   const showingFrom = rows.length ? startIdx + 1 : 0;
   const showingTo = Math.min(startIdx + PAGE_SIZE, rows.length);
 
+  /* ✅ EXPORT TO EXCEL */
+  const handleExportExcel = () => {
+    const dataToExport = rows.map((r) => {
+      const dt = fmtDate(r.date);
+      return {
+        "S.No": r.sr,
+        Date: `${dt.date} ${dt.time}`,
+        "Invoice No": r.invoiceNo,
+        Details: r.details,
+        Product: r.product || "-",
+        Price: r.price,
+        Quantity: r.qty || "-",
+        "Cash In": r.cashIn,
+        "Cash Out": r.cashOut,
+        "Vendor Payable Inventory": r.isVendor ? r.vendorPay : "-",
+        "Cash Inventory": r.ownerCapital,
+        "Cash in Hand": r.cashInHand,
+        "Total Inventory Cost": r.inventoryCost,
+        Expense: r.expense || 0,
+        Profit: r.profit || 0,
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Inventory History");
+    XLSX.writeFile(wb, `Inventory_History_${new Date().toISOString().split("T")[0]}.xlsx`);
+  };
+
+  /* ✅ EXPORT TO PDF */
+  const handleExportPDF = () => {
+    const doc = new jsPDF("landscape");
+    const tableColumn = [
+      "S.No", "Date", "Invoice No", "Details", "Product", "Price", "Qty",
+      "Cash In", "Cash Out", "Vendor Pay", "Cash Inv", "Cash in Hand",
+      "Total Inv Cost", "Expense", "Profit"
+    ];
+    const tableRows = rows.map((r) => {
+      const dt = fmtDate(r.date);
+      return [
+        r.sr,
+        `${dt.date} ${dt.time}`,
+        r.invoiceNo,
+        r.details,
+        r.product || "-",
+        money(r.price),
+        r.qty || "-",
+        money(r.cashIn),
+        money(r.cashOut),
+        r.isVendor ? money(r.vendorPay) : "-",
+        money(r.ownerCapital),
+        money(r.cashInHand),
+        money(r.inventoryCost),
+        money(r.expense),
+        money(r.profit),
+      ];
+    });
+
+    doc.text("Inventory History - Balance Sheet", 14, 15);
+    doc.autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 20,
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [11, 18, 32], textColor: [255, 255, 255] },
+    });
+    doc.save(`Inventory_History_${new Date().toISOString().split("T")[0]}.pdf`);
+  };
+
   return (
     <div
       className="fixed inset-y-0 right-0 z-40 flex flex-col overflow-hidden bg-[#050a14] text-slate-200 transition-all duration-300"
@@ -461,14 +624,36 @@ export default function InventoryHistory() {
             <p className="text-xs text-slate-500">Balance Sheet</p>
           </div>
 
-          <button
-            onClick={loadData}
-            disabled={loading}
-            title="Refresh"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-800/70 text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          </button>
+          {/* ✅ ACTION BUTTONS (Light theme jese solid colors) */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadData}
+              disabled={loading}
+              title="Refresh"
+              className="flex h-9 items-center gap-2 rounded-lg bg-[#3b82f6] px-4 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+              <span>Refresh</span>
+            </button>
+
+            <button
+              onClick={handleExportExcel}
+              title="Export to Excel"
+              className="flex h-9 items-center gap-2 rounded-lg bg-[#6ee7b7] px-4 text-sm font-semibold text-emerald-950 transition hover:bg-[#5cd6a5]"
+            >
+              <FileSpreadsheet size={16} />
+              <span>Excel</span>
+            </button>
+
+            <button
+              onClick={handleExportPDF}
+              title="Export to PDF"
+              className="flex h-9 items-center gap-2 rounded-lg bg-[#fca5a5] px-4 text-sm font-semibold text-rose-950 transition hover:bg-[#f87171]"
+            >
+              <FileText size={16} />
+              <span>PDF</span>
+            </button>
+          </div>
         </div>
 
         {/* Sheet card */}
@@ -490,7 +675,7 @@ export default function InventoryHistory() {
                 </button>
               </div>
             ) : (
-              <table className="w-full min-w-[1450px] border-collapse text-sm">
+              <table className="w-full min-w-[1700px] border-collapse text-sm">
                 <thead className="sticky top-0 z-10 bg-[#0b1220]">
                   <tr className="border-b border-slate-700 text-xs uppercase tracking-wide text-slate-400">
                     {COLUMNS.map((c) => (
@@ -542,10 +727,20 @@ export default function InventoryHistory() {
                           <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-blue-400">
                             {money(r.ownerCapital)}
                           </td>
+                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-bold text-white">
+                            {money(r.cashInHand)}
+                          </td>
                           <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-cyan-400">
                             {money(r.inventoryCost)}
                           </td>
-                          <td className="px-4 py-3 text-right font-bold text-white">{money(r.cashInHand)}</td>
+                          {/* ✅ Expense */}
+                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-orange-400">
+                            {money(r.expense)}
+                          </td>
+                          {/* ✅ Profit */}
+                          <td className="px-4 py-3 text-right font-semibold text-lime-400">
+                            {money(r.profit)}
+                          </td>
                         </tr>
                       );
                     })
@@ -561,8 +756,10 @@ export default function InventoryHistory() {
                     <td className="px-4 py-3.5 text-right text-rose-400">{money(totals.cashOut)}</td>
                     <td className="px-4 py-3.5 text-right text-purple-300">{money(totals.vendorPay)}</td>
                     <td className="px-4 py-3.5 text-right text-blue-400">{money(totals.ownerCapital)}</td>
-                    <td className="px-4 py-3.5 text-right text-cyan-400">{money(totals.inventoryCost)}</td>
                     <td className="px-4 py-3.5 text-right text-white">{money(totals.cashInHand)}</td>
+                    <td className="px-4 py-3.5 text-right text-cyan-400">{money(totals.inventoryCost)}</td>
+                    <td className="px-4 py-3.5 text-right text-orange-400">{money(totals.expense)}</td>
+                    <td className="px-4 py-3.5 text-right text-lime-400">{money(totals.profit)}</td>
                   </tr>
                 </tfoot>
               </table>

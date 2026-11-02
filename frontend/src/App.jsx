@@ -24,6 +24,21 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+// ✅ NEW: Login page ke liye alag route component.
+// Pehle "/" ka element App ke render par hi check hota tha (localStorage state nahi hai),
+// to logout ke baad purana <Navigate to="/dashboard"> reh jata tha aur
+// ProtectedRoute <-> "/" ke beech loop ban kar blank screen aati thi (F5 par theek hoti thi).
+// Ab token har render par check hota hai.
+const PublicRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+
+  if (token) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return children;
+};
+
 function App() {
   const [darkMode, setDarkMode] = useState(() => {
     try {
@@ -59,9 +74,9 @@ function App() {
         <Route
           path="/"
           element={
-            localStorage.getItem('token')
-              ? <Navigate to="/dashboard" replace />
-              : <Login />
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
           }
         />
 

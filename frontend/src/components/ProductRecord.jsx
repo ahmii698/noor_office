@@ -8,6 +8,9 @@ import {
   FiTrendingDown,
   FiList,
   FiBarChart2,
+  FiShoppingCart,
+  FiDollarSign,
+  FiTag,
 } from 'react-icons/fi';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -19,7 +22,7 @@ import './ProductRecord.css';
 const pad = (n) => String(n).padStart(2, '0');
 const toYMD = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-// invoice_date ko local date (yyyy-mm-dd) me badalta hai
+// Converts invoice_date to a local date string (yyyy-mm-dd)
 const normalizeDate = (value) => {
   if (!value) return '';
   const str = String(value);
@@ -94,7 +97,7 @@ const ProductRecord = ({ darkMode }) => {
     fetchData();
   }, [fetchData]);
 
-  // Product name -> purchase price (current inventory se)
+  // Product name -> purchase price (from current inventory)
   const purchaseMap = useMemo(() => {
     const map = new Map();
     products.forEach((p) => {
@@ -103,7 +106,7 @@ const ProductRecord = ({ darkMode }) => {
     return map;
   }, [products]);
 
-  // Har bika hua product = aik row
+  // Each sold product becomes one row
   const allRows = useMemo(() => {
     const rows = [];
     invoices.forEach((inv) => {
@@ -118,7 +121,7 @@ const ProductRecord = ({ darkMode }) => {
       const invDiscount = Number(inv.discount) || 0;
 
       items.forEach((it, idx) => {
-        // Sirf products (services nahi)
+        // Products only (not services)
         if (it.service_category !== 'Product') return;
 
         const qty = Number(it.quantity) || 0;
@@ -126,7 +129,7 @@ const ProductRecord = ({ darkMode }) => {
         const key = String(it.service_name || '').trim().toLowerCase();
         const purchase = (purchaseMap.get(key) || 0) * qty;
 
-        // Invoice ka discount items me hissay ke hisab se baanta gaya hai
+        // The invoice discount is split across items in proportion to their value
         const discount = invSubtotal > 0 ? (invDiscount * selling) / invSubtotal : 0;
         const profit = selling - discount - purchase;
 
@@ -145,7 +148,7 @@ const ProductRecord = ({ darkMode }) => {
       });
     });
 
-    // Naya pehle
+    // Newest first
     rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     return rows;
   }, [invoices, purchaseMap]);
@@ -175,7 +178,7 @@ const ProductRecord = ({ darkMode }) => {
     [filteredRows]
   );
 
-  // Product-wise summary (kon zyada bika, kon kam)
+  // Product-wise summary (best and worst sellers)
   const summaryRows = useMemo(() => {
     const map = new Map();
     filteredRows.forEach((r) => {
@@ -202,6 +205,15 @@ const ProductRecord = ({ darkMode }) => {
     year: 'This Year',
     custom: customDate ? displayDate(customDate) : 'Custom Date',
   }[timeFilter];
+
+  // Summary cards (same style for every card)
+  const statCards = [
+    { label: 'Total Sold Qty', value: totals.qty.toLocaleString(), icon: FiPackage },
+    { label: 'Purchase Value', value: money(totals.purchase), icon: FiShoppingCart },
+    { label: 'Selling Value', value: money(totals.selling), icon: FiDollarSign },
+    { label: 'Discount Given', value: money(totals.discount), icon: FiTag },
+    { label: 'Net Profit', value: money(totals.profit), icon: FiTrendingUp },
+  ];
 
   // ---------- exports ----------
   const buildExportRows = () =>
@@ -277,7 +289,7 @@ const ProductRecord = ({ darkMode }) => {
     toast.success('Exported to PDF');
   };
 
-  // Dashboard ke header ke Excel / PDF buttons yahan ke export chalate hain
+  // The Excel / PDF buttons in the dashboard header trigger these exports
   useEffect(() => {
     const onExport = (e) => {
       if (e.detail === 'excel') handleExportExcel();
@@ -326,58 +338,49 @@ const ProductRecord = ({ darkMode }) => {
         </div>
       </div>
 
-      {/* ===== Summary Cards ===== */}
+      {/* ===== Summary Cards (one style for all: white in light mode, dark in dark mode) ===== */}
       <div className="pr-stats">
-        <div className="pr-stat blue">
-          <span>Total Sold Qty</span>
-          <strong>{totals.qty.toLocaleString()}</strong>
-        </div>
-        <div className="pr-stat slate">
-          <span>Purchase Value</span>
-          <strong>{money(totals.purchase)}</strong>
-        </div>
-        <div className="pr-stat red">
-          <span>Selling Value</span>
-          <strong>{money(totals.selling)}</strong>
-        </div>
-        <div className="pr-stat amber">
-          <span>Discount Diya</span>
-          <strong>{money(totals.discount)}</strong>
-        </div>
-        <div className={`pr-stat ${totals.profit >= 0 ? 'green' : 'darkred'}`}>
-          <span>Net Profit</span>
-          <strong>{money(totals.profit)}</strong>
-        </div>
+        {statCards.map(({ label, value, icon: Icon }) => (
+          <div className="pr-stat" key={label}>
+            <div className="pr-stat-head">
+              <span className="pr-stat-icon">
+                <Icon />
+              </span>
+              <span className="pr-stat-label">{label}</span>
+            </div>
+            <strong className="pr-stat-value">{value}</strong>
+          </div>
+        ))}
       </div>
 
       {/* ===== Best / Worst cards ===== */}
       {!loading && (
         <div className="pr-insights">
-          {/* Sab se zyada bika */}
-          <div className="pr-icard good">
+          {/* Best seller */}
+          <div className="pr-icard">
             <div className="pr-icard-icon">
               <FiTrendingUp />
             </div>
             <div className="pr-icard-body">
-              <span className="pr-icard-label">Sab se zyada bika</span>
+              <span className="pr-icard-label">Best Seller</span>
               <strong className="pr-icard-title" title={topSeller?.name || ''}>
                 {topSeller ? topSeller.name : '-'}
               </strong>
               <span className="pr-icard-sub">
                 {topSeller
                   ? `${topSeller.qty} units • Profit ${money(topSeller.profit)}`
-                  : `${filterLabel} me koi sale nahi`}
+                  : `No sales in ${filterLabel}`}
               </span>
             </div>
           </div>
 
-          {/* Sab se kam bika */}
-          <div className="pr-icard warn">
+          {/* Lowest seller */}
+          <div className="pr-icard">
             <div className="pr-icard-icon">
               <FiTrendingDown />
             </div>
             <div className="pr-icard-body">
-              <span className="pr-icard-label">Sab se kam bika</span>
+              <span className="pr-icard-label">Lowest Seller</span>
               <strong className="pr-icard-title" title={lowSeller?.name || ''}>
                 {lowSeller ? lowSeller.name : '-'}
               </strong>
@@ -385,8 +388,8 @@ const ProductRecord = ({ darkMode }) => {
                 {lowSeller
                   ? `${lowSeller.qty} units • Profit ${money(lowSeller.profit)}`
                   : summaryRows.length === 1
-                  ? 'Sirf aik product bika hai'
-                  : `${filterLabel} me koi sale nahi`}
+                  ? 'Only one product has been sold'
+                  : `No sales in ${filterLabel}`}
               </span>
             </div>
           </div>
@@ -428,8 +431,8 @@ const ProductRecord = ({ darkMode }) => {
         <div className="pr-info-line">
           <FiPackage className="pr-info-icon" />
           <span>
-            Showing: <b>{filterLabel}</b> &nbsp;•&nbsp; Profit = Selling − Discount − Purchase. Discount invoice ka hota hai,
-            isliye items me unki value ke hisab se bata gaya hai.
+            Showing: <b>{filterLabel}</b> &nbsp;•&nbsp; Profit = Selling − Discount − Purchase. The discount belongs to the
+            invoice, so it is split across items in proportion to their value.
           </span>
         </div>
 
@@ -472,8 +475,8 @@ const ProductRecord = ({ darkMode }) => {
                   <td colSpan={colCount} className="pr-empty">
                     <div className="pr-empty-box">
                       <FiPackage className="pr-empty-icon" />
-                      <p>Koi sale record nahi mila.</p>
-                      <span>Filter change karo ya billing se product becho.</span>
+                      <p>No sales records found.</p>
+                      <span>Change the filter or sell a product from billing.</span>
                     </div>
                   </td>
                 </tr>
@@ -486,7 +489,7 @@ const ProductRecord = ({ darkMode }) => {
                     <td className="pr-name">
                       {r.name}
                       {!r.known && (
-                        <span className="pr-warn-tag" title="Ye product ab inventory me nahi, isliye purchase value 0 hai">
+                        <span className="pr-warn-tag" title="This product is no longer in inventory, so its purchase value is 0">
                           not in inventory
                         </span>
                       )}

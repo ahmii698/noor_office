@@ -35,7 +35,7 @@ const CashInHand = ({ darkMode }) => {
       setEntries(Array.isArray(res.data?.data) ? res.data.data : []);
     } catch (error) {
       console.error(error);
-      toast.error('Cash in hand load nahi ho saka');
+      toast.error('Failed to load cash in hand');
     } finally {
       setLoading(false);
     }
@@ -48,18 +48,18 @@ const CashInHand = ({ darkMode }) => {
     if (saving) return;
     const num = parseFloat(amount);
     if (isNaN(num) || num <= 0) {
-      toast.error('Sahi amount likho');
+      toast.error('Enter a valid amount');
       return;
     }
     setSaving(true);
     try {
       await api.post('/cash-in-hand', { type, amount: num, note: note.trim() || null });
-      toast.success(type === 'add' ? 'Cash add ho gaya!' : 'Cash minus ho gaya!');
+      toast.success(type === 'add' ? 'Cash added!' : 'Cash withdrawn!');
       setAmount('');
       setNote('');
       await load();
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Update fail hua');
+      toast.error(error.response?.data?.message || 'Update failed');
     } finally {
       setSaving(false);
     }
@@ -86,12 +86,12 @@ const CashInHand = ({ darkMode }) => {
           <span className={`text-xs font-bold ${muted}`}>Admin Cash in Hand (manual)</span>
         </div>
         <p className={`text-2xl font-bold ${strong}`}>{rs(balance)}</p>
-        <p className="text-xs font-bold text-gray-500">ye amount Inventory ke "Cash in Hand" card me judti hai</p>
+        <p className="text-xs font-bold text-gray-500">This amount is added to the "Cash in Hand" card in Inventory</p>
       </div>
 
       {isAdmin && (
         <form onSubmit={handleSubmit} className={`rounded-xl p-5 border space-y-3 ${card}`}>
-          <h3 className={`text-sm font-bold ${strong}`}>Cash Update Karo</h3>
+          <h3 className={`text-sm font-bold ${strong}`}>Update Cash</h3>
           <div className="flex gap-2">
             <button type="button" onClick={() => setType('add')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 ${type === 'add' ? 'bg-emerald-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
@@ -119,13 +119,13 @@ const CashInHand = ({ darkMode }) => {
           <h3 className={`text-sm font-bold ${strong}`}>History</h3>
         </div>
         {entries.length === 0 ? (
-          <p className={`p-6 text-center text-sm font-bold ${muted}`}>Abhi tak koi history nahi.</p>
+          <p className={`p-6 text-center text-sm font-bold ${muted}`}>No history yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
                 <tr>
-                  {['Date & Time', 'Type', 'Amount', 'Pehle', 'Baad me', 'Note', 'By'].map(h => (
+                  {['Date & Time', 'Type', 'Amount', 'Before', 'After', 'Note', 'By'].map(h => (
                     <th key={h} className={`px-4 py-2 text-left text-xs font-bold uppercase ${muted}`}>{h}</th>
                   ))}
                 </tr>

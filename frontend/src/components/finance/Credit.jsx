@@ -2,11 +2,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   FiPlus, FiSearch, FiEye, FiEdit, FiX, 
-  FiPackage, FiFileText, FiDollarSign, FiClock,
+  FiDollarSign,
   FiChevronLeft, FiChevronRight, FiInbox,
-  FiList, FiCalendar, FiCheckCircle, FiAlertCircle,
+  FiList, FiCheckCircle,
   FiTrash2, FiLoader, FiShoppingCart, FiBox, FiUser,
-  FiPlusCircle, FiCreditCard, FiDownload, FiFileText as FiFileIcon
+  FiCreditCard, FiDownload, FiFileText as FiFileIcon
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import api from '../../services/api';
@@ -15,18 +15,18 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 
-// ✅ FIXED: Helper to format date/time in Pakistan Time (Asia/Karachi, UTC+5)
-// Pehle yahan manual +5 ghante add ho rahe the AUR timeZone: 'Asia/Karachi' bhi tha,
-// is liye 10 ghante extra dikhte the. Ab sirf timeZone conversion hoti hai.
+// ✅ Formats a date/time in Pakistan time (Asia/Karachi, UTC+5).
+// Only a timezone conversion is applied here. Adding hours manually on top of
+// the timeZone option would double the offset.
 const formatPakistanTime = (dateString) => {
   if (!dateString) return { date: 'N/A', time: '' };
   
   try {
     let value = dateString;
 
-    // Backend (Laravel) timezone ke baghair string bhejta hai (e.g. "2026-10-08 23:25:23")
-    // jo pehle se Karachi local time hota hai. Isay Karachi (+05:00) maan lo,
-    // warna dobara +5 ho jata hai.
+    // The backend (Laravel) sends strings without a timezone (e.g. "2026-10-08 23:25:23"),
+    // which are already Karachi local time. Treat them as Karachi (+05:00),
+    // otherwise the +5 offset would be applied twice.
     if (typeof value === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)) {
       value = value.replace(' ', 'T') + '+05:00';
     }
@@ -56,8 +56,8 @@ const formatPakistanTime = (dateString) => {
   }
 };
 
-// ✅ Ek record ke products (naam + quantity) nikalta hai.
-// Agar record mein links nahi hain (purana data) to products string + stock_quantity use hoti hai.
+// ✅ Returns the products (name + quantity) of a single record.
+// If the record has no linked items (old data), the products string + stock_quantity is used.
 const getRecordItems = (record) => {
   if (record?.items && record.items.length > 0) return record.items;
   if (record?.products) {
@@ -66,7 +66,7 @@ const getRecordItems = (record) => {
   return [];
 };
 
-// ✅ "Royal Musk × 5, Mughal × 10" string (Excel / PDF ke liye)
+// ✅ "Royal Musk × 5, Mughal × 10" string (for Excel / PDF)
 const formatItemsText = (items) => {
   if (!items || items.length === 0) return 'N/A';
   return items
@@ -74,7 +74,7 @@ const formatItemsText = (items) => {
     .join(', ');
 };
 
-// ✅ Products ko chips ki shakal mein dikhata hai (main table ke liye)
+// ✅ Shows products as chips (for the main table)
 const ProductChips = ({ items, darkMode }) => {
   if (!items || items.length === 0) return <span>N/A</span>;
   return (
@@ -84,8 +84,8 @@ const ProductChips = ({ items, darkMode }) => {
           key={idx}
           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${
             darkMode
-              ? 'bg-red-900/30 text-red-200 border-red-800'
-              : 'bg-red-50 text-red-700 border-red-200'
+              ? 'bg-gray-800 text-gray-200 border-gray-700'
+              : 'bg-gray-100 text-gray-700 border-gray-200'
           }`}
         >
           {item.name}
@@ -96,17 +96,27 @@ const ProductChips = ({ items, darkMode }) => {
   );
 };
 
-// ✅ Memoized Stats Card Component
-const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, color, darkMode }) => (
-  <div className={`bg-gradient-to-r ${color} rounded-2xl p-6 text-white shadow-lg`}>
-    <div className="flex justify-between items-start">
-      <div>
-        <p className="text-sm opacity-90">{title}</p>
-        <p className="text-3xl font-bold mt-2">{value}</p>
-        {subtitle && <p className="text-xs opacity-75 mt-1">{subtitle}</p>}
+// ✅ Memoized stats card - one uniform style (same look as the Inventory page cards)
+const StatsCard = React.memo(({ title, value, subtitle, icon: Icon, darkMode }) => (
+  <div
+    className={`rounded-2xl border p-5 shadow-sm ${
+      darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+    }`}
+  >
+    <div className="flex items-center gap-3">
+      <div
+        className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+          darkMode ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-600'
+        }`}
+      >
+        <Icon className="text-lg" />
       </div>
-      <Icon className="text-3xl opacity-50" />
+      <p className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{title}</p>
     </div>
+    <p className={`text-2xl font-bold mt-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{value}</p>
+    {subtitle && (
+      <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{subtitle}</p>
+    )}
   </div>
 ));
 
@@ -142,12 +152,12 @@ const Credit = ({ darkMode }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   
-  // ✅ Refs for button disable
+  // ✅ Refs used to disable the submit buttons
   const editSubmitRef = useRef(null);
   const paySubmitRef = useRef(null);
 
-  // ✅ FIXED: Group vendors by name with proper payments merging & SORTING (NEWEST FIRST)
-  // ✅ UPDATED: har record ke saath uske products ki quantity (items) bhi jama hoti hai
+  // ✅ Groups vendors by name, merges payments and sorts newest first.
+  // Each record also stores the quantity of its products (items).
   const groupVendorsByName = (vendorsList) => {
     const grouped = {};
     
@@ -182,7 +192,7 @@ const Credit = ({ darkMode }) => {
       grouped[key].balanceAmount += parseFloat(vendor.balance_amount) || 0;
       grouped[key].stockQuantity += parseInt(vendor.stock_quantity) || 0;
 
-      // ✅ is record ke products + quantity (credit_product_links se)
+      // ✅ Products + quantity of this record (from credit_product_links)
       const recordItems = Array.isArray(vendor.productsList)
         ? vendor.productsList.map(p => ({
             name: p.name,
@@ -223,7 +233,7 @@ const Credit = ({ darkMode }) => {
       }
     });
 
-    // ✅ vendor ke saare orders ke products ek jagah jama (same product ki quantity add)
+    // ✅ Combine the products of all orders of a vendor (quantities of the same product are added)
     Object.values(grouped).forEach(group => {
       const summaryMap = {};
       group.records.forEach(record => {
@@ -400,7 +410,7 @@ const Credit = ({ darkMode }) => {
     setIsPaying(false);
   };
 
-  // ✅ Add product to selection with DUPLICATE CHECK
+  // ✅ Add a product to the selection with a duplicate check
   const handleAddProductToSelection = (product) => {
     const existingById = selectedProducts.find(p => p.product_id === product.id);
     if (existingById) {
@@ -496,12 +506,12 @@ const Credit = ({ darkMode }) => {
     }
   };
 
-  // ✅ Edit submit with DOUBLE CLICK PROTECTION
+  // ✅ Edit submit with double-click protection
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     
     if (isSubmitting) {
-      // ✅ FIXED: react-hot-toast mein toast.warning nahi hota, isliye plain toast()
+      // react-hot-toast has no toast.warning, so a plain toast() is used
       toast('Please wait, payment is being processed...', { icon: '⚠️' });
       return;
     }
@@ -555,12 +565,12 @@ const Credit = ({ darkMode }) => {
     }
   };
 
-  // ✅ Payment submit with DOUBLE CLICK PROTECTION
+  // ✅ Payment submit with double-click protection
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     
     if (isPaying) {
-      // ✅ FIXED: toast.warning -> plain toast()
+      // Plain toast() because toast.warning does not exist
       toast('Please wait, payment is being processed...', { icon: '⚠️' });
       return;
     }
@@ -633,7 +643,7 @@ const Credit = ({ darkMode }) => {
     }
 
     const ws = XLSX.utils.json_to_sheet(vendors.map(v => {
-      // ✅ FIXED: Created At ab Karachi time mein
+      // ✅ Created At is shown in Karachi time
       const created = v.createdAt ? formatPakistanTime(v.createdAt) : null;
       return {
         'Vendor Name': v.name || 'N/A',
@@ -696,7 +706,7 @@ const Credit = ({ darkMode }) => {
     doc.text('Credit Management Report', 14, 15);
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
-    // ✅ FIXED: Generated time ab Karachi time mein
+    // ✅ Generated time is shown in Karachi time
     const generated = formatPakistanTime(new Date().toISOString());
     doc.text(`Generated: ${generated.date} ${generated.time}`, 14, 22);
 
@@ -770,17 +780,17 @@ const Credit = ({ darkMode }) => {
                   Total Vendors: {statistics.totalVendors || vendors.length} | 
                   Total Balance: Rs. {(statistics.totalBalance || vendors.reduce((sum, v) => sum + (v?.balanceAmount || 0), 0)).toLocaleString()}
                   {statistics.pending > 0 && (
-                    <span className="ml-2 px-2 py-0.5 bg-red-500/30 text-white rounded-full text-xs">
+                    <span className="credit-header-badge pending">
                       {statistics.pending} Pending
                     </span>
                   )}
                   {statistics.partial > 0 && (
-                    <span className="ml-2 px-2 py-0.5 bg-yellow-500/30 text-white rounded-full text-xs">
+                    <span className="credit-header-badge partial">
                       {statistics.partial} Partial
                     </span>
                   )}
                   {statistics.fullyPaid > 0 && (
-                    <span className="ml-2 px-2 py-0.5 bg-green-500/30 text-white rounded-full text-xs">
+                    <span className="credit-header-badge paid">
                       {statistics.fullyPaid} Paid
                     </span>
                   )}
@@ -788,7 +798,7 @@ const Credit = ({ darkMode }) => {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {/* ✅ Excel & PDF Buttons */}
+              {/* ✅ Excel & PDF buttons */}
               <button
                 onClick={exportToExcel}
                 disabled={vendors.length === 0}
@@ -817,40 +827,29 @@ const Credit = ({ darkMode }) => {
             </div>
           </div>
 
-          {/* 3 STATS CARDS */}
+          {/* 3 stats cards - all in the same style */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
-            <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-5 text-white shadow-lg">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-sm opacity-90">Total Amount</p>
-                  <p className="text-2xl font-bold mt-1">Rs. {totalAmount.toLocaleString()}</p>
-                  <p className="text-xs opacity-75 mt-1">Total vendor liability</p>
-                </div>
-                <FiDollarSign className="text-3xl opacity-50" />
-              </div>
-            </div>
-            
-            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-5 text-white shadow-lg">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-sm opacity-90">Total Paid</p>
-                  <p className="text-2xl font-bold mt-1">Rs. {totalPaid.toLocaleString()}</p>
-                  <p className="text-xs opacity-75 mt-1">Total amount paid</p>
-                </div>
-                <FiCheckCircle className="text-3xl opacity-50" />
-              </div>
-            </div>
-            
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-5 text-white shadow-lg">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-sm opacity-90">Total Balance</p>
-                  <p className="text-2xl font-bold mt-1">Rs. {totalBalance.toLocaleString()}</p>
-                  <p className="text-xs opacity-75 mt-1">Remaining balance</p>
-                </div>
-                <FiCreditCard className="text-3xl opacity-50" />
-              </div>
-            </div>
+            <StatsCard
+              darkMode={darkMode}
+              title="Total Amount"
+              value={`Rs. ${totalAmount.toLocaleString()}`}
+              subtitle="Total vendor liability"
+              icon={FiDollarSign}
+            />
+            <StatsCard
+              darkMode={darkMode}
+              title="Total Paid"
+              value={`Rs. ${totalPaid.toLocaleString()}`}
+              subtitle="Total amount paid"
+              icon={FiCheckCircle}
+            />
+            <StatsCard
+              darkMode={darkMode}
+              title="Total Balance"
+              value={`Rs. ${totalBalance.toLocaleString()}`}
+              subtitle="Remaining balance"
+              icon={FiCreditCard}
+            />
           </div>
 
           {/* Search Bar */}
@@ -1065,7 +1064,7 @@ const Credit = ({ darkMode }) => {
                                 <tr key={`${record.id || idx}-${itemIdx}`}>
                                   <td>{isFirst ? idx + 1 : ''}</td>
                                   <td>{isFirst ? (record.invoiceNumber || 'N/A') : ''}</td>
-                                  {/* ✅ FIXED: ab Karachi time ke hisaab se date */}
+                                  {/* ✅ Date is shown in Karachi time */}
                                   <td>{isFirst ? (record.createdAt ? formatPakistanTime(record.createdAt).date : 'N/A') : ''}</td>
                                   <td className="font-medium">{item.name || 'N/A'}</td>
                                   <td className="credit-text-right font-semibold">{item.quantity || 0}</td>
@@ -1193,9 +1192,9 @@ const Credit = ({ darkMode }) => {
                 <p className="credit-payment-label">Vendor</p>
                 <p className="credit-payment-vendor">{selectedVendor?.name || 'N/A'}</p>
                 <p className="credit-payment-label">Total Amount</p>
-                <p className="credit-payment-balance" style={{color: '#111827'}}>Rs.{(selectedVendor?.totalAmount || 0).toLocaleString()}</p>
+                <p className="credit-payment-balance total">Rs.{(selectedVendor?.totalAmount || 0).toLocaleString()}</p>
                 <p className="credit-payment-label">Already Paid</p>
-                <p className="credit-payment-balance" style={{color: '#16a34a'}}>Rs.{(selectedVendor?.paidAmount || 0).toLocaleString()}</p>
+                <p className="credit-payment-balance paid">Rs.{(selectedVendor?.paidAmount || 0).toLocaleString()}</p>
                 <p className="credit-payment-label">Remaining Balance</p>
                 <p className="credit-payment-balance">Rs.{(selectedVendor?.balanceAmount || 0).toLocaleString()}</p>
               </div>

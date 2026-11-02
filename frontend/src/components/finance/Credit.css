@@ -1,38 +1,40 @@
 /* src/components/finance/Credit.css */
 
-/* Container */
+/* Container (no own background, the page background shows through in both modes) */
 .credit-container {
   padding: 1rem;
   min-height: 100vh;
 }
 
-.credit-container.dark {
-  background-color: #111827;
-}
-
-/* Card */
+/* Card - same colors as the Inventory page cards */
 .credit-card {
   background: white;
   border-radius: 1rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   overflow: hidden;
   border: 1px solid #e5e7eb;
 }
 
 .credit-card.dark {
-  background: #1f2937;
+  background: #111827;
   border-color: #374151;
 }
 
-/* Header - Red theme */
+/* Header - neutral card style (no colored gradient) */
 .credit-header {
   padding: 1rem 1.5rem;
-  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+}
+
+.credit-card.dark .credit-header {
+  background: #111827;
+  border-color: #374151;
 }
 
 .credit-header-left {
@@ -42,27 +44,52 @@
 }
 
 .credit-header-icon {
-  color: white;
+  color: #dc2626;
   font-size: 1.5rem;
 }
 
 .credit-header-title {
-  color: white;
+  color: #111827;
   font-size: 1.125rem;
   font-weight: 600;
   margin: 0;
 }
 
+.credit-card.dark .credit-header-title {
+  color: white;
+}
+
 .credit-header-subtitle {
-  color: #fca5a5;
+  color: #6b7280;
   font-size: 0.75rem;
   margin: 0.25rem 0 0 0;
 }
 
+.credit-card.dark .credit-header-subtitle {
+  color: #9ca3af;
+}
+
+/* Status badges in the header */
+.credit-header-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.credit-card.dark .credit-header-badge {
+  background: #1f2937;
+  color: #d1d5db;
+}
+
 .credit-btn-add {
   padding: 0.5rem 1rem;
-  background: white;
-  color: #dc2626;
+  background: #dc2626;
+  color: white;
   border: none;
   border-radius: 0.5rem;
   font-size: 0.875rem;
@@ -72,12 +99,10 @@
   gap: 0.5rem;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .credit-btn-add:hover {
-  background: #fef2f2;
-  transform: scale(1.02);
+  background: #b91c1c;
 }
 
 .credit-btn-icon {
@@ -192,18 +217,19 @@
   color: #374151;
 }
 
-.credit-table tbody.dark td {
+/* Dark mode table cells (the "dark" class is on the row, not on tbody) */
+.credit-table tbody tr.dark td {
   border-color: #374151;
   color: #d1d5db;
 }
 
-/* Vendor Name - Without icon */
+/* Vendor name */
 .credit-vendor-name {
   font-weight: 500;
   color: #111827;
 }
 
-.credit-table tbody.dark .credit-vendor-name {
+.credit-table tbody tr.dark .credit-vendor-name {
   color: white;
 }
 
@@ -247,7 +273,7 @@
   color: #111827;
 }
 
-.credit-table tbody.dark .credit-amount-total {
+.credit-table tbody tr.dark .credit-amount-total {
   color: white;
 }
 
@@ -448,6 +474,11 @@
   background: #374151;
 }
 
+.credit-card.dark .credit-pagination-btn.active {
+  background: #dc2626;
+  color: white;
+}
+
 .credit-card.dark .credit-pagination-dots {
   color: #6b7280;
 }
@@ -478,7 +509,7 @@
 }
 
 .credit-modal.dark {
-  background: #1f2937;
+  background: #111827;
   border-color: #374151;
 }
 
@@ -508,7 +539,7 @@
 }
 
 .credit-modal-header.dark {
-  background: #1f2937;
+  background: #111827;
   border-color: #374151;
 }
 
@@ -565,21 +596,21 @@
   overflow-y: auto;
 }
 
-/* Summary */
+/* Summary - neutral box (no pink) */
 .credit-summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   padding: 1rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
 .credit-modal.dark .credit-summary {
-  background: rgba(220, 38, 38, 0.1);
-  border-color: #7f1d1d;
+  background: #1f2937;
+  border-color: #374151;
 }
 
 .credit-summary-item {
@@ -675,6 +706,10 @@
   color: #d1d5db;
 }
 
+.credit-modal.dark .credit-history-table .credit-amount-total {
+  color: white;
+}
+
 .credit-history-table tfoot td {
   padding: 0.75rem 1rem;
   font-weight: 700;
@@ -728,7 +763,7 @@
 }
 
 .credit-modal-footer.dark {
-  background: #1f2937;
+  background: #111827;
   border-color: #374151;
 }
 
@@ -853,18 +888,18 @@
   background: #ca8a04;
 }
 
-/* Payment Summary in Modal */
+/* Payment Summary in Modal - neutral box (no pink) */
 .credit-payment-summary {
   padding: 1rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
   border-radius: 0.75rem;
   margin-bottom: 1rem;
 }
 
 .credit-modal.dark .credit-payment-summary {
-  background: rgba(220, 38, 38, 0.1);
-  border-color: #7f1d1d;
+  background: #1f2937;
+  border-color: #374151;
 }
 
 .credit-payment-label {
@@ -893,6 +928,18 @@
   font-weight: 700;
   color: #dc2626;
   margin: 0;
+}
+
+.credit-payment-balance.total {
+  color: #111827;
+}
+
+.credit-modal.dark .credit-payment-balance.total {
+  color: white;
+}
+
+.credit-payment-balance.paid {
+  color: #16a34a;
 }
 
 .credit-btn-pay-submit {

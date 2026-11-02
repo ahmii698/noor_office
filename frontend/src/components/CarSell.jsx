@@ -118,7 +118,7 @@ const CarSell = ({ darkMode }) => {
     setIsSearching(false);
   };
 
-  // ✅ Select a customer - Auto-fill form (purchase price bhi auto-fill hoga)
+  // ✅ Select a customer - Auto-fill form (purchase price is auto-filled as well)
   const selectCustomer = (car) => {
     setFormData({
       sellDate: new Date().toISOString().split('T')[0],

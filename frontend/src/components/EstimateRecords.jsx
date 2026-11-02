@@ -546,7 +546,7 @@ const EstimateRecords = ({ darkMode }) => {
   const hiddenCount = estimates.filter(est => hiddenIds.includes(est.id)).length;
 
   // ========== ✅ NEW: MULTI-SELECT + BULK DELETE ==========
-  // Sirf wohi selected count honge jo abhi filtered list mein nazar aa rahe hain
+  // Only count selected items that are currently visible in the filtered list
   const selectedVisibleIds = selectedIds.filter(id => filteredEstimates.some(est => est.id === id));
   const selectedCount = selectedVisibleIds.length;
 
@@ -601,10 +601,10 @@ const EstimateRecords = ({ darkMode }) => {
         toast.success(`${deletedIds.length} estimate(s) deleted`);
       }
       if (failedCount > 0) {
-        toast.error(`${failedCount} estimate(s) delete nahi ho sake`);
+        toast.error(`${failedCount} estimate(s) could not be deleted`);
       }
 
-      // Jo delete ho gaye unko selection se hata do, failed selected hi rehne do
+      // Remove deleted items from the selection, keep the failed ones selected
       setSelectedIds(prev => prev.filter(id => !deletedIds.includes(id)));
       setCurrentPage(1);
       await fetchEstimates();

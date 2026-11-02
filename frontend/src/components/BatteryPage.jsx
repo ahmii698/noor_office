@@ -419,7 +419,7 @@ const BatteryPage = ({ darkMode }) => {
     if (!selectedOldBatteries.some(i => i.battery.id === oldBattery.id)) {
       selectOldBattery(oldBattery);
     }
-    toast('Ab Selling Price daalein aur "Sell Battery" dabayein', { icon: '💰' });
+    toast('Now enter the selling price and click "Sell Battery"', { icon: '💰' });
   };
 
   const handleSubmit = async () => {
@@ -441,7 +441,7 @@ const BatteryPage = ({ darkMode }) => {
       if (hasOldSelection) {
         const missing = selectedOldBatteries.find(i => !(parseFloat(i.sellPrice) > 0));
         if (missing) {
-          toast.error(`"${missing.battery.battery_name}" ki selling price daalein`);
+          toast.error(`Please enter the selling price for "${missing.battery.battery_name}"`);
           return;
         }
 
@@ -453,7 +453,7 @@ const BatteryPage = ({ darkMode }) => {
             `• ${i.battery.battery_name}: Sell Rs. ${parseFloat(i.sellPrice).toLocaleString()} < Purchase Rs. ${(parseFloat(i.battery.trade_in_amount) || 0).toLocaleString()}`
           ).join('\n');
           const ok = window.confirm(
-            `In batteries par loss ho raha hai:\n${list}\n\nKya phir bhi sell karna hai?`
+            `These batteries are being sold at a loss:\n${list}\n\nDo you still want to sell them?`
           );
           if (!ok) return;
         }
@@ -482,7 +482,7 @@ const BatteryPage = ({ darkMode }) => {
         (row.name.trim() === '' && parseFloat(row.price) > 0)
       );
       if (halfFilled && !hasOldSelection) {
-        toast.error('Har trade-in battery ka name aur price dono bharein');
+        toast.error('Please enter both name and price for every trade-in battery');
         return;
       }
 
@@ -558,7 +558,7 @@ const BatteryPage = ({ darkMode }) => {
             savedCount++;
           } catch (err) {
             console.error('Error saving old battery record:', row, err);
-            toast.error(`⚠️ "${row.name.trim()}" record save nahi hua!`);
+            toast.error(`⚠️ Could not save the record for "${row.name.trim()}"!`);
           }
         }
         if (savedCount > 0) {
@@ -640,7 +640,7 @@ const BatteryPage = ({ darkMode }) => {
           }
         }
         if (failed.length > 0) {
-          toast.error(`Invoice ban gayi lekin sold mark nahi hui: ${failed.join(', ')}`);
+          toast.error(`Invoice was created, but these could not be marked as sold: ${failed.join(', ')}`);
         }
       }
 
@@ -1086,7 +1086,7 @@ const BatteryPage = ({ darkMode }) => {
             )}
             {oldBatteries.length > 0 && !isTradeInOnly && activeTab === 'old' && (
               <div className={`mt-4 p-3 rounded-lg text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
-                <p>💡 Ek ya zyada old batteries select karein → Har ki selling price daalein → Sell!</p>
+                <p>💡 Select one or more old batteries → enter the selling price for each → Sell!</p>
               </div>
             )}
             {isTradeInOnly && (
@@ -1154,7 +1154,7 @@ const BatteryPage = ({ darkMode }) => {
                     />
                     <span className="font-medium flex items-center gap-2">
                       <FiRefreshCw className={darkMode ? 'text-yellow-400' : 'text-yellow-600'} />
-                       Sirf Old Battery Bechna Hai  (Trade-in Only)
+                       Customer is only selling an old battery (Trade-in Only)
                     </span>
                   </label>
                   <p className={`text-xs mt-1 ${darkMode ? 'text-yellow-300' : 'text-yellow-700'}`}>
@@ -1260,11 +1260,11 @@ const BatteryPage = ({ darkMode }) => {
                             </button>
                           </div>
                           <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            Purchase (khareedi): <span className="font-semibold">Rs. {purchase.toLocaleString()}</span> 🔒
+                            Purchase price: <span className="font-semibold">Rs. {purchase.toLocaleString()}</span> 🔒
                           </p>
                           <input
                             type="number"
-                            placeholder="Selling price (Rs.) — kitnay ki bech rahe hain? *"
+                            placeholder="Selling price (Rs.) — what price are you selling at? *"
                             value={sellPrice}
                             onChange={(e) => updateOldSellPrice(battery.id, e.target.value)}
                             min="0"
@@ -1300,7 +1300,7 @@ const BatteryPage = ({ darkMode }) => {
                 <div className={`mb-4 p-4 rounded-xl border ${darkMode ? 'border-gray-600 bg-gray-700/40' : 'border-gray-200 bg-gray-50'}`}>
                   <div className="flex justify-between items-center mb-3">
                     <label className={`text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-                      {isTradeInOnly ? 'Old Batteries Kharidi (Name + Price) *' : 'Trade-in Batteries (Old Battery)'}
+                      {isTradeInOnly ? 'Old Batteries Purchased (Name + Price) *' : 'Trade-in Batteries (Old Battery)'}
                     </label>
                     <button
                       type="button"
@@ -1358,7 +1358,7 @@ const BatteryPage = ({ darkMode }) => {
                   )}
 
                   <p className={`text-xs mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    💡 Har battery ka name aur price bharein. Add Battery se aur rows add karein.
+                    💡 Enter the name and price of each battery. Use Add Battery to add more rows.
                   </p>
                 </div>
               )}

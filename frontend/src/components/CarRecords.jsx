@@ -114,7 +114,7 @@ const CarRecords = ({ darkMode }) => {
     fetchRecords();
   }, []);
 
-  // ✅ Delete record (database se bhi delete hoga)
+  // ✅ Delete record (also deletes from the database)
   const confirmDelete = (record) => {
     setDeleteTarget(record);
   };
@@ -130,12 +130,12 @@ const CarRecords = ({ darkMode }) => {
 
       await api.delete(endpoint);
 
-      // UI se bhi remove karo
+      // Remove from the UI as well
       setRecords(prev => prev.filter(
         r => !(r.type === deleteTarget.type && r.id === deleteTarget.id)
       ));
 
-      // Agar details modal isi record ka khula hai to band kar do
+      // If the details modal is open for this same record, close it
       if (selectedRecord && selectedRecord.type === deleteTarget.type && selectedRecord.id === deleteTarget.id) {
         setIsModalOpen(false);
         setSelectedRecord(null);
@@ -267,7 +267,7 @@ const CarRecords = ({ darkMode }) => {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentRecords = filteredRecords.slice(indexOfFirstItem, indexOfLastItem);
 
-  // ✅ Delete ke baad agar current page khali ho jaye to pichle page par chale jao
+  // ✅ After a delete, if the current page becomes empty, go back to the previous page
   useEffect(() => {
     if (currentPage > 1 && currentPage > totalPages) {
       setCurrentPage(Math.max(totalPages, 1));
@@ -955,7 +955,7 @@ const CarRecords = ({ darkMode }) => {
               <div>
                 <h3 className="text-lg font-semibold">Delete Record?</h3>
                 <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Yeh action undo nahi ho sakta
+                  This action cannot be undone
                 </p>
               </div>
             </div>
@@ -969,7 +969,7 @@ const CarRecords = ({ darkMode }) => {
             </div>
 
             <p className={`text-sm mb-5 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              Yeh record database se hamesha ke liye delete ho jayega. Kya aap sure hain?
+              This record will be permanently deleted from the database. Are you sure?
             </p>
 
             <div className="flex gap-3">

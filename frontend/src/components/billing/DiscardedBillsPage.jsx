@@ -1,5 +1,3 @@
-// src/components/billing/DiscardedBillsPage.jsx
-
 import React, { useState, useEffect } from 'react';
 import { 
   FiTrash2, 
@@ -36,8 +34,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
   const [loading, setLoading] = useState(false);
   const [selectedBill, setSelectedBill] = useState(null);
   const [restoringId, setRestoringId] = useState(null);
-
-  // ✅ NEW: multi-select states
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -50,7 +46,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
       if (response.success) {
         const list = response.data || [];
         setDiscardedBills(list);
-        // Jo bills ab exist nahi karte unki selection hata do
         setSelectedIds(prev => prev.filter(id => list.some(b => b.id === id)));
       } else {
         setDiscardedBills([]);
@@ -70,7 +65,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     fetchDiscardedBills();
   }, []);
 
-  // ✅ NEW: selection helpers
   const isAllSelected = discardedBills.length > 0 && selectedIds.length === discardedBills.length;
 
   const toggleSelect = (id) => {
@@ -95,6 +89,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
         const restoredData = response.data;
         
         localStorage.setItem('restoredBill', JSON.stringify({
+          id: restoredData.id ?? cartId,
           cart_items: restoredData.cart_items || [],
           customer_name: restoredData.customer_name || '',
           customer_phone: restoredData.customer_phone || '',
@@ -105,7 +100,7 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
           cart_summary: restoredData.cart_summary || {}
         }));
         
-        toast.success('✅ Bill restored! Draft still saved here — delete manually when done.');
+        toast.success('✅ Bill restored! Draft will be replaced when you save or pay.');
         window.dispatchEvent(new Event('discarded-update'));
         
         await fetchDiscardedBills();
@@ -138,7 +133,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     }
   };
 
-  // ✅ NEW: selected bills ek sath delete
   const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) {
       toast.error('Please select at least one bill');
@@ -235,7 +229,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     }
   };
 
-  // ========== EXCEL EXPORT ==========
   const exportToExcel = () => {
     if (discardedBills.length === 0) {
       toast.error('No discarded bills to export');
@@ -263,7 +256,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
     toast.success('Exported to Excel!');
   };
 
-  // ========== PDF EXPORT ==========
   const exportToPDF = () => {
     if (discardedBills.length === 0) {
       toast.error('No discarded bills to export');
@@ -311,7 +303,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'} p-6`}>
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mb-6`}>
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
@@ -327,7 +318,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {/* ✅ Excel & PDF Buttons */}
               <button
                 onClick={exportToExcel}
                 disabled={discardedBills.length === 0}
@@ -364,7 +354,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
           </div>
         </div>
 
-        {/* Body */}
         <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-6 border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
           {loading ? (
             <div className="text-center py-12">
@@ -381,7 +370,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
             </div>
           ) : (
             <>
-              {/* ✅ NEW: Select All + Delete Selected bar */}
               <div className={`flex items-center justify-between flex-wrap gap-3 mb-4 p-3 rounded-xl border ${
                 darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
               }`}>
@@ -460,7 +448,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                         onClick={() => toggleBillDetails(bill.id)}
                       >
                         <div className="flex items-start justify-between">
-                          {/* ✅ NEW: Checkbox */}
                           <div
                             className="mr-4 pt-1 flex-shrink-0"
                             onClick={(e) => e.stopPropagation()}
@@ -499,7 +486,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                               )}
                             </div>
 
-                            {/* Quick Stats */}
                             <div className="mt-2 flex items-center gap-4 flex-wrap">
                               <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                 <FiPackage className="inline mr-1" size={14} />
@@ -515,7 +501,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                               </span>
                             </div>
 
-                            {/* Customer Info - Quick Preview */}
                             {hasCustomer && (
                               <div className="mt-1 flex items-center gap-3 flex-wrap text-xs">
                                 {bill.customer_name && (
@@ -537,7 +522,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                             )}
                           </div>
 
-                          {/* Action Buttons */}
                           <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                             <button
                               onClick={(e) => {
@@ -596,10 +580,8 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                         </div>
                       </div>
 
-                      {/* Expanded Details */}
                       {isExpanded && (
                         <div className="mt-4 pt-4 border-t dark:border-gray-600">
-                          {/* Full Customer Details */}
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
                             {bill.customer_name && (
                               <div className={`flex items-center gap-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -633,7 +615,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                             )}
                           </div>
 
-                          {/* Cart Items */}
                           <div className="mt-3">
                             <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                               Cart Items ({itemCount})
@@ -664,7 +645,6 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
                             </div>
                           </div>
 
-                          {/* Summary */}
                           {bill.cart_summary && (
                             <div className="mt-3 pt-3 border-t dark:border-gray-600 flex items-center gap-4 flex-wrap">
                               <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -693,11 +673,9 @@ const DiscardedBillsPage = ({ darkMode, onRestore }) => {
           )}
         </div>
 
-        {/* Footer Actions */}
         {discardedBills.length > 0 && (
           <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-xl p-4 border ${darkMode ? 'border-gray-700' : 'border-gray-200'} mt-6 flex justify-between items-center flex-wrap gap-3`}>
             <div className="flex items-center gap-2 flex-wrap">
-              {/* ✅ NEW: Footer mein bhi Delete Selected */}
               {selectedIds.length > 0 && (
                 <button
                   onClick={handleDeleteSelected}

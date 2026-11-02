@@ -9,13 +9,30 @@ import {
   FiPhone, FiTool, FiPackage, FiCalendar, FiDollarSign, 
   FiCheckCircle, FiAlertCircle, FiInbox, FiList, FiClock,
   FiSearch, FiChevronLeft, FiChevronRight, FiLoader,
-  FiFilter, FiEdit2, FiSave, FiGift, FiPercent, FiUsers,
+  FiEdit2, FiSave, FiGift, FiUsers,
   FiUserX, FiUserPlus, FiEyeOff, FiTrash2, FiAlertTriangle
 } from 'react-icons/fi';
 import api from '../services/api';
 import logo from '/logo.jpg';
 
-// ✅ FIXED: Backend ka time already Pakistan time me hai.
+// ============================================================
+// 🎨 SHARED THEME HELPERS
+// One uniform look for every box (same as the Inventory page)
+// ============================================================
+const innerBoxClass = (darkMode) =>
+  `border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`;
+
+// Filter pill: active = red, inactive = neutral grey
+const pillClass = (active, darkMode) =>
+  `px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
+    active
+      ? 'bg-red-500 text-white'
+      : darkMode
+        ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+  }`;
+
+// ✅ FIXED: The backend time is already in Pakistan time.
 const toPakistanTime = (dateString) => {
   if (!dateString) return null;
 
@@ -113,7 +130,7 @@ const roundToTwo = (num) => {
   return Math.round(num * 100) / 100;
 };
 
-// ✅ NEW: Serial numbers helper (array, JSON string ya comma separated string — teeno handle)
+// ✅ Serial numbers helper (handles an array, a JSON string or a comma separated string)
 const getSerials = (item) => {
   let s = item?.serialNumbers;
   if (!s) return [];
@@ -222,7 +239,7 @@ const Records = ({ darkMode }) => {
             category: item.service_category,
             price: item.price,
             quantity: item.quantity,
-            serialNumbers: item.serial_numbers || [] // ✅ NEW: battery serial codes
+            serialNumbers: item.serial_numbers || [] // ✅ Battery serial codes
           })) || []
         }));
         setInvoices(transformedInvoices);
@@ -388,7 +405,7 @@ const Records = ({ darkMode }) => {
         (inv.customer?.carNumber || '').toLowerCase().includes(term) ||
         inv.invoiceNo.toLowerCase().includes(term) ||
         (inv.creatorName || '').toLowerCase().includes(term) ||
-        // ✅ NEW: serial number se bhi search ho sakay
+        // ✅ Search by serial number as well
         inv.items.some(i => getSerials(i).some(s => s.toLowerCase().includes(term)))
       );
     }
@@ -595,7 +612,7 @@ const Records = ({ darkMode }) => {
         'Phone': inv.customer?.phone || 'N/A',
         'Car Number': inv.customer?.carNumber || 'N/A',
         'Services': inv.items.map(i => i.name).join(', '),
-        // ✅ NEW: Serial numbers column
+        // ✅ Serial numbers column
         'Serial No.': inv.items
           .filter(i => getSerials(i).length > 0)
           .map(i => `${i.name}: ${getSerials(i).join(', ')}`)
@@ -835,26 +852,34 @@ const Records = ({ darkMode }) => {
     );
   }
 
+  const borderClass = darkMode ? 'border-gray-700' : 'border-gray-200';
+  const mutedClass = darkMode ? 'text-gray-400' : 'text-gray-500';
+  const strongClass = darkMode ? 'text-white' : 'text-gray-900';
+  const dateInputClass = `px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none text-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`;
+
   return (
     <>
-      <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <div className="px-6 py-4 bg-red-500">
+      <div className={`${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} rounded-2xl shadow-sm overflow-hidden border ${borderClass}`}>
+        {/* Header - neutral card style (no colored background) */}
+        <div className={`px-6 py-4 border-b ${borderClass}`}>
           <div className="flex flex-wrap justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <FiList className="text-white text-xl" />
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${darkMode ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-600'}`}>
+                <FiList className="text-xl" />
+              </div>
               <div>
-                <h3 className="text-lg font-semibold text-white">All Invoices Records</h3>
-                <p className="text-xs text-red-100 mt-1 flex items-center gap-1">
+                <h3 className={`text-lg font-semibold ${strongClass}`}>All Invoices Records</h3>
+                <p className={`text-xs mt-1 flex items-center gap-1 flex-wrap ${mutedClass}`}>
                   <FiFileText className="text-xs" /> Total Invoices: {invoices.length} | Showing: {filteredInvoices.length}
-                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">{getDateFilterLabel()}</span>
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>{getDateFilterLabel()}</span>
                 </p>
               </div>
             </div>
             <div className="flex gap-3">
-              <button onClick={exportToExcel} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition flex items-center gap-1 shadow-md">
+              <button onClick={exportToExcel} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition flex items-center gap-1">
                 <FiFileText className="text-sm" /> Excel
               </button>
-              <button onClick={exportToPDF} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md">
+              <button onClick={exportToPDF} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1">
                 <FiDownload className="text-sm" /> PDF
               </button>
             </div>
@@ -862,28 +887,14 @@ const Records = ({ darkMode }) => {
         </div>
 
         {/* Visibility Filter */}
-        <div className={`p-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap gap-2 items-center`}>
-          <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1 mr-2`}>
+        <div className={`p-3 border-b ${borderClass} flex flex-wrap gap-2 items-center`}>
+          <span className={`text-xs font-medium ${mutedClass} flex items-center gap-1 mr-2`}>
             <FiEyeOff className="text-sm" /> Visibility:
           </span>
-          <button
-            onClick={() => handleVisibilityFilter('active')}
-            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-              visibilityFilter === 'active' 
-                ? 'bg-red-500 text-white' 
-                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
+          <button onClick={() => handleVisibilityFilter('active')} className={pillClass(visibilityFilter === 'active', darkMode)}>
             <FiEye className="text-xs" /> Active ({invoices.length - hiddenCount})
           </button>
-          <button
-            onClick={() => handleVisibilityFilter('hidden')}
-            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-              visibilityFilter === 'hidden' 
-                ? 'bg-gray-700 text-white' 
-                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
+          <button onClick={() => handleVisibilityFilter('hidden')} className={pillClass(visibilityFilter === 'hidden', darkMode)}>
             <FiEyeOff className="text-xs" /> Hidden ({hiddenCount})
           </button>
           {visibilityFilter === 'hidden' && (
@@ -894,46 +905,25 @@ const Records = ({ darkMode }) => {
         </div>
         
         {/* Customer Type Filter */}
-        <div className={`p-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap gap-2 items-center`}>
-          <span className={`text-xs font-medium ${darkMode ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1 mr-2`}>
+        <div className={`p-3 border-b ${borderClass} flex flex-wrap gap-2 items-center`}>
+          <span className={`text-xs font-medium ${mutedClass} flex items-center gap-1 mr-2`}>
             <FiUsers className="text-sm" /> Customer Type:
           </span>
-          <button
-            onClick={() => handleCustomerTypeFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-              customerTypeFilter === 'all' 
-                ? 'bg-red-500 text-white' 
-                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
+          <button onClick={() => handleCustomerTypeFilter('all')} className={pillClass(customerTypeFilter === 'all', darkMode)}>
             <FiUsers className="text-xs" /> All ({invoices.length})
           </button>
-          <button
-            onClick={() => handleCustomerTypeFilter('registered')}
-            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-              customerTypeFilter === 'registered' 
-                ? 'bg-green-600 text-white' 
-                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
+          <button onClick={() => handleCustomerTypeFilter('registered')} className={pillClass(customerTypeFilter === 'registered', darkMode)}>
             <FiUserPlus className="text-xs" /> Registered ({registeredCount})
           </button>
-          <button
-            onClick={() => handleCustomerTypeFilter('walkin')}
-            className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${
-              customerTypeFilter === 'walkin' 
-                ? 'bg-yellow-600 text-white' 
-                : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
+          <button onClick={() => handleCustomerTypeFilter('walkin')} className={pillClass(customerTypeFilter === 'walkin', darkMode)}>
             <FiUserX className="text-xs" /> Walk-in ({walkinCount})
           </button>
         </div>
         
         {/* Search, Filter and Date Filter Bar */}
-        <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap justify-between items-center gap-4`}>
+        <div className={`p-4 border-b ${borderClass} flex flex-wrap justify-between items-center gap-4`}>
           <div className="relative flex-1 min-w-[200px]">
-            <FiSearch className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+            <FiSearch className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${mutedClass}`} />
             <input
               type="text"
               placeholder="Search by Name, Phone, Car Number, Invoice # or Serial..."
@@ -947,85 +937,57 @@ const Records = ({ darkMode }) => {
           
           <div className="flex gap-1 flex-wrap">
             {['all','today','week','month','year'].map(f => (
-              <button
-                key={f}
-                onClick={() => handleDateFilterChange(f)}
-                className={`px-3 py-1.5 rounded-lg text-xs transition capitalize ${
-                  dateFilter === f ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
+              <button key={f} onClick={() => handleDateFilterChange(f)} className={pillClass(dateFilter === f, darkMode)}>
                 {f === 'all' ? 'All' : f === 'today' ? 'Today' : f === 'week' ? 'This Week' : f === 'month' ? 'This Month' : 'This Year'}
               </button>
             ))}
-            <button
-              onClick={() => handleDateFilterChange('single')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                dateFilter === 'single' ? 'bg-teal-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
+            <button onClick={() => handleDateFilterChange('single')} className={pillClass(dateFilter === 'single', darkMode)}>
               <FiCalendar className="inline mr-1" /> Single Date
             </button>
-            <button
-              onClick={() => handleDateFilterChange('custom')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${
-                dateFilter === 'custom' ? 'bg-purple-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
+            <button onClick={() => handleDateFilterChange('custom')} className={pillClass(dateFilter === 'custom', darkMode)}>
               <FiCalendar className="inline mr-1" /> Custom Range
             </button>
           </div>
           
           <div className="flex gap-1 flex-wrap">
-            <button
-              onClick={() => handleFilterChange('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition ${filterStatus === 'all' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
+            <button onClick={() => handleFilterChange('all')} className={pillClass(filterStatus === 'all', darkMode)}>
               All
             </button>
-            <button
-              onClick={() => handleFilterChange('paid')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${filterStatus === 'paid' ? 'bg-green-600 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
+            <button onClick={() => handleFilterChange('paid')} className={pillClass(filterStatus === 'paid', darkMode)}>
               <FiCheckCircle className="text-xs" /> Paid
             </button>
-            <button
-              onClick={() => handleFilterChange('partial')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${filterStatus === 'partial' ? 'bg-yellow-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
+            <button onClick={() => handleFilterChange('partial')} className={pillClass(filterStatus === 'partial', darkMode)}>
               <FiAlertCircle className="text-xs" /> Partial
             </button>
-            <button
-              onClick={() => handleFilterChange('pending')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition flex items-center gap-1 ${filterStatus === 'pending' ? 'bg-red-500 text-white' : darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-            >
+            <button onClick={() => handleFilterChange('pending')} className={pillClass(filterStatus === 'pending', darkMode)}>
               <FiClock className="text-xs" /> Pending
             </button>
           </div>
         </div>
 
         {showSingleDate && (
-          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 ${darkMode ? 'bg-teal-900/10' : 'bg-teal-50'}`}>
+          <div className={`p-4 border-b ${borderClass} flex flex-wrap items-center gap-4 ${darkMode ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
             <div className="flex items-center gap-2">
-              <FiCalendar className={`${darkMode ? 'text-teal-400' : 'text-teal-600'}`} />
-              <span className={`text-sm font-medium ${darkMode ? 'text-teal-400' : 'text-teal-700'}`}>Select Date:</span>
+              <FiCalendar className={mutedClass} />
+              <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Select Date:</span>
             </div>
             <input
               type="date"
               value={singleDate}
               onChange={(e) => setSingleDate(e.target.value)}
-              className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-teal-500 outline-none text-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+              className={dateInputClass}
             />
             <button
               onClick={() => {
                 if (singleDate) toast.success(`Showing records for ${singleDate}`);
                 else toast.error('Please select a date');
               }}
-              className="px-4 py-1.5 bg-teal-500 text-white rounded-lg text-sm hover:bg-teal-600 transition flex items-center gap-1 shadow-md"
+              className="px-4 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1"
             >
               <FiCalendar className="text-sm" /> View
             </button>
             {singleDate && (
-              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={`text-xs ${mutedClass}`}>
                 Showing: {singleDate} ({filteredInvoices.length} records)
               </span>
             )}
@@ -1033,27 +995,27 @@ const Records = ({ darkMode }) => {
         )}
 
         {showCustomDate && (
-          <div className={`p-4 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex flex-wrap items-center gap-4 ${darkMode ? 'bg-purple-900/10' : 'bg-purple-50'}`}>
+          <div className={`p-4 border-b ${borderClass} flex flex-wrap items-center gap-4 ${darkMode ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
             <div className="flex items-center gap-2">
-              <FiCalendar className={`${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-              <span className={`text-sm font-medium ${darkMode ? 'text-purple-400' : 'text-purple-700'}`}>Custom Date Range:</span>
+              <FiCalendar className={mutedClass} />
+              <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Custom Date Range:</span>
             </div>
             <div className="flex items-center gap-2">
-              <label className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>From</label>
+              <label className={`text-sm ${mutedClass}`}>From</label>
               <input
                 type="date"
                 value={customDateFrom}
                 onChange={(e) => setCustomDateFrom(e.target.value)}
-                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                className={dateInputClass}
               />
             </div>
             <div className="flex items-center gap-2">
-              <label className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>To</label>
+              <label className={`text-sm ${mutedClass}`}>To</label>
               <input
                 type="date"
                 value={customDateTo}
                 onChange={(e) => setCustomDateTo(e.target.value)}
-                className={`px-3 py-1.5 rounded-lg border focus:ring-2 focus:ring-purple-500 outline-none text-sm ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                className={dateInputClass}
               />
             </div>
             <button
@@ -1061,12 +1023,12 @@ const Records = ({ darkMode }) => {
                 if (customDateFrom && customDateTo) toast.success(`Showing records from ${customDateFrom} to ${customDateTo}`);
                 else toast.error('Please select both From and To dates');
               }}
-              className="px-4 py-1.5 bg-purple-500 text-white rounded-lg text-sm hover:bg-purple-600 transition flex items-center gap-1 shadow-md"
+              className="px-4 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1"
             >
               <FiCalendar className="text-sm" /> Apply Range
             </button>
             {customDateFrom && customDateTo && (
-              <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={`text-xs ${mutedClass}`}>
                 Showing: {customDateFrom} → {customDateTo} ({filteredInvoices.length} records)
               </span>
             )}
@@ -1095,7 +1057,7 @@ const Records = ({ darkMode }) => {
                 <tr>
                   <td colSpan="11" className="px-6 py-12 text-center">
                     <FiInbox className={`text-6xl mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                    <p className={`mt-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No invoices found</p>
+                    <p className={`mt-2 ${mutedClass}`}>No invoices found</p>
                     <p className={`text-sm mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                       {searchTerm ? `No results for "${searchTerm}"` : visibilityFilter === 'hidden' ? 'No hidden invoices' : 'Create your first invoice from the Billing section'}
                     </p>
@@ -1108,8 +1070,8 @@ const Records = ({ darkMode }) => {
                   const isHidden = hiddenIds.includes(inv.id);
                   
                   return (
-                    <tr key={inv.id} className={`${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'} ${isWalkin ? (darkMode ? 'bg-yellow-900/10' : 'bg-yellow-50') : ''}`}>
-                      <td className={`px-4 py-3 font-medium whitespace-nowrap ${darkMode ? 'text-white' : 'text-gray-900'}`}>{inv.invoiceNo}</td>
+                    <tr key={inv.id} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
+                      <td className={`px-4 py-3 font-medium whitespace-nowrap ${strongClass}`}>{inv.invoiceNo}</td>
                       <td className={`px-4 py-3 whitespace-nowrap ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {formatTableDate(inv.date)}
                       </td>
@@ -1127,7 +1089,7 @@ const Records = ({ darkMode }) => {
                       <td className={`px-4 py-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {inv.items.slice(0, 2).map(i => i.name).join(', ')}
                         {inv.items.length > 2 && ` +${inv.items.length - 2} more`}
-                        {/* ✅ NEW: serial numbers table mein bhi dikhao */}
+                        {/* ✅ Show serial numbers in the table as well */}
                         {inv.items.some(i => getSerials(i).length > 0) && (
                           <div className="text-xs font-mono text-blue-500 mt-1">
                             Serial: {inv.items.flatMap(i => getSerials(i)).join(', ')}
@@ -1168,21 +1130,21 @@ const Records = ({ darkMode }) => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2 flex-wrap">
-                          <button onClick={() => viewInvoiceDetails(inv)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
+                          <button onClick={() => viewInvoiceDetails(inv)} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition flex items-center gap-1 whitespace-nowrap">
                             <FiEye className="text-sm" /> View
                           </button>
-                          <button onClick={() => openEditModal(inv)} className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center gap-1 shadow-md whitespace-nowrap">
+                          <button onClick={() => openEditModal(inv)} className="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition flex items-center gap-1 whitespace-nowrap">
                             <FiEdit2 className="text-sm" /> Edit
                           </button>
                           <button 
                             onClick={() => toggleHideInvoice(inv.id)} 
-                            className="px-3 py-1.5 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-1 shadow-md whitespace-nowrap"
+                            className="px-3 py-1.5 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700 transition flex items-center gap-1 whitespace-nowrap"
                           >
                             {isHidden ? <FiEye className="text-sm" /> : <FiEyeOff className="text-sm" />} {isHidden ? 'Unhide' : 'Hide'}
                           </button>
                           <button 
                             onClick={() => openDeleteConfirm(inv)} 
-                            className="px-3 py-1.5 bg-red-700 text-white rounded-lg text-sm hover:bg-red-800 transition flex items-center gap-1 shadow-md whitespace-nowrap"
+                            className="px-3 py-1.5 bg-red-700 text-white rounded-lg text-sm hover:bg-red-800 transition flex items-center gap-1 whitespace-nowrap"
                           >
                             <FiTrash2 className="text-sm" /> Delete
                           </button>
@@ -1196,8 +1158,8 @@ const Records = ({ darkMode }) => {
           </table>
         </div>
         
-        <div className={`px-6 py-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex justify-between items-center flex-wrap gap-3`}>
-          <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        <div className={`px-6 py-4 border-t ${borderClass} flex justify-between items-center flex-wrap gap-3`}>
+          <div className={`text-sm ${mutedClass}`}>
             Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredInvoices.length)} of {filteredInvoices.length} entries
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -1253,19 +1215,19 @@ const Records = ({ darkMode }) => {
       {/* Invoice Details Modal */}
       {isModalOpen && selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`max-w-4xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${borderClass}`}>
             <div className={`sticky top-0 flex justify-between items-center p-4 border-b rounded-t-2xl ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
               <div>
-                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${strongClass}`}>
                   <FiFileText className="text-xl text-red-500" /> Invoice Details
                 </h2>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{selectedInvoice.invoiceNo}</p>
+                <p className={`text-sm ${mutedClass}`}>{selectedInvoice.invoiceNo}</p>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => openEditModal(selectedInvoice)} className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2 shadow-md">
+                <button onClick={() => openEditModal(selectedInvoice)} className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2">
                   <FiEdit2 /> Edit
                 </button>
-                <button onClick={printSingleInvoice} className="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 shadow-md">
+                <button onClick={printSingleInvoice} className="px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
                   <FiPrinter /> Print
                 </button>
                 <button onClick={closeModal} className={`p-2 rounded-lg transition ${darkMode ? 'text-red-400 hover:bg-red-900/20' : 'text-red-500 hover:bg-red-50'}`}>
@@ -1275,22 +1237,22 @@ const Records = ({ darkMode }) => {
             </div>
             <div className="p-6 space-y-6">
               {/* Customer Information */}
-              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-200'}`}>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <div className={`p-4 rounded-xl ${innerBoxClass(darkMode)}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${strongClass}`}>
                   <FiUser className="text-lg text-red-500" /> Customer Information
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiUser className="text-xs" /> Full Name</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.name || 'Walk-in Customer'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiPhone className="text-xs" /> Phone Number</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.phone || 'N/A'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiTool className="text-xs" /> Car Number Plate</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.carNumber || 'N/A'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiPackage className="text-xs" /> Car Model</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.customer?.carModel || 'N/A'}</p></div>
-                  <div><p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}><FiCalendar className="text-xs" /> Invoice Date & Time</p><p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formatInvoiceDate(selectedInvoice.date)}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${mutedClass}`}><FiUser className="text-xs" /> Full Name</p><p className={`font-semibold ${strongClass}`}>{selectedInvoice.customer?.name || 'Walk-in Customer'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${mutedClass}`}><FiPhone className="text-xs" /> Phone Number</p><p className={`font-semibold ${strongClass}`}>{selectedInvoice.customer?.phone || 'N/A'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${mutedClass}`}><FiTool className="text-xs" /> Car Number Plate</p><p className={`font-semibold ${strongClass}`}>{selectedInvoice.customer?.carNumber || 'N/A'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${mutedClass}`}><FiPackage className="text-xs" /> Car Model</p><p className={`font-semibold ${strongClass}`}>{selectedInvoice.customer?.carModel || 'N/A'}</p></div>
+                  <div><p className={`text-sm flex items-center gap-1 ${mutedClass}`}><FiCalendar className="text-xs" /> Invoice Date & Time</p><p className={`font-semibold ${strongClass}`}>{formatInvoiceDate(selectedInvoice.date)}</p></div>
                 </div>
               </div>
               
               {/* Services Table */}
               <div>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${strongClass}`}>
                   <FiTool className="text-lg text-red-500" /> Services Provided
                 </h3>
                 <div className="overflow-x-auto">
@@ -1307,16 +1269,16 @@ const Records = ({ darkMode }) => {
                       {selectedInvoice.items.map((item, idx) => (
                         <tr key={idx}>
                           <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{idx + 1}</td>
-                          <td className={`px-4 py-2 text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          <td className={`px-4 py-2 text-sm font-medium ${strongClass}`}>
                             {item.name}
-                            {/* ✅ NEW: Battery serial numbers */}
+                            {/* ✅ Battery serial numbers */}
                             {getSerials(item).length > 0 && (
                               <div className="text-xs font-mono text-blue-500 mt-1">
                                 Serial: {getSerials(item).join(', ')}
                               </div>
                             )}
                           </td>
-                          <td className={`px-4 py-2 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.category || 'Service'}</td>
+                          <td className={`px-4 py-2 text-sm ${mutedClass}`}>{item.category || 'Service'}</td>
                           <td className="px-4 py-2 text-sm text-right font-semibold text-red-500">Rs. {item.price.toLocaleString()}</td>
                         </tr>
                       ))}
@@ -1324,7 +1286,7 @@ const Records = ({ darkMode }) => {
                     <tfoot className={darkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'}>
                       <tr>
                         <td colSpan="3" className="px-4 py-3 text-right font-bold">Subtotal:</td>
-                        <td className={`px-4 py-3 text-right font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {(selectedInvoice.subtotal || selectedInvoice.total).toLocaleString()}</td>
+                        <td className={`px-4 py-3 text-right font-bold ${strongClass}`}>Rs. {(selectedInvoice.subtotal || selectedInvoice.total).toLocaleString()}</td>
                       </tr>
                       {selectedInvoice.discount > 0 && (
                         <tr>
@@ -1342,17 +1304,17 @@ const Records = ({ darkMode }) => {
               </div>
               
               {/* Payment Details */}
-              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-green-900/20 border-green-800' : 'bg-green-50 border-green-200'}`}>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <div className={`p-4 rounded-xl ${innerBoxClass(darkMode)}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${strongClass}`}>
                   <FiDollarSign className="text-lg text-red-500" /> Payment Details
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Amount</p><p className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {selectedInvoice.total.toLocaleString()}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paid Amount</p><p className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {(selectedInvoice.paidAmount || selectedInvoice.total).toLocaleString()}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Remaining Balance</p><p className="text-xl font-bold text-red-500">Rs. {(selectedInvoice.remainingAmount || 0).toLocaleString()}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Method</p><p className={`font-semibold flex items-center gap-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}><FiDollarSign className="text-sm" /> {selectedInvoice.paymentMethod || 'Cash'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount</p><p className="font-semibold text-red-500">{selectedInvoice.discount > 0 ? `Rs. ${selectedInvoice.discount.toLocaleString()}` : 'None'}</p></div>
-                  <div><p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Payment Status</p>
+                  <div><p className={`text-sm ${mutedClass}`}>Total Amount</p><p className={`text-xl font-bold ${strongClass}`}>Rs. {selectedInvoice.total.toLocaleString()}</p></div>
+                  <div><p className={`text-sm ${mutedClass}`}>Paid Amount</p><p className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {(selectedInvoice.paidAmount || selectedInvoice.total).toLocaleString()}</p></div>
+                  <div><p className={`text-sm ${mutedClass}`}>Remaining Balance</p><p className="text-xl font-bold text-red-500">Rs. {(selectedInvoice.remainingAmount || 0).toLocaleString()}</p></div>
+                  <div><p className={`text-sm ${mutedClass}`}>Payment Method</p><p className={`font-semibold flex items-center gap-1 ${strongClass}`}><FiDollarSign className="text-sm" /> {selectedInvoice.paymentMethod || 'Cash'}</p></div>
+                  <div><p className={`text-sm ${mutedClass}`}>Discount</p><p className="font-semibold text-red-500">{selectedInvoice.discount > 0 ? `Rs. ${selectedInvoice.discount.toLocaleString()}` : 'None'}</p></div>
+                  <div><p className={`text-sm ${mutedClass}`}>Payment Status</p>
                     <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1 w-fit ${selectedInvoice.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : selectedInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                       {selectedInvoice.status === 'Paid' ? <FiCheckCircle /> : selectedInvoice.status === 'Partial' ? <FiAlertCircle /> : <FiClock />}
                       {selectedInvoice.status === 'Paid' ? 'FULLY PAID' : selectedInvoice.status === 'Partial' ? 'PARTIAL PAYMENT' : 'PENDING'}
@@ -1360,32 +1322,32 @@ const Records = ({ darkMode }) => {
                   </div>
                 </div>
                 {selectedInvoice.discountNote && (
-                  <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-green-800' : 'border-green-200'}`}>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount Note</p>
-                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedInvoice.discountNote}</p>
+                  <div className={`mt-3 pt-3 border-t ${borderClass}`}>
+                    <p className={`text-sm ${mutedClass}`}>Discount Note</p>
+                    <p className={`font-semibold ${strongClass}`}>{selectedInvoice.discountNote}</p>
                   </div>
                 )}
               </div>
 
               {/* Payment History Section */}
-              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-purple-900/10 border-purple-800' : 'bg-purple-50 border-purple-200'}`}>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <FiClock className="text-lg text-purple-500" /> Payment History
+              <div className={`p-4 rounded-xl ${innerBoxClass(darkMode)}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${strongClass}`}>
+                  <FiClock className="text-lg text-red-500" /> Payment History
                 </h3>
                 {loadingHistory ? (
                   <div className="text-center py-6">
-                    <FiLoader className="text-3xl text-purple-500 animate-spin mx-auto mb-2" />
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Loading history...</p>
+                    <FiLoader className="text-3xl text-red-500 animate-spin mx-auto mb-2" />
+                    <p className={`text-sm ${mutedClass}`}>Loading history...</p>
                   </div>
                 ) : paymentHistory.length === 0 ? (
                   <div className="text-center py-6">
                     <FiClock className={`text-3xl mx-auto mb-2 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No payment history found</p>
+                    <p className={`text-sm ${mutedClass}`}>No payment history found</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                      <thead className={darkMode ? 'bg-purple-900/30' : 'bg-purple-100'}>
+                      <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
                         <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                           <th className="px-3 py-2 text-left text-xs font-semibold uppercase">#</th>
                           <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Amount</th>
@@ -1393,15 +1355,15 @@ const Records = ({ darkMode }) => {
                           <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Date &amp; Time</th>
                         </tr>
                       </thead>
-                      <tbody className={`divide-y ${darkMode ? 'divide-purple-900/30' : 'divide-purple-100'}`}>
+                      <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                         {paymentHistory.map((payment, idx) => (
-                          <tr key={payment.id || idx} className={darkMode ? 'hover:bg-purple-900/10' : 'hover:bg-purple-50'}>
+                          <tr key={payment.id || idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}>
                             <td className={`px-3 py-2 text-sm text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{idx + 1}</td>
                             <td className={`px-3 py-2 text-sm font-semibold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                               Rs. {parseFloat(payment.amount).toLocaleString()}
                             </td>
                             <td className="px-3 py-2 text-sm">
-                              <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-100 text-purple-700'}`}>
+                              <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>
                                 {payment.payment_method || 'Cash'}
                               </span>
                             </td>
@@ -1411,7 +1373,7 @@ const Records = ({ darkMode }) => {
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot className={`${darkMode ? 'bg-purple-900/30 text-gray-200' : 'bg-purple-100 text-gray-800'} font-semibold`}>
+                      <tfoot className={`${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'} font-semibold`}>
                         <tr>
                           <td className="px-3 py-2 text-right">Total:</td>
                           <td className={`px-3 py-2 ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
@@ -1426,20 +1388,20 @@ const Records = ({ darkMode }) => {
               </div>
 
               {/* Created By */}
-              <div className={`p-4 rounded-xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'}`}>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                  <FiUser className="text-lg text-blue-500" /> Created By
+              <div className={`p-4 rounded-xl ${innerBoxClass(darkMode)}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${strongClass}`}>
+                  <FiUser className="text-lg text-red-500" /> Created By
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Name</p>
-                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <p className={`text-sm ${mutedClass}`}>Name</p>
+                    <p className={`font-semibold ${strongClass}`}>
                       {selectedInvoice.creatorName || 'System'}
                     </p>
                   </div>
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Role</p>
-                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <p className={`text-sm ${mutedClass}`}>Role</p>
+                    <p className={`font-semibold ${strongClass}`}>
                       {selectedInvoice.creatorRole === 'admin' ? 'Admin' : selectedInvoice.creatorRole === 'employee' ? 'Employee' : 'System'}
                     </p>
                   </div>
@@ -1451,16 +1413,16 @@ const Records = ({ darkMode }) => {
               <button onClick={closeModal} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
                 <FiX /> Close
               </button>
-              <button onClick={() => toggleHideInvoice(selectedInvoice.id)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2 shadow-md">
+              <button onClick={() => toggleHideInvoice(selectedInvoice.id)} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
                 {hiddenIds.includes(selectedInvoice.id) ? <FiEye /> : <FiEyeOff />} {hiddenIds.includes(selectedInvoice.id) ? 'Unhide' : 'Hide'}
               </button>
-              <button onClick={() => openDeleteConfirm(selectedInvoice)} className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition flex items-center gap-2 shadow-md">
+              <button onClick={() => openDeleteConfirm(selectedInvoice)} className="px-4 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition flex items-center gap-2">
                 <FiTrash2 /> Delete
               </button>
-              <button onClick={() => openEditModal(selectedInvoice)} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2 shadow-md">
+              <button onClick={() => openEditModal(selectedInvoice)} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2">
                 <FiEdit2 /> Edit Invoice
               </button>
-              <button onClick={printSingleInvoice} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2 shadow-md">
+              <button onClick={printSingleInvoice} className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition flex items-center gap-2">
                 <FiPrinter /> Print Invoice
               </button>
             </div>
@@ -1471,13 +1433,13 @@ const Records = ({ darkMode }) => {
       {/* Edit Invoice Modal */}
       {isEditModalOpen && editingInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${borderClass}`}>
             <div className={`sticky top-0 flex justify-between items-center p-4 border-b rounded-t-2xl ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
               <div>
-                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${strongClass}`}>
                   <FiEdit2 className="text-xl text-blue-500" /> Edit Invoice
                 </h2>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{editingInvoice.invoiceNo} - {editingInvoice.customer?.name}</p>
+                <p className={`text-sm ${mutedClass}`}>{editingInvoice.invoiceNo} - {editingInvoice.customer?.name}</p>
               </div>
               <button onClick={closeEditModal} className={`p-2 rounded-lg transition ${darkMode ? 'text-red-400 hover:bg-red-900/20' : 'text-red-500 hover:bg-red-50'}`}>
                 <FiX />
@@ -1485,31 +1447,31 @@ const Records = ({ darkMode }) => {
             </div>
             
             <div className="p-6 space-y-6">
-              <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Current Invoice Summary</h3>
+              <div className={`p-4 rounded-xl ${innerBoxClass(darkMode)}`}>
+                <h3 className={`font-semibold text-lg mb-3 ${strongClass}`}>Current Invoice Summary</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Subtotal</p>
-                    <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {(editingInvoice.subtotal || editingInvoice.total).toLocaleString()}</p>
+                    <p className={`text-sm ${mutedClass}`}>Subtotal</p>
+                    <p className={`font-bold ${strongClass}`}>Rs. {(editingInvoice.subtotal || editingInvoice.total).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Current Discount</p>
+                    <p className={`text-sm ${mutedClass}`}>Current Discount</p>
                     <p className="font-bold text-red-500">{editingInvoice.discount > 0 ? `Rs. ${editingInvoice.discount.toLocaleString()}` : 'None'}</p>
                   </div>
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total</p>
+                    <p className={`text-sm ${mutedClass}`}>Total</p>
                     <p className="font-bold text-red-500">Rs. {editingInvoice.total.toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Paid</p>
+                    <p className={`text-sm ${mutedClass}`}>Paid</p>
                     <p className={`font-bold ${darkMode ? 'text-green-400' : 'text-green-500'}`}>Rs. {(editingInvoice.paidAmount || 0).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Remaining</p>
+                    <p className={`text-sm ${mutedClass}`}>Remaining</p>
                     <p className="font-bold text-red-500">Rs. {(editingInvoice.remainingAmount || 0).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</p>
+                    <p className={`text-sm ${mutedClass}`}>Status</p>
                     <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${editingInvoice.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : editingInvoice.status === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                       {editingInvoice.status || 'Pending'}
                     </span>
@@ -1517,8 +1479,8 @@ const Records = ({ darkMode }) => {
                 </div>
               </div>
 
-              <div className={`p-4 rounded-xl border ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-red-200 bg-red-50'}`}>
-                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <div className={`p-4 rounded-xl ${innerBoxClass(darkMode)}`}>
+                <h3 className={`font-semibold text-lg mb-3 flex items-center gap-2 ${strongClass}`}>
                   <FiGift className="text-lg text-red-500" /> Add / Update Discount
                 </h3>
                 
@@ -1581,28 +1543,28 @@ const Records = ({ darkMode }) => {
                 const newStatus = newRemaining <= 0.01 ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Pending');
 
                 return (
-                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
-                    <h3 className={`font-semibold text-lg mb-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Preview Changes</h3>
+                  <div className={`p-4 rounded-xl ${innerBoxClass(darkMode)}`}>
+                    <h3 className={`font-semibold text-lg mb-3 ${strongClass}`}>Preview Changes</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       <div>
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Subtotal</p>
-                        <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Rs. {subtotal.toLocaleString()}</p>
+                        <p className={`text-sm ${mutedClass}`}>Subtotal</p>
+                        <p className={`font-bold ${strongClass}`}>Rs. {subtotal.toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount</p>
+                        <p className={`text-sm ${mutedClass}`}>Discount</p>
                         <p className="font-bold text-red-500">{discountAmount > 0 ? `- Rs. ${discountAmount.toLocaleString()}` : 'None'}</p>
                       </div>
                       <div>
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New Total</p>
+                        <p className={`text-sm ${mutedClass}`}>New Total</p>
                         <p className="font-bold text-red-500">Rs. {newTotal.toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New Remaining</p>
+                        <p className={`text-sm ${mutedClass}`}>New Remaining</p>
                         <p className="font-bold text-red-500">Rs. {newRemaining.toLocaleString()}</p>
                       </div>
                     </div>
                     <div className="mt-3">
-                      <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>New Status</p>
+                      <p className={`text-sm ${mutedClass}`}>New Status</p>
                       <span className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${newStatus === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : newStatus === 'Partial' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                         {newStatus === 'Paid' ? '✅ FULLY PAID' : newStatus === 'Partial' ? '⚠️ PARTIAL PAYMENT' : '⏳ PENDING'}
                       </span>
@@ -1616,7 +1578,7 @@ const Records = ({ darkMode }) => {
               <button onClick={closeEditModal} className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2">
                 <FiX /> Cancel
               </button>
-              <button onClick={handleEditSubmit} disabled={isSubmitting} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">
+              <button onClick={handleEditSubmit} disabled={isSubmitting} className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                 {isSubmitting ? <FiLoader className="animate-spin" /> : <FiSave />} 
                 {isSubmitting ? 'Saving...' : 'Save Changes'}
               </button>
@@ -1628,16 +1590,16 @@ const Records = ({ darkMode }) => {
       {/* Delete Confirmation Modal */}
       {deleteConfirmInvoice && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className={`max-w-md w-full rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`max-w-md w-full rounded-2xl shadow-2xl ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'} border ${borderClass}`}>
             <div className="p-6 text-center">
               <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${darkMode ? 'bg-red-900/30' : 'bg-red-100'}`}>
                 <FiAlertTriangle className={`text-3xl ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
               </div>
-              <h3 className={`text-lg font-bold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              <h3 className={`text-lg font-bold mb-2 ${strongClass}`}>
                 Delete Invoice Permanently?
               </h3>
               <p className={`text-sm mb-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Invoice <strong className={darkMode ? 'text-white' : 'text-gray-900'}>{deleteConfirmInvoice.invoiceNo}</strong> ({deleteConfirmInvoice.customer?.name || 'Walk-in'})
+                Invoice <strong className={strongClass}>{deleteConfirmInvoice.invoiceNo}</strong> ({deleteConfirmInvoice.customer?.name || 'Walk-in'})
               </p>
               <p className={`text-sm mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 This will remove the record from the database completely. This action cannot be undone.
@@ -1653,7 +1615,7 @@ const Records = ({ darkMode }) => {
                 <button 
                   onClick={handleDeleteInvoice} 
                   disabled={isDeleting}
-                  className="px-5 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition flex items-center gap-2 shadow-md disabled:opacity-50"
+                  className="px-5 py-2 bg-red-700 text-white rounded-lg hover:bg-red-800 transition flex items-center gap-2 disabled:opacity-50"
                 >
                   {isDeleting ? <FiLoader className="animate-spin" /> : <FiTrash2 />} 
                   {isDeleting ? 'Deleting...' : 'Yes, Delete'}

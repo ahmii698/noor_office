@@ -8,13 +8,30 @@ import toast from 'react-hot-toast';
 import api from '../../services/api';
 
 // ============================================================
-// 💼 SALARY HELPERS (Dashboard jaisa hi rule)
-// Salary + Advance = expense, Loan = expense NAHI (wapas aane wala paisa)
+// 🎨 SHARED THEME HELPERS
+// Every card/box uses the same colors (same look as the Inventory page)
+// ============================================================
+const cardClass = (darkMode) =>
+  `border rounded-2xl shadow-sm ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`;
+
+const innerBoxClass = (darkMode) =>
+  `border rounded-xl ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-gray-50 border-gray-200'}`;
+
+const iconTileClass = (darkMode) =>
+  darkMode ? 'bg-amber-500/15 text-amber-400' : 'bg-amber-100 text-amber-600';
+
+const strongText = (darkMode) => (darkMode ? 'text-white' : 'text-gray-900');
+const mutedText = (darkMode) => (darkMode ? 'text-gray-400' : 'text-gray-500');
+const bodyText = (darkMode) => (darkMode ? 'text-gray-300' : 'text-gray-700');
+
+// ============================================================
+// 💼 SALARY HELPERS (same rule as the Dashboard)
+// Salary + Advance = expense, Loan = NOT an expense (money that comes back)
 // ============================================================
 const isLoanPayment = (p) =>
   String(p?.payment_type || p?.type || '').toLowerCase().includes('loan');
 
-// Employees ki salary/advance payments ko expense-entries mein badalta hai
+// Converts employee salary/advance payments into expense entries
 const salaryPaymentsAsExpenses = (employees) => {
   const list = [];
   (Array.isArray(employees) ? employees : []).forEach(emp => {
@@ -36,8 +53,8 @@ const salaryPaymentsAsExpenses = (employees) => {
 
 // ============================================================
 // 🕒 KARACHI TIMEZONE HELPERS (Asia/Karachi, UTC+5, no DST)
-// Saari date filtering 'YYYY-MM-DD' strings par hoti hai jo Karachi ke
-// hisab se nikalti hain, isliye browser/server timezone ka asar nahi padta.
+// All date filtering uses 'YYYY-MM-DD' strings computed in Karachi time,
+// so the browser/server timezone has no effect on the results.
 // ============================================================
 const KARACHI_TZ = 'Asia/Karachi';
 
@@ -48,28 +65,28 @@ const karachiFormatter = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit'
 });
 
-// Kisi bhi date value ko Karachi ki 'YYYY-MM-DD' string mein badalta hai
+// Converts any date value to a Karachi 'YYYY-MM-DD' string
 const toKarachiDateStr = (value) => {
   if (!value) return '';
   const str = String(value).trim();
 
-  // Sirf date: jaisi hai waisi (already calendar date hai)
+  // Date only: return as is (already a calendar date)
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
 
-  // Time hai magar timezone nahi (e.g. "2026-09-29 00:30:00") -> Karachi time maan lo
+  // Has a time but no timezone (e.g. "2026-09-29 00:30:00") -> treat as Karachi time
   const hasTz = /(Z|[+-]\d{2}:?\d{2})$/i.test(str);
   if (!hasTz && /^\d{4}-\d{2}-\d{2}[ T]/.test(str)) return str.substring(0, 10);
 
-  // ISO with Z / offset -> Karachi mein convert
+  // ISO with Z / offset -> convert to Karachi
   const d = new Date(value);
   if (isNaN(d.getTime())) return '';
   return karachiFormatter.format(d);
 };
 
-// Aaj ki date (Karachi)
+// Today's date (Karachi)
 const getKarachiToday = () => karachiFormatter.format(new Date());
 
-// Is hafte ka Monday (Karachi)
+// Monday of the current week (Karachi)
 const getWeekStartStr = () => {
   const d = new Date(`${getKarachiToday()}T00:00:00Z`);
   const day = d.getUTCDay();
@@ -78,13 +95,13 @@ const getWeekStartStr = () => {
   return d.toISOString().slice(0, 10);
 };
 
-// Is mahine ki 1 tareekh (Karachi)
+// First day of the current month (Karachi)
 const getMonthStartStr = () => `${getKarachiToday().slice(0, 8)}01`;
 
-// Is saal ki 1 January (Karachi)
+// First day of the current year (Karachi)
 const getYearStartStr = () => `${getKarachiToday().slice(0, 4)}-01-01`;
 
-// 'YYYY-MM-DD' -> 'DD/MM/YYYY' display
+// 'YYYY-MM-DD' -> 'DD/MM/YYYY' for display
 const formatDisplayDate = (value) => {
   const s = toKarachiDateStr(value);
   if (!s) return '-';
@@ -93,15 +110,15 @@ const formatDisplayDate = (value) => {
 };
 
 // ============================================================
-// ✅ SALES / PROFIT LOGIC (Dashboard ke bilkul barabar)
-//  - Battery aur Old Battery Sale sales mein shamil
-//  - Trade-in (customer se old battery khareedna) sales mein nahi, uski raqam profit se minus
-//  - Battery bechte waqt old battery ki value (trade-in discount) asli Discount mein nahi ginti,
-//    magar profit se kat jati hai
-//  - Inventory khareedna / vendor ko paisay dena EXPENSES mein NAHI ginta
+// ✅ SALES / PROFIT LOGIC (exactly the same as the Dashboard)
+//  - Battery and Old Battery Sale are included in sales
+//  - Trade-in (buying an old battery from a customer) is not a sale; its amount is deducted from profit
+//  - The old battery value given as a trade-in discount is not counted as a real Discount,
+//    but it is deducted from profit
+//  - Buying inventory / paying vendors is NOT counted as an expense
 // ============================================================
 
-// Kya is invoice ka discount asal mein battery trade-in hai?
+// Is the discount on this invoice actually a battery trade-in?
 const isTradeInInvoice = (inv) => {
   const note = (inv?.discount_note || '').toLowerCase();
   if (note.includes('trade-in') || note.includes('old battery purchase')) return true;
@@ -110,13 +127,13 @@ const isTradeInInvoice = (inv) => {
   return items.length > 0 && items.every(it => it && it.service_category === 'Battery');
 };
 
-// Ek invoice line ko calculate karke annotate karta hai
+// Calculates and annotates a single invoice line
 const buildLine = (item, productsMap) => {
   const qty = parseInt(item.quantity) || 0;
   const price = parseFloat(item.price) || 0;
   const cat = item.service_category;
 
-  // Customer se old battery khareedi (cash diya) -> cost
+  // Old battery bought from a customer (cash paid) -> cost
   if (cat === 'Trade-in') {
     return {
       ...item, kind: 'trade-in', qty, purchasePrice: price, sellPrice: 0,
@@ -125,7 +142,7 @@ const buildLine = (item, productsMap) => {
     };
   }
 
-  // Purani battery bechi -> poori raqam (cost pehle hi cut chuki hai)
+  // Old battery sold -> full amount (the cost was already deducted earlier)
   if (cat === 'Old Battery Sale') {
     return {
       ...item, kind: 'old-sale', qty, purchasePrice: 0, sellPrice: price,
@@ -145,7 +162,7 @@ const buildLine = (item, productsMap) => {
   };
 };
 
-// Invoices ki list ka poora hisaab
+// Full calculation for a list of invoices
 const aggregateInvoices = (invoicesList, productsMap) => {
   let total = 0, items = 0, profit = 0, discount = 0, tradeIn = 0;
   const details = [];
@@ -185,13 +202,13 @@ const aggregateInvoices = (invoicesList, productsMap) => {
   return { total, items, count: details.length, profit, discount, tradeIn, details };
 };
 
-// Net Profit = Lines ka profit - Expenses - Asli Discount - Trade-in  (Dashboard ke barabar)
+// Net Profit = Line profit - Expenses - Real Discount - Trade-in (same as the Dashboard)
 const netProfitOf = (agg, expenses = 0) =>
   agg.profit - expenses - agg.discount - agg.tradeIn;
 
 const emptyAgg = { total: 0, items: 0, count: 0, profit: 0, discount: 0, tradeIn: 0, details: [] };
 
-// Helper: Get date range for filter (Karachi 'YYYY-MM-DD' strings)
+// Helper: get the date range for a filter (Karachi 'YYYY-MM-DD' strings)
 const getDateRange = (filter, customDate = null) => {
   const today = getKarachiToday();
 
@@ -218,24 +235,24 @@ const isInRange = (dayStr, range) => {
   return dayStr >= range.start && dayStr <= range.end;
 };
 
-// Helper: Filter invoices by date range
+// Helper: filter invoices by date range
 const filterInvoicesByDate = (invoices, filter, customDate = null) => {
   if (filter === 'all' || !invoices || invoices.length === 0) return invoices;
   const range = getDateRange(filter, customDate);
   if (!range) return invoices;
-  
+
   return invoices.filter(inv => {
     if (!inv.invoice_date) return false;
     return isInRange(toKarachiDateStr(inv.invoice_date), range);
   });
 };
 
-// Helper: Filter expenses by date range
+// Helper: filter expenses by date range
 const filterExpensesByDate = (expenses, filter, customDate = null) => {
   if (filter === 'all' || !expenses || expenses.length === 0) return expenses;
   const range = getDateRange(filter, customDate);
   if (!range) return expenses;
-  
+
   return expenses.filter(exp => {
     const raw = exp.expense_date || exp.date || exp.created_at;
     if (!raw) return false;
@@ -269,20 +286,26 @@ const profitColor = (v, darkMode) =>
     ? (darkMode ? 'text-green-400' : 'text-green-500')
     : (darkMode ? 'text-red-400' : 'text-red-500');
 
-// ✅ Collapsible Stat Card (compact prop = chhota card)
-const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onClick, expanded, compact = false }) => {
+// ✅ Stat Card - one uniform style for every card (same as the Inventory page)
+// compact = smaller card, expanded = show the sub lines
+const StatCard = ({ icon: Icon, title, mainValue, subLines = [], onClick, expanded, compact = false, darkMode }) => {
   return (
     <div
-      className={`bg-gradient-to-r ${gradient} rounded-2xl ${compact ? 'p-4' : 'p-6'} text-white shadow-lg transition-transform min-w-0 ${onClick ? 'cursor-pointer hover:scale-105' : ''}`}
+      className={`${cardClass(darkMode)} ${compact ? 'p-4' : 'p-5'} min-w-0 transition ${
+        onClick ? 'cursor-pointer hover:shadow-md hover:border-red-400' : ''
+      }`}
       onClick={onClick}
     >
-      <div className="flex justify-between items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <p className={`${compact ? 'text-xs' : 'text-sm'} opacity-90`}>{title}</p>
-          <p className={`${compact ? 'text-xl mt-1' : 'text-3xl mt-2'} font-bold break-words`}>{mainValue}</p>
+      <div className="flex items-center gap-3">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${iconTileClass(darkMode)}`}>
+          <Icon className="text-lg" />
         </div>
-        <Icon className={`${compact ? 'text-xl' : 'text-3xl'} opacity-50 flex-shrink-0`} />
+        <p className={`text-sm font-semibold truncate ${bodyText(darkMode)}`}>{title}</p>
       </div>
+
+      <p className={`${compact ? 'text-2xl mt-3' : 'text-3xl mt-4'} font-bold break-words ${strongText(darkMode)}`}>
+        {mainValue}
+      </p>
 
       {subLines.length > 0 && (
         <div
@@ -291,7 +314,7 @@ const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onCli
           }`}
         >
           {subLines.map((line, i) => (
-            <p key={i} className="text-xs opacity-75 mt-1">{line}</p>
+            <p key={i} className={`text-xs mt-1 ${mutedText(darkMode)}`}>{line}</p>
           ))}
         </div>
       )}
@@ -299,7 +322,7 @@ const StatCard = ({ gradient, icon: Icon, title, mainValue, subLines = [], onCli
   );
 };
 
-// Memoized Invoice Details Component
+// Memoized Invoice Details component
 const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   const allItems = useMemo(() => {
     const items = [];
@@ -313,24 +336,24 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
 
   if (!data?.details || data.details.length === 0 || allItems.length === 0) {
     return (
-      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'} text-center`}>
+      <div className={`mt-4 p-4 text-center ${innerBoxClass(darkMode)} ${mutedText(darkMode)}`}>
         <p>No sales data available</p>
       </div>
     );
   }
 
   const deductions = (data.discount || 0) + (data.tradeIn || 0);
-  
+
   return (
-    <div className="mt-4 space-y-3">
+    <div className={`mt-4 p-4 space-y-3 ${cardClass(darkMode)}`}>
       <div className="flex justify-between items-center">
-        <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 {title}</h4>
+        <h4 className={`font-semibold ${strongText(darkMode)}`}>📋 {title}</h4>
         <button onClick={onClose} className={`text-lg ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}>✕</button>
       </div>
       <div className="overflow-x-auto max-h-96">
         <table className={`w-full text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-          <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-            <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+          <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+            <tr className={bodyText(darkMode)}>
               <th className="px-3 py-2 text-left">Item</th>
               <th className="px-3 py-2 text-left">Type</th>
               <th className="px-3 py-2 text-right">Purchase</th>
@@ -343,27 +366,27 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
           </thead>
           <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             {allItems.map((item, idx) => (
-              <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                <td className={`px-3 py-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.service_name}</td>
+              <tr key={idx} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
+                <td className={`px-3 py-2 font-medium ${strongText(darkMode)}`}>{item.service_name}</td>
                 <td className="px-3 py-2"><TypeBadge item={item} darkMode={darkMode} /></td>
-                <td className={`px-3 py-2 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <td className={`px-3 py-2 text-right ${bodyText(darkMode)}`}>
                   {item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}
                 </td>
-                <td className={`px-3 py-2 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <td className={`px-3 py-2 text-right ${bodyText(darkMode)}`}>
                   {item.sellPrice > 0 ? `Rs. ${item.sellPrice.toLocaleString()}` : '-'}
                 </td>
-                <td className={`px-3 py-2 text-center font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.qty}</td>
+                <td className={`px-3 py-2 text-center font-semibold ${strongText(darkMode)}`}>{item.qty}</td>
                 <td className={`px-3 py-2 text-right font-semibold ${profitColor(item.unitProfit, darkMode)}`}>
                   {formatProfit(item.unitProfit)}
                 </td>
                 <td className={`px-3 py-2 text-right font-semibold ${profitColor(item.lineProfit, darkMode)}`}>
                   {formatProfit(item.lineProfit)}
                 </td>
-                <td className={`px-3 py-2 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{item.inv.customer}</td>
+                <td className={`px-3 py-2 text-xs ${mutedText(darkMode)}`}>{item.inv.customer}</td>
               </tr>
             ))}
           </tbody>
-          <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
+          <tfoot className={darkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'}>
             <tr>
               <td colSpan="6" className="px-3 py-2 text-right font-bold">Total:</td>
               <td className={`px-3 py-2 text-right font-bold ${profitColor(data.profit, darkMode)}`}>Rs. {data.profit.toLocaleString()}</td>
@@ -390,31 +413,31 @@ const InvoiceDetails = React.memo(({ title, data, darkMode, onClose }) => {
   );
 });
 
-// Memoized Expense Details Component
+// Memoized Expense Details component
 const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
-  const totalAmount = useMemo(() => 
-    (expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0), 
+  const totalAmount = useMemo(() =>
+    (expenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0),
     [expenses]
   );
 
   if (!expenses || expenses.length === 0) {
     return (
-      <div className={`mt-4 p-4 rounded-xl ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'} text-center`}>
+      <div className={`mt-4 p-4 text-center ${innerBoxClass(darkMode)} ${mutedText(darkMode)}`}>
         <p>No expense data available</p>
       </div>
     );
   }
-  
+
   return (
-    <div className="mt-4 space-y-3">
+    <div className={`mt-4 p-4 space-y-3 ${cardClass(darkMode)}`}>
       <div className="flex justify-between items-center">
-        <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 {title}</h4>
+        <h4 className={`font-semibold ${strongText(darkMode)}`}>📋 {title}</h4>
         <button onClick={onClose} className={`text-lg ${darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'}`}>✕</button>
       </div>
       <div className="overflow-x-auto max-h-96">
         <table className={`w-full text-sm ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-          <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-100'}>
-            <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+          <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-100'}>
+            <tr className={bodyText(darkMode)}>
               <th className="px-3 py-2 text-left">Description</th>
               <th className="px-3 py-2 text-left">Category</th>
               <th className="px-3 py-2 text-left">Date</th>
@@ -423,19 +446,19 @@ const ExpenseDetails = React.memo(({ title, expenses, darkMode, onClose }) => {
           </thead>
           <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             {expenses.map((exp, idx) => (
-              <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                <td className={`px-3 py-2 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{exp.description}</td>
+              <tr key={idx} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
+                <td className={`px-3 py-2 font-medium ${strongText(darkMode)}`}>{exp.description}</td>
                 <td className="px-3 py-2">
-                  <span className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-600 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>
+                  <span className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-700'}`}>
                     {exp.category || 'General'}
                   </span>
                 </td>
-                <td className={`px-3 py-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDisplayDate(exp.date || exp.expense_date)}</td>
+                <td className={`px-3 py-2 text-sm ${bodyText(darkMode)}`}>{formatDisplayDate(exp.date || exp.expense_date)}</td>
                 <td className={`px-3 py-2 text-right font-semibold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {exp.amount.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
-          <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
+          <tfoot className={darkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'}>
             <tr>
               <td colSpan="3" className="px-3 py-2 text-right font-bold">Total:</td>
               <td className={`px-3 py-2 text-right font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {totalAmount.toLocaleString()}</td>
@@ -459,7 +482,7 @@ const FinanceOverview = ({ darkMode }) => {
   const [timeFilter, setTimeFilter] = useState('all');
   const [customDate, setCustomDate] = useState('');
   const [showCustomDate, setShowCustomDate] = useState(false);
-  
+
   const [selectedYear, setSelectedYear] = useState(parseInt(getKarachiToday().slice(0, 4)));
   const [showYearlyReport, setShowYearlyReport] = useState(true);
   const [showTodayDetails, setShowTodayDetails] = useState(false);
@@ -470,12 +493,12 @@ const FinanceOverview = ({ darkMode }) => {
   const [showMonthExpenses, setShowMonthExpenses] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   const [showAllDetails, setShowAllDetails] = useState(false);
-  
+
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
-  
+
   const [filteredSalesData, setFilteredSalesData] = useState(emptyAgg);
   const [filteredStats, setFilteredStats] = useState({
     expenses: 0,
@@ -485,16 +508,16 @@ const FinanceOverview = ({ darkMode }) => {
     profit: 0,
     discount: 0
   });
-  
+
   const [todaySales, setTodaySales] = useState(emptyAgg);
   const [weeklySales, setWeeklySales] = useState(emptyAgg);
   const [monthlySales, setMonthlySales] = useState(emptyAgg);
   const [selectedYearData, setSelectedYearData] = useState(emptyAgg);
-  
+
   const [todayExpenseDetails, setTodayExpenseDetails] = useState([]);
   const [weekExpenseDetails, setWeekExpenseDetails] = useState([]);
   const [monthExpenseDetails, setMonthExpenseDetails] = useState([]);
-  
+
   const [stats, setStats] = useState({
     todayExpenses: 0,
     todayExpenseCount: 0,
@@ -553,9 +576,9 @@ const FinanceOverview = ({ darkMode }) => {
   const calculateFilteredData = useCallback((invoicesList, expensesList, productsMap) => {
     const filteredInvoices = filterInvoicesByDate(invoicesList, timeFilter, customDate || null);
     const filteredExpenses = filterExpensesByDate(expensesList, timeFilter, customDate || null);
-    
+
     const sales = aggregateInvoices(filteredInvoices, productsMap);
-    
+
     let expenseTotal = 0;
     let salaryTotal = 0;
     let salaryCount = 0;
@@ -575,7 +598,7 @@ const FinanceOverview = ({ darkMode }) => {
         category: exp.category
       });
     });
-    
+
     return {
       sales,
       expenses: expenseList,
@@ -586,7 +609,7 @@ const FinanceOverview = ({ darkMode }) => {
     };
   }, [timeFilter, customDate]);
 
-  // Products API response shape ko safely handle karega
+  // Safely handles the different shapes the products API can return
   const fetchProducts = useCallback(async (signal) => {
     try {
       const response = await api.get('/products', { signal });
@@ -607,7 +630,7 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, []);
 
-  // Employees (salary + advance payments yahin se aate hain) - Dashboard wala hi route
+  // Employees (salary + advance payments come from here) - same route as the Dashboard
   const fetchEmployees = useCallback(async (signal) => {
     try {
       const response = await api.get('/employees', { signal });
@@ -655,7 +678,7 @@ const FinanceOverview = ({ darkMode }) => {
     const abortController = new AbortController();
     setLoading(true);
     setError(null);
-    
+
     try {
       const [productsList, manualExpenses, invoicesList, employeesList] = await Promise.all([
         fetchProducts(abortController.signal),
@@ -664,15 +687,15 @@ const FinanceOverview = ({ darkMode }) => {
         fetchEmployees(abortController.signal)
       ]);
 
-      // Manual expenses + Salary/Advance payments (Loan shamil nahi)
-      // Inventory khareedi / vendor payments yahan shamil NAHI hain
+      // Manual expenses + Salary/Advance payments (loans are excluded)
+      // Inventory purchases / vendor payments are NOT included here
       const expensesList = [...manualExpenses, ...salaryPaymentsAsExpenses(employeesList)];
-      
+
       const productsMap = new Map();
       productsList.forEach(p => {
         productsMap.set(p.name, p);
       });
-      
+
       // ----- Selected filter (All Time / Today / ...) -----
       const filtered = calculateFilteredData(invoicesList, expensesList, productsMap);
       setFilteredSalesData(filtered.sales);
@@ -681,12 +704,12 @@ const FinanceOverview = ({ darkMode }) => {
         expenseCount: filtered.expenseCount,
         salary: filtered.salaryTotal,
         salaryCount: filtered.salaryCount,
-        // Net Profit (Dashboard ke barabar)
+        // Net Profit (same as the Dashboard)
         profit: netProfitOf(filtered.sales, filtered.expenseTotal),
         discount: filtered.sales.discount
       });
-      
-      // 🕒 Karachi ke hisab se aaj / hafta / mahina
+
+      // 🕒 Today / week / month based on Karachi time
       const todayStr = getKarachiToday();
       const weekStartStr = getWeekStartStr();
       const monthStartStr = getMonthStartStr();
@@ -702,15 +725,15 @@ const FinanceOverview = ({ darkMode }) => {
       const monthAgg = aggregateInvoices(
         invoicesList.filter(inv => { const d = dayOf(inv); return d && d >= monthStartStr && d <= todayStr; }), productsMap
       );
-      
+
       setTodaySales(todayAgg);
       setWeeklySales(weekAgg);
       setMonthlySales(monthAgg);
-      
+
       let todayExp = 0, todayExpCount = 0, todayExpList = [];
       let weekExp = 0, weekExpCount = 0, weekExpList = [];
       let monthExp = 0, monthExpCount = 0, monthExpList = [];
-      
+
       expensesList.forEach(exp => {
         const rawDate = exp.expense_date || exp.date || exp.created_at;
         const expDay = toKarachiDateStr(rawDate);
@@ -722,9 +745,9 @@ const FinanceOverview = ({ darkMode }) => {
           date: rawDate,
           category: exp.category
         };
-        
+
         if (!expDay) return;
-        
+
         if (expDay === todayStr) {
           todayExp += amount;
           todayExpCount++;
@@ -741,7 +764,7 @@ const FinanceOverview = ({ darkMode }) => {
           monthExpList.push(expenseItem);
         }
       });
-      
+
       setTodayExpenseDetails(todayExpList);
       setWeekExpenseDetails(weekExpList);
       setMonthExpenseDetails(monthExpList);
@@ -760,17 +783,17 @@ const FinanceOverview = ({ darkMode }) => {
         weekDiscount: weekAgg.discount,
         monthDiscount: monthAgg.discount
       });
-      
+
       // ----- Selected year -----
       const yearInvoices = invoicesList.filter(inv => {
         if (!inv.invoice_date) return false;
         return toKarachiDateStr(inv.invoice_date).slice(0, 4) === String(selectedYear);
       });
-      
+
       const yearAgg = aggregateInvoices(yearInvoices, productsMap);
       setSelectedYearData({ ...yearAgg, count: yearInvoices.length });
       setCurrentPage(1);
-      
+
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error('Error loading data:', err);
@@ -779,7 +802,7 @@ const FinanceOverview = ({ darkMode }) => {
     } finally {
       setLoading(false);
     }
-    
+
     return () => abortController.abort();
   }, [selectedYear, fetchProducts, fetchExpenses, fetchInvoices, fetchEmployees, calculateFilteredData, timeFilter, customDate]);
 
@@ -800,7 +823,7 @@ const FinanceOverview = ({ darkMode }) => {
     return items;
   }, [selectedYearData.details]);
 
-  // Selected year: sirf Discount + Trade-in minus (Dashboard ki tarah)
+  // Selected year: only Discount + Trade-in are deducted (same as the Dashboard)
   const yearDeductions = (selectedYearData.discount || 0) + (selectedYearData.tradeIn || 0);
   const yearNetProfit = selectedYearData.profit - yearDeductions;
 
@@ -808,7 +831,7 @@ const FinanceOverview = ({ darkMode }) => {
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = useMemo(() => 
+  const currentItems = useMemo(() =>
     flattenedItems.slice(indexOfFirstItem, indexOfLastItem),
     [flattenedItems, indexOfFirstItem, indexOfLastItem]
   );
@@ -829,7 +852,7 @@ const FinanceOverview = ({ darkMode }) => {
     }
   }, [currentPage, totalPages]);
 
-  // ✅ Expenses = sirf Manual expenses + Salary/Advance (inventory / vendor payments shamil nahi)
+  // ✅ Expenses = only manual expenses + Salary/Advance (no inventory / vendor payments)
   const totalExpenses = filteredStats.expenses;
 
   // ✅ Final Profit = Sales Profit - (Expenses + Discount + Trade-in)
@@ -840,7 +863,7 @@ const FinanceOverview = ({ darkMode }) => {
       toast.error('No data available for the selected year');
       return;
     }
-    
+
     const exportData = flattenedItems.map(item => ({
       'Invoice #': item.inv.invoiceNo,
       'Customer': item.inv.customer,
@@ -860,7 +883,7 @@ const FinanceOverview = ({ darkMode }) => {
       'Purchase Price': '', 'Selling Price': '', 'Unit Profit': '',
       'Total Profit': `Rs. ${yearNetProfit.toLocaleString()}`
     });
-    
+
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Year_${selectedYear}_Report`);
@@ -873,7 +896,7 @@ const FinanceOverview = ({ darkMode }) => {
       toast.error('No data available for the selected year');
       return;
     }
-    
+
     const doc = new jsPDF('landscape');
     doc.text(`Sales Report for Year ${selectedYear}`, 14, 10);
     const tableData = flattenedItems.map(item => [
@@ -890,7 +913,7 @@ const FinanceOverview = ({ darkMode }) => {
     ]);
 
     tableData.push(['TOTAL (After Discount & Trade-in)', '', '', '', '', '', '', '', '', `Rs. ${yearNetProfit.toLocaleString()}`]);
-    
+
     doc.autoTable({
       head: [['Invoice', 'Customer', 'Date', 'Item', 'Type', 'Qty', 'Purchase', 'Sell', 'Unit Profit', 'Total Profit']],
       body: tableData,
@@ -905,19 +928,19 @@ const FinanceOverview = ({ darkMode }) => {
       <div className={`min-h-[400px] flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
         <div className="text-center">
           <FiLoader className="text-5xl text-red-500 animate-spin mx-auto mb-4" />
-          <p className={`${darkMode ? 'text-white' : 'text-gray-700'}`}>Loading finance data...</p>
+          <p className={bodyText(darkMode)}>Loading finance data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`space-y-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-      {/* Filter Buttons with Custom Date */}
-      <div className={`flex flex-wrap items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+    <div className={`space-y-6 ${strongText(darkMode)}`}>
+      {/* Filter buttons with custom date */}
+      <div className={`flex flex-wrap items-center gap-3 p-4 ${cardClass(darkMode)}`}>
         <div className="flex items-center gap-2 mr-4">
-          <FiCalendar className={`text-lg ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
-          <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Filter:</span>
+          <FiCalendar className={`text-lg ${mutedText(darkMode)}`} />
+          <span className={`text-sm font-medium ${bodyText(darkMode)}`}>Filter:</span>
         </div>
 
         {TIME_FILTERS.map(f => (
@@ -929,11 +952,11 @@ const FinanceOverview = ({ darkMode }) => {
             {f.label}
           </button>
         ))}
-        
+
         <button onClick={toggleCustomDate} className={pillClass(timeFilter === 'custom')}>
           📅 Custom Date
         </button>
-        
+
         {showCustomDate && (
           <div className="flex items-center gap-2">
             <input
@@ -952,7 +975,7 @@ const FinanceOverview = ({ darkMode }) => {
             )}
           </div>
         )}
-        
+
         <button
           onClick={() => setShowAllDetails(!showAllDetails)}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 ${
@@ -965,16 +988,16 @@ const FinanceOverview = ({ darkMode }) => {
           {showAllDetails ? 'Hide Details' : 'Show Details'}
         </button>
 
-        <span className={`ml-auto text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Showing: <strong className={darkMode ? 'text-white' : 'text-gray-800'}>{getFilterLabel()}</strong>
+        <span className={`ml-auto text-xs ${mutedText(darkMode)}`}>
+          Showing: <strong className={strongText(darkMode)}>{getFilterLabel()}</strong>
         </span>
       </div>
 
-      {/* Top 4 Cards - ek hi line mein (chhote): Sales, Expenses, Discount Given, Profit */}
+      {/* Top 4 cards in one row: Sales, Expenses, Discount Given, Profit */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           compact
-          gradient="from-blue-500 to-blue-600"
+          darkMode={darkMode}
           icon={FiDollarSign}
           title={`${getFilterLabel()} Sales`}
           mainValue={`Rs. ${filteredSalesData.total.toLocaleString()}`}
@@ -985,10 +1008,10 @@ const FinanceOverview = ({ darkMode }) => {
           expanded={showAllDetails}
         />
 
-        {/* Expenses = sirf Manual expenses + Salary/Advance (inventory / vendor payments nahi) */}
+        {/* Expenses = only manual expenses + Salary/Advance (no inventory / vendor payments) */}
         <StatCard
           compact
-          gradient="from-red-500 to-red-600"
+          darkMode={darkMode}
           icon={FiTrendingDown}
           title={`${getFilterLabel()} Expenses`}
           mainValue={`Rs. ${totalExpenses.toLocaleString()}`}
@@ -999,10 +1022,10 @@ const FinanceOverview = ({ darkMode }) => {
           expanded={showAllDetails}
         />
 
-        {/* Discount Given (sirf asli discount, trade-in nahi) */}
+        {/* Discount Given (real discount only, not trade-in) */}
         <StatCard
           compact
-          gradient="from-sky-400 to-sky-500"
+          darkMode={darkMode}
           icon={FiGift}
           title="Discount Given"
           mainValue={`Rs. ${filteredSalesData.discount.toLocaleString()}`}
@@ -1015,7 +1038,7 @@ const FinanceOverview = ({ darkMode }) => {
         {/* Profit = Sales Profit - (Expenses + Discount + Trade-in) */}
         <StatCard
           compact
-          gradient={finalProfit >= 0 ? 'from-green-500 to-green-600' : 'from-red-500 to-red-600'}
+          darkMode={darkMode}
           icon={FiTrendingUp}
           title={`${getFilterLabel()} Profit`}
           mainValue={`Rs. ${finalProfit.toLocaleString()}`}
@@ -1030,7 +1053,7 @@ const FinanceOverview = ({ darkMode }) => {
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
-              gradient="from-blue-500 to-blue-600"
+              darkMode={darkMode}
               icon={FiCalendar}
               title="Today's Sales"
               mainValue={`Rs. ${todaySales.total.toLocaleString()}`}
@@ -1044,7 +1067,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-blue-500 to-blue-600"
+              darkMode={darkMode}
               icon={FiTrendingUp}
               title="This Week's Sales"
               mainValue={`Rs. ${weeklySales.total.toLocaleString()}`}
@@ -1058,7 +1081,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-blue-500 to-blue-600"
+              darkMode={darkMode}
               icon={FiDollarSign}
               title="This Month's Sales"
               mainValue={`Rs. ${monthlySales.total.toLocaleString()}`}
@@ -1078,7 +1101,7 @@ const FinanceOverview = ({ darkMode }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
-              gradient="from-red-500 to-red-600"
+              darkMode={darkMode}
               icon={FiTrendingDown}
               title="Today's Expenses"
               mainValue={`Rs. ${stats.todayExpenses.toLocaleString()}`}
@@ -1091,7 +1114,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-red-500 to-red-600"
+              darkMode={darkMode}
               icon={FiTrendingDown}
               title="This Week's Expenses"
               mainValue={`Rs. ${stats.weekExpenses.toLocaleString()}`}
@@ -1104,7 +1127,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-red-500 to-red-600"
+              darkMode={darkMode}
               icon={FiTrendingDown}
               title="This Month's Expenses"
               mainValue={`Rs. ${stats.monthExpenses.toLocaleString()}`}
@@ -1123,7 +1146,7 @@ const FinanceOverview = ({ darkMode }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
-              gradient="from-green-500 to-green-600"
+              darkMode={darkMode}
               icon={FiTrendingUp}
               title="Today's Profit"
               mainValue={`Rs. ${stats.todayProfit?.toLocaleString() || 0}`}
@@ -1132,7 +1155,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-green-500 to-green-600"
+              darkMode={darkMode}
               icon={FiTrendingUp}
               title="This Week's Profit"
               mainValue={`Rs. ${stats.weekProfit?.toLocaleString() || 0}`}
@@ -1141,7 +1164,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-green-500 to-green-600"
+              darkMode={darkMode}
               icon={FiTrendingUp}
               title="This Month's Profit"
               mainValue={`Rs. ${stats.monthProfit?.toLocaleString() || 0}`}
@@ -1152,7 +1175,7 @@ const FinanceOverview = ({ darkMode }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard
-              gradient="from-sky-400 to-sky-500"
+              darkMode={darkMode}
               icon={FiGift}
               title="Today's Discount"
               mainValue={`Rs. ${stats.todayDiscount?.toLocaleString() || 0}`}
@@ -1161,7 +1184,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-sky-400 to-sky-500"
+              darkMode={darkMode}
               icon={FiGift}
               title="This Week's Discount"
               mainValue={`Rs. ${stats.weekDiscount?.toLocaleString() || 0}`}
@@ -1170,7 +1193,7 @@ const FinanceOverview = ({ darkMode }) => {
             />
 
             <StatCard
-              gradient="from-sky-400 to-sky-500"
+              darkMode={darkMode}
               icon={FiGift}
               title="This Month's Discount"
               mainValue={`Rs. ${stats.monthDiscount?.toLocaleString() || 0}`}
@@ -1181,58 +1204,58 @@ const FinanceOverview = ({ darkMode }) => {
         </>
       )}
 
-      {/* Monthly Breakdown - Net Profit = Sales Profit - (Expenses + Discount + Trade-in) */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl p-6 shadow-lg border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <h3 className={`font-semibold mb-4 flex items-center gap-2 flex-wrap ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+      {/* Monthly breakdown - Net Profit = Sales Profit - (Expenses + Discount + Trade-in) */}
+      <div className={`${cardClass(darkMode)} p-6`}>
+        <h3 className={`font-semibold mb-4 flex items-center gap-2 flex-wrap ${strongText(darkMode)}`}>
           <FiBarChart2 className="text-red-500" /> Monthly Financial Summary
-          <span className={`text-xs font-normal ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <span className={`text-xs font-normal ${mutedText(darkMode)}`}>
             ({getFilterLabel()})
           </span>
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Sales</p>
-            <p className={`text-xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {filteredSalesData.total.toLocaleString()}</p>
+          <div className={`p-4 ${innerBoxClass(darkMode)}`}>
+            <p className={`text-sm ${mutedText(darkMode)}`}>Sales</p>
+            <p className={`text-xl font-bold ${strongText(darkMode)}`}>Rs. {filteredSalesData.total.toLocaleString()}</p>
           </div>
-          {/* Expenses = sirf Manual expenses + Salary/Advance */}
-          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Expenses</p>
-            <p className={`text-xl font-bold ${darkMode ? 'text-red-400' : 'text-red-500'}`}>Rs. {totalExpenses.toLocaleString()}</p>
-            <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          {/* Expenses = only manual expenses + Salary/Advance */}
+          <div className={`p-4 ${innerBoxClass(darkMode)}`}>
+            <p className={`text-sm ${mutedText(darkMode)}`}>Expenses</p>
+            <p className={`text-xl font-bold ${strongText(darkMode)}`}>Rs. {totalExpenses.toLocaleString()}</p>
+            <p className={`text-xs mt-1 ${mutedText(darkMode)}`}>
               Salary: Rs. {filteredStats.salary.toLocaleString()} + Other: Rs. {(filteredStats.expenses - filteredStats.salary).toLocaleString()}
             </p>
           </div>
-          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Discount Given</p>
-            <p className={`text-xl font-bold ${darkMode ? 'text-sky-400' : 'text-sky-500'}`}>Rs. {filteredStats.discount.toLocaleString()}</p>
+          <div className={`p-4 ${innerBoxClass(darkMode)}`}>
+            <p className={`text-sm ${mutedText(darkMode)}`}>Discount Given</p>
+            <p className={`text-xl font-bold ${strongText(darkMode)}`}>Rs. {filteredStats.discount.toLocaleString()}</p>
           </div>
-          <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-            <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Net Profit</p>
-            <p className={`text-xl font-bold ${finalProfit >= 0 ? (darkMode ? 'text-green-400' : 'text-green-500') : (darkMode ? 'text-red-400' : 'text-red-500')}`}>
+          <div className={`p-4 ${innerBoxClass(darkMode)}`}>
+            <p className={`text-sm ${mutedText(darkMode)}`}>Net Profit</p>
+            <p className={`text-xl font-bold ${strongText(darkMode)}`}>
               Rs. {finalProfit.toLocaleString()}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Yearly Report Section with Pagination */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-2xl shadow-lg overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <button onClick={() => setShowYearlyReport(!showYearlyReport)} className={`w-full px-6 py-4 flex justify-between items-center transition ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}>
+      {/* Yearly report section with pagination */}
+      <div className={`${cardClass(darkMode)} overflow-hidden`}>
+        <button onClick={() => setShowYearlyReport(!showYearlyReport)} className={`w-full px-6 py-4 flex justify-between items-center transition ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <FiBarChart2 className="text-red-500 text-xl" />
-            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>📊 Yearly Sales Report</h3>
+            <h3 className={`text-lg font-semibold ${strongText(darkMode)}`}>📊 Yearly Sales Report</h3>
           </div>
-          {showYearlyReport ? <FiChevronUp className={darkMode ? 'text-gray-300' : 'text-gray-700'} /> : <FiChevronDown className={darkMode ? 'text-gray-300' : 'text-gray-700'} />}
+          {showYearlyReport ? <FiChevronUp className={bodyText(darkMode)} /> : <FiChevronDown className={bodyText(darkMode)} />}
         </button>
-        
+
         {showYearlyReport && (
           <div className={`p-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
               <div className="flex gap-3 items-center">
-                <label className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Select Year:</label>
-                <select 
-                  value={selectedYear} 
-                  onChange={(e) => setSelectedYear(parseInt(e.target.value))} 
+                <label className={`text-sm font-medium ${bodyText(darkMode)}`}>Select Year:</label>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                   className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-red-500 outline-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-800'}`}
                 >
                   {[2024, 2025, 2026, 2027].map(year => (<option key={year} value={year}>{year}</option>))}
@@ -1245,25 +1268,25 @@ const FinanceOverview = ({ darkMode }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Sales</p>
-                <p className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>Rs. {selectedYearData.total.toLocaleString()}</p>
+              <div className={`p-4 text-center ${innerBoxClass(darkMode)}`}>
+                <p className={`text-sm ${mutedText(darkMode)}`}>Total Sales</p>
+                <p className={`text-2xl font-bold ${strongText(darkMode)}`}>Rs. {selectedYearData.total.toLocaleString()}</p>
               </div>
-              <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Invoices</p>
-                <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{selectedYearData.count}</p>
+              <div className={`p-4 text-center ${innerBoxClass(darkMode)}`}>
+                <p className={`text-sm ${mutedText(darkMode)}`}>Total Invoices</p>
+                <p className={`text-2xl font-bold ${strongText(darkMode)}`}>{selectedYearData.count}</p>
               </div>
-              <div className={`p-4 rounded-xl text-center ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Total Profit</p>
-                <p className={`text-2xl font-bold ${profitColor(yearNetProfit, darkMode)}`}>Rs. {yearNetProfit.toLocaleString()}</p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>(After discount & trade-in)</p>
+              <div className={`p-4 text-center ${innerBoxClass(darkMode)}`}>
+                <p className={`text-sm ${mutedText(darkMode)}`}>Total Profit</p>
+                <p className={`text-2xl font-bold ${strongText(darkMode)}`}>Rs. {yearNetProfit.toLocaleString()}</p>
+                <p className={`text-xs mt-1 ${mutedText(darkMode)}`}>(After discount & trade-in)</p>
               </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className={`w-full ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
-                <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                  <tr className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                <thead className={darkMode ? 'bg-gray-800' : 'bg-gray-50'}>
+                  <tr className={bodyText(darkMode)}>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Date</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Invoice</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Customer</th>
@@ -1279,26 +1302,26 @@ const FinanceOverview = ({ darkMode }) => {
                 <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
                   {currentItems.length === 0 ? (
                     <tr>
-                      <td colSpan="10" className={`px-4 py-8 text-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No invoices found</td>
+                      <td colSpan="10" className={`px-4 py-8 text-center ${mutedText(darkMode)}`}>No invoices found</td>
                     </tr>
                   ) : (
                     currentItems.map((item, idx) => (
-                      <tr key={idx} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                        <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{formatDisplayDate(item.inv.date)}</td>
-                        <td className={`px-4 py-3 font-mono text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.inv.invoiceNo}</td>
+                      <tr key={idx} className={darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}>
+                        <td className={`px-4 py-3 text-sm ${bodyText(darkMode)}`}>{formatDisplayDate(item.inv.date)}</td>
+                        <td className={`px-4 py-3 font-mono text-sm ${strongText(darkMode)}`}>{item.inv.invoiceNo}</td>
                         <td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.inv.customer}</td>
                         <td className={`px-4 py-3 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{item.service_name}</td>
                         <td className="px-4 py-3"><TypeBadge item={item} darkMode={darkMode} /></td>
-                        <td className={`px-4 py-3 text-center ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.qty}</td>
-                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}</td>
-                        <td className={`px-4 py-3 text-right ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{item.sellPrice > 0 ? `Rs. ${item.sellPrice.toLocaleString()}` : '-'}</td>
+                        <td className={`px-4 py-3 text-center ${bodyText(darkMode)}`}>{item.qty}</td>
+                        <td className={`px-4 py-3 text-right ${bodyText(darkMode)}`}>{item.purchasePrice > 0 ? `Rs. ${item.purchasePrice.toLocaleString()}` : '-'}</td>
+                        <td className={`px-4 py-3 text-right ${bodyText(darkMode)}`}>{item.sellPrice > 0 ? `Rs. ${item.sellPrice.toLocaleString()}` : '-'}</td>
                         <td className={`px-4 py-3 text-right ${profitColor(item.unitProfit, darkMode)}`}>{formatProfit(item.unitProfit)}</td>
                         <td className={`px-4 py-3 text-right ${profitColor(item.lineProfit, darkMode)}`}>{formatProfit(item.lineProfit)}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
-                <tfoot className={darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-100 text-gray-800'}>
+                <tfoot className={darkMode ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800'}>
                   <tr>
                     <td colSpan="9" className="px-4 py-3 text-right font-bold">Total Profit:</td>
                     <td className={`px-4 py-3 text-right font-bold ${profitColor(selectedYearData.profit, darkMode)}`}>Rs. {selectedYearData.profit.toLocaleString()}</td>
@@ -1321,7 +1344,7 @@ const FinanceOverview = ({ darkMode }) => {
 
             {totalPages > 1 && (
               <div className={`flex justify-between items-center mt-6 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'} flex-wrap gap-3`}>
-                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                <div className={`text-sm ${mutedText(darkMode)}`}>
                   Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, totalItems)} of {totalItems} items
                 </div>
                 <div className="flex gap-2 flex-wrap">
@@ -1336,7 +1359,7 @@ const FinanceOverview = ({ darkMode }) => {
                   >
                     <FiChevronLeft /> Previous
                   </button>
-                  
+
                   <div className="flex gap-1">
                     {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                       let pageNum;
@@ -1349,7 +1372,7 @@ const FinanceOverview = ({ darkMode }) => {
                       } else {
                         pageNum = currentPage - 2 + i;
                       }
-                      
+
                       return (
                         <button
                           key={pageNum}
@@ -1365,7 +1388,7 @@ const FinanceOverview = ({ darkMode }) => {
                       );
                     })}
                   </div>
-                  
+
                   <button
                     onClick={goToNextPage}
                     disabled={currentPage === totalPages}

@@ -16,6 +16,22 @@ const num = (v) => parseFloat(v) || 0;
 const rs = (v) => `Rs. ${num(v).toLocaleString()}`;
 
 /* =====================================================================
+   STAT CARD  (Inventory page jaisa simple card — white / dark)
+   ===================================================================== */
+const StatCard = ({ darkMode, icon: Icon, label, value, sub, valueClass = '' }) => (
+  <div className={`rounded-xl p-5 border shadow-md ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
+    <div className="flex items-center gap-3">
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${darkMode ? 'bg-yellow-500/10 text-yellow-500' : 'bg-yellow-100 text-yellow-600'}`}>
+        <Icon className="text-lg" />
+      </div>
+      <p className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{label}</p>
+    </div>
+    <p className={`text-2xl font-bold mt-4 ${valueClass || (darkMode ? 'text-white' : 'text-gray-900')}`}>{value}</p>
+    <p className={`text-xs mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{sub}</p>
+  </div>
+);
+
+/* =====================================================================
    OLD BATTERIES VIEW  (bilkul pehle jaisa — koi change nahi)
    ===================================================================== */
 const OldBatteriesView = ({ darkMode }) => {
@@ -196,46 +212,35 @@ const OldBatteriesView = ({ darkMode }) => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Stock Value (Purchase)</p>
-              <p className="text-3xl font-bold mt-2">{rs(stockValue)}</p>
-              <p className="text-xs opacity-75 mt-1">{inStock.length} in stock</p>
-            </div>
-            <FiDollarSign className="text-3xl opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Batteries Sold</p>
-              <p className="text-3xl font-bold mt-2">{sold.length}</p>
-              <p className="text-xs opacity-75 mt-1">Units sold</p>
-            </div>
-            <FiPackage className="text-3xl opacity-50" />
-          </div>
-        </div>
-        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Sales Revenue</p>
-              <p className="text-3xl font-bold mt-2">{rs(soldRevenue)}</p>
-              <p className="text-xs opacity-75 mt-1">Total selling price</p>
-            </div>
-            <FiBattery className="text-3xl opacity-50" />
-          </div>
-        </div>
-        <div className={`rounded-2xl p-6 text-white shadow-lg bg-gradient-to-r ${totalProfit >= 0 ? 'from-emerald-500 to-emerald-600' : 'from-red-500 to-red-600'}`}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm opacity-90">Total Profit</p>
-              <p className="text-3xl font-bold mt-2">{rs(totalProfit)}</p>
-              <p className="text-xs opacity-75 mt-1">Selling − Purchase</p>
-            </div>
-            <FiTrendingUp className="text-3xl opacity-50" />
-          </div>
-        </div>
+        <StatCard
+          darkMode={darkMode}
+          icon={FiDollarSign}
+          label="Stock Value (Purchase)"
+          value={rs(stockValue)}
+          sub={`${inStock.length} in stock`}
+        />
+        <StatCard
+          darkMode={darkMode}
+          icon={FiPackage}
+          label="Batteries Sold"
+          value={sold.length}
+          sub="Units sold"
+        />
+        <StatCard
+          darkMode={darkMode}
+          icon={FiBattery}
+          label="Sales Revenue"
+          value={rs(soldRevenue)}
+          sub="Total selling price"
+        />
+        <StatCard
+          darkMode={darkMode}
+          icon={FiTrendingUp}
+          label="Total Profit"
+          value={rs(totalProfit)}
+          sub="Selling − Purchase"
+          valueClass={totalProfit >= 0 ? 'text-green-500' : 'text-red-500'}
+        />
       </div>
 
       {/* Search + Filter */}
@@ -1345,38 +1350,28 @@ const NewBatteriesView = ({ darkMode }) => {
       {/* STATISTICS CARDS */}
       {isAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm opacity-90">{getStatsLabelText()} Purchase Total</p>
-                <p className="text-3xl font-bold mt-2">Rs. {filteredStats.totalPurchase.toLocaleString()}</p>
-                <p className="text-xs opacity-75 mt-2">{getStatsLabelText().toLowerCase()} purchases</p>
-              </div>
-              <FiShoppingCart className="text-3xl opacity-50" />
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-2xl p-6 text-white shadow-lg">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm opacity-90">{getStatsLabelText()} Selling Value</p>
-                <p className="text-3xl font-bold mt-2">Rs. {filteredStats.totalSelling.toLocaleString()}</p>
-                <p className="text-xs opacity-75 mt-2">{getStatsLabelText().toLowerCase()} sales</p>
-              </div>
-              <FiDollarSign className="text-3xl opacity-50" />
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm opacity-90">{getStatsLabelText()} Profit</p>
-                <p className="text-3xl font-bold mt-2">Rs. {filteredStats.totalProfit.toLocaleString()}</p>
-                <p className="text-xs opacity-75 mt-2">{getStatsLabelText().toLowerCase()} profit</p>
-              </div>
-              <FiTrendingUp className="text-3xl opacity-50" />
-            </div>
-          </div>
+          <StatCard
+            darkMode={darkMode}
+            icon={FiShoppingCart}
+            label={`${getStatsLabelText()} Purchase Total`}
+            value={`Rs. ${filteredStats.totalPurchase.toLocaleString()}`}
+            sub={`${getStatsLabelText().toLowerCase()} purchases`}
+          />
+          <StatCard
+            darkMode={darkMode}
+            icon={FiDollarSign}
+            label={`${getStatsLabelText()} Selling Value`}
+            value={`Rs. ${filteredStats.totalSelling.toLocaleString()}`}
+            sub={`${getStatsLabelText().toLowerCase()} sales`}
+          />
+          <StatCard
+            darkMode={darkMode}
+            icon={FiTrendingUp}
+            label={`${getStatsLabelText()} Profit`}
+            value={`Rs. ${filteredStats.totalProfit.toLocaleString()}`}
+            sub={`${getStatsLabelText().toLowerCase()} profit`}
+            valueClass={filteredStats.totalProfit >= 0 ? 'text-green-500' : 'text-red-500'}
+          />
         </div>
       )}
 

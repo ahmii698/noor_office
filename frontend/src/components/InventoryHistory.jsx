@@ -13,6 +13,8 @@ import {
   FileDown,
   Eye,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -24,6 +26,128 @@ const SIDEBAR_WIDTH = 288;
 
 /* Product column mein by default kitne product dikhane hain */
 const PRODUCT_PREVIEW_COUNT = 2;
+
+/* Payment history ek saath kitni requests bhejni hain */
+const HISTORY_CHUNK = 12;
+
+/* Payment history cache: page dobara kholne / refresh par turant load hota hai.
+   Key mein paid_amount hai, to payment badalte hi cache khud invalid ho jata hai. */
+const historyCache = new Map();
+const cacheKey = (inv) => `${inv.invoice_no}|${inv.paid_amount}|${inv.total_amount}`;
+
+/* ---------------- THEMES ---------------- */
+const DARK = {
+  page: "bg-[#050a14] text-slate-200",
+  panel: "border-slate-800 bg-[#0b1220]",
+  title: "text-white",
+  iconBox: "bg-amber-500/15",
+  iconColor: "text-amber-400",
+  toggleOff: "border-slate-700 bg-slate-800/70 text-slate-300 hover:bg-slate-700",
+  toggleOn: "border-amber-400 bg-amber-400 text-slate-900",
+  theadBg: "bg-[#0b1220]",
+  theadRow: "border-slate-700 text-slate-400",
+  th: "border-slate-800",
+  tr: "border-slate-800/70 hover:bg-slate-800/30",
+  td: "border-slate-800/60",
+  muted: "text-slate-500",
+  text: "text-slate-300",
+  strong: "text-white",
+  invoice: "text-amber-400",
+  receivable: "text-yellow-300",
+  cashIn: "text-emerald-400",
+  cashOut: "text-rose-400",
+  vendor: "text-purple-300",
+  owner: "text-blue-400",
+  hand: "text-white",
+  cost: "text-cyan-400",
+  profit: "text-lime-400",
+  expense: "text-orange-400",
+  netPos: "text-teal-300",
+  netNeg: "text-rose-400",
+  tfoot: "bg-[#0b1220]",
+  tfootBorder: "border-slate-600",
+  tfootLabel: "text-slate-400",
+  pagerBorder: "border-slate-800",
+  pagerText: "text-slate-500",
+  pagerStrong: "text-slate-300",
+  dots: "text-slate-600",
+  pageBtn:
+    "bg-slate-800/70 text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-800/70",
+  loadingText: "text-slate-400",
+  emptyText: "text-slate-500",
+  viewBtn: "bg-amber-400/15 text-amber-400 hover:bg-amber-400 hover:text-slate-900",
+  popupBg: "border-slate-700 bg-[#0b1220]",
+  popupHead: "border-slate-800",
+  popupItem: "bg-slate-800/40 text-white",
+  popupClose: "bg-slate-800/70 text-slate-300 hover:bg-slate-700",
+  popupNum: "text-slate-500",
+};
+
+const LIGHT = {
+  page: "bg-slate-50 text-slate-700",
+  panel: "border-slate-200 bg-white",
+  title: "text-slate-900",
+  iconBox: "bg-amber-500/15",
+  iconColor: "text-amber-600",
+  toggleOff: "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200",
+  toggleOn: "border-amber-400 bg-amber-400 text-slate-900",
+  theadBg: "bg-slate-50",
+  theadRow: "border-slate-200 text-slate-500",
+  th: "border-slate-200",
+  tr: "border-slate-100 hover:bg-slate-50",
+  td: "border-slate-100",
+  muted: "text-slate-400",
+  text: "text-slate-600",
+  strong: "text-slate-900",
+  invoice: "text-amber-600",
+  receivable: "text-yellow-600",
+  cashIn: "text-emerald-600",
+  cashOut: "text-rose-600",
+  vendor: "text-purple-600",
+  owner: "text-blue-600",
+  hand: "text-slate-900",
+  cost: "text-cyan-600",
+  profit: "text-lime-600",
+  expense: "text-orange-600",
+  netPos: "text-teal-600",
+  netNeg: "text-rose-600",
+  tfoot: "bg-slate-50",
+  tfootBorder: "border-slate-300",
+  tfootLabel: "text-slate-500",
+  pagerBorder: "border-slate-200",
+  pagerText: "text-slate-500",
+  pagerStrong: "text-slate-800",
+  dots: "text-slate-400",
+  pageBtn:
+    "bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-100",
+  loadingText: "text-slate-500",
+  emptyText: "text-slate-400",
+  viewBtn: "bg-amber-500/15 text-amber-700 hover:bg-amber-500 hover:text-white",
+  popupBg: "border-slate-200 bg-white",
+  popupHead: "border-slate-200",
+  popupItem: "bg-slate-100 text-slate-900",
+  popupClose: "bg-slate-100 text-slate-600 hover:bg-slate-200",
+  popupNum: "text-slate-400",
+};
+
+/* App ka theme (html class / data-theme / localStorage) padhta hai */
+const readIsDark = () => {
+  if (typeof document === "undefined") return true;
+  const root = document.documentElement;
+  if (root.classList.contains("dark")) return true;
+  if (root.classList.contains("light")) return false;
+  const attr = root.getAttribute("data-theme");
+  if (attr === "dark") return true;
+  if (attr === "light") return false;
+  try {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark") return true;
+    if (saved === "light") return false;
+  } catch {
+    /* ignore */
+  }
+  return false;
+};
 
 const money = (n) => (n ? `Rs. ${Number(n).toLocaleString("en-PK")}` : "-");
 
@@ -490,15 +614,13 @@ const getPageList = (current, total) => {
   return result;
 };
 
-const PageBtn = ({ children, onClick, disabled, active, title }) => (
+const PageBtn = ({ children, onClick, disabled, active, title, t }) => (
   <button
     onClick={onClick}
     disabled={disabled}
     title={title}
     className={`flex h-8 min-w-[2rem] items-center justify-center rounded-lg px-2 text-sm font-semibold transition ${
-      active
-        ? "bg-amber-400 text-slate-900"
-        : "bg-slate-800/70 text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-800/70"
+      active ? "bg-amber-400 text-slate-900" : t.pageBtn
     }`}
   >
     {children}
@@ -506,7 +628,7 @@ const PageBtn = ({ children, onClick, disabled, active, title }) => (
 );
 
 /* Product column: by default sirf pehle 2 product, baqi "View" button se */
-const ProductCell = ({ value, onView }) => {
+const ProductCell = ({ value, onView, t }) => {
   const items = splitProducts(value);
 
   if (items.length === 0) return <span>-</span>;
@@ -535,7 +657,7 @@ const ProductCell = ({ value, onView }) => {
       </div>
       <button
         onClick={() => onView(items)}
-        className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-amber-400/15 px-2 py-1 text-xs font-bold text-amber-400 transition hover:bg-amber-400 hover:text-slate-900"
+        className={`mt-1.5 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-bold transition ${t.viewBtn}`}
       >
         <Eye size={13} />
         View (+{hidden})
@@ -552,6 +674,8 @@ export default function InventoryHistory() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [page, setPage] = useState(1);
   const [viewProducts, setViewProducts] = useState(null); // popup mein dikhane wali poori product list
+  const [isDark, setIsDark] = useState(readIsDark);
+  const t = isDark ? DARK : LIGHT;
 
   const [raw, setRaw] = useState({
     products: [],
@@ -564,12 +688,43 @@ export default function InventoryHistory() {
     employees: [],
   });
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false); // payment history background mein load ho rahi hai
   const [error, setError] = useState("");
   const jumpedToLast = useRef(false);
   const tableScrollRef = useRef(null);
+  const loadId = useRef(0);
+  const prevTotalPages = useRef(1);
+
+  /* App ka theme badle (dashboard se) to yeh page bhi follow kare */
+  useEffect(() => {
+    const root = document.documentElement;
+    const sync = () => setIsDark(readIsDark());
+    const observer = new MutationObserver(sync);
+    observer.observe(root, { attributes: true, attributeFilter: ["class", "data-theme"] });
+    window.addEventListener("storage", sync);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    const root = document.documentElement;
+    root.classList.toggle("dark", next);
+    if (root.hasAttribute("data-theme")) root.setAttribute("data-theme", next ? "dark" : "light");
+    try {
+      localStorage.setItem("theme", next ? "dark" : "light");
+    } catch {
+      /* ignore */
+    }
+    setIsDark(next);
+  };
 
   const loadData = useCallback(async () => {
+    const id = ++loadId.current;
     setLoading(true);
+    setSyncing(false);
     setError("");
     try {
       const [prodRes, vendRes, invRes, cashRes, expRes, empRes] = await Promise.all([
@@ -580,24 +735,28 @@ export default function InventoryHistory() {
         api.get("/expenses").catch(() => null),
         api.get("/employees").catch(() => null),
       ]);
+      if (id !== loadId.current) return;
 
       const invoices = toArray(invRes);
 
-      /* Payment history for every invoice (initial + later Reminders payments) */
+      /* Cache se jo mil jaye wo turant, baqi background mein */
       const histories = {};
-      await Promise.all(
-        invoices
-          .filter((i) => i.invoice_no)
-          .map(async (inv) => {
-            try {
-              const r = await api.get(`/payment-history/${inv.invoice_no}`);
-              histories[inv.invoice_no] = Array.isArray(r?.data?.data) ? r.data.data : [];
-            } catch {
-              histories[inv.invoice_no] = [];
-            }
-          })
-      );
+      const missing = [];
+      invoices
+        .filter((i) => i.invoice_no)
+        .forEach((inv) => {
+          const pa = inv.paid_amount;
+          const noPayment = pa !== undefined && pa !== null && (parseFloat(pa) || 0) <= 0;
+          if (noPayment) {
+            histories[inv.invoice_no] = [];
+            return;
+          }
+          const k = cacheKey(inv);
+          if (historyCache.has(k)) histories[inv.invoice_no] = historyCache.get(k);
+          else missing.push(inv);
+        });
 
+      /* ✅ Table foran dikha do - payment history ka intezar nahi */
       setRaw({
         products: toArray(prodRes),
         vendors: toArray(vendRes),
@@ -609,11 +768,38 @@ export default function InventoryHistory() {
         employees: empRes ? toArray(empRes) : [],
       });
       jumpedToLast.current = false;
+      setLoading(false);
+
+      /* Baqi payment history chhote chhote batches mein */
+      if (missing.length > 0) {
+        setSyncing(true);
+        for (let i = 0; i < missing.length; i += HISTORY_CHUNK) {
+          const chunk = missing.slice(i, i + HISTORY_CHUNK);
+          const part = {};
+          await Promise.all(
+            chunk.map(async (inv) => {
+              try {
+                const r = await api.get(`/payment-history/${inv.invoice_no}`);
+                const list = Array.isArray(r?.data?.data) ? r.data.data : [];
+                historyCache.set(cacheKey(inv), list);
+                part[inv.invoice_no] = list;
+              } catch {
+                part[inv.invoice_no] = [];
+              }
+            })
+          );
+          if (id !== loadId.current) return;
+          setRaw((prev) => ({ ...prev, histories: { ...prev.histories, ...part } }));
+        }
+        if (id === loadId.current) setSyncing(false);
+      }
     } catch (e) {
       console.error("Balance sheet load error:", e);
-      setError("Failed to load data. Please try again.");
-    } finally {
-      setLoading(false);
+      if (id === loadId.current) {
+        setError("Failed to load data. Please try again.");
+        setLoading(false);
+        setSyncing(false);
+      }
     }
   }, []);
 
@@ -828,12 +1014,22 @@ export default function InventoryHistory() {
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
 
+  /* Data aane par aakhri page (sab se naye records) khol do */
   useEffect(() => {
     if (!loading && rows.length && !jumpedToLast.current) {
       jumpedToLast.current = true;
       setPage(totalPages);
     }
   }, [loading, rows.length, totalPages]);
+
+  /* Background mein payments aane se pages badhein to agar user aakhri page par tha, wahin rahe */
+  useEffect(() => {
+    if (jumpedToLast.current && page === prevTotalPages.current && totalPages !== page) {
+      setPage(totalPages);
+    }
+    prevTotalPages.current = totalPages;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalPages]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -848,41 +1044,54 @@ export default function InventoryHistory() {
   const showingFrom = rows.length ? startIdx + 1 : 0;
   const showingTo = Math.min(startIdx + PAGE_SIZE, rows.length);
 
-  const exportDisabled = loading || rows.length === 0;
+  /* Payments sync hote waqt export band - warna adhoora data export hoga */
+  const exportDisabled = loading || syncing || rows.length === 0;
 
   return (
     <div
-      className="fixed inset-y-0 right-0 z-40 flex flex-col overflow-hidden bg-[#050a14] text-slate-200 transition-all duration-300"
+      className={`fixed inset-y-0 right-0 z-40 flex flex-col overflow-hidden transition-all duration-300 ${t.page}`}
       style={{ left: showSidebar ? SIDEBAR_WIDTH : 0 }}
     >
       <div className="mx-auto flex h-full w-full max-w-[1700px] flex-col gap-4 p-4 md:p-6">
-        <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-[#0b1220] px-4 py-3">
+        <div className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${t.panel}`}>
           <button
             onClick={() => setShowSidebar((s) => !s)}
             title={showSidebar ? "Hide sidebar" : "Show sidebar"}
             className={`flex h-10 w-10 items-center justify-center rounded-lg border transition ${
-              showSidebar
-                ? "border-amber-400 bg-amber-400 text-slate-900"
-                : "border-slate-700 bg-slate-800/70 text-slate-300 hover:bg-slate-700"
+              showSidebar ? t.toggleOn : t.toggleOff
             }`}
           >
             {showSidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
 
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/15">
-            <History className="text-amber-400" size={18} />
+          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${t.iconBox}`}>
+            <History className={t.iconColor} size={18} />
           </div>
-          <div className="flex-1">
-            <h1 className="text-lg font-bold leading-tight text-white">Balance Sheet</h1>
+          <div className="flex flex-1 items-center gap-3">
+            <h1 className={`text-lg font-bold leading-tight ${t.title}`}>Balance Sheet</h1>
+            {syncing && (
+              <span className={`flex items-center gap-1.5 text-xs font-medium ${t.muted}`}>
+                <Loader2 className="animate-spin text-amber-500" size={13} />
+                Syncing payments...
+              </span>
+            )}
           </div>
 
           <button
+            onClick={toggleTheme}
+            title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+            className={`flex h-10 w-10 items-center justify-center rounded-lg border transition ${t.toggleOff}`}
+          >
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+
+          <button
             onClick={loadData}
-            disabled={loading}
+            disabled={loading || syncing}
             title="Refresh this page"
             className="flex h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            <RefreshCw size={16} className={loading || syncing ? "animate-spin" : ""} />
             Refresh
           </button>
 
@@ -907,15 +1116,15 @@ export default function InventoryHistory() {
           </button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-800 bg-[#0b1220]">
+        <div className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border ${t.panel}`}>
           <div ref={tableScrollRef} className="min-h-0 flex-1 overflow-auto">
             {loading && rows.length === 0 ? (
-              <div className="flex h-full items-center justify-center gap-3 text-slate-400">
-                <Loader2 className="animate-spin text-amber-400" size={22} />
+              <div className={`flex h-full items-center justify-center gap-3 ${t.loadingText}`}>
+                <Loader2 className="animate-spin text-amber-500" size={22} />
                 Loading balance sheet...
               </div>
             ) : error ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
+              <div className={`flex h-full flex-col items-center justify-center gap-3 ${t.loadingText}`}>
                 <p>{error}</p>
                 <button
                   onClick={loadData}
@@ -926,12 +1135,12 @@ export default function InventoryHistory() {
               </div>
             ) : (
               <table className="w-full min-w-[2000px] border-collapse text-sm">
-                <thead className="sticky top-0 z-10 bg-[#0b1220]">
-                  <tr className="border-b border-slate-700 text-xs uppercase tracking-wide text-slate-400">
+                <thead className={`sticky top-0 z-10 ${t.theadBg}`}>
+                  <tr className={`border-b text-xs uppercase tracking-wide ${t.theadRow}`}>
                     {COLUMNS.map((c) => (
                       <th
                         key={c.label}
-                        className={`whitespace-nowrap border-r border-slate-800 px-4 py-3.5 last:border-r-0 ${alignCls[c.align]}`}
+                        className={`whitespace-nowrap border-r px-4 py-3.5 last:border-r-0 ${t.th} ${alignCls[c.align]}`}
                       >
                         {c.label}
                       </th>
@@ -942,7 +1151,10 @@ export default function InventoryHistory() {
                 <tbody>
                   {pageRows.length === 0 ? (
                     <tr>
-                      <td colSpan={COLUMNS.length} className="px-4 py-10 text-center font-semibold text-slate-500">
+                      <td
+                        colSpan={COLUMNS.length}
+                        className={`px-4 py-10 text-center font-semibold ${t.emptyText}`}
+                      >
                         No records found
                       </td>
                     </tr>
@@ -950,38 +1162,38 @@ export default function InventoryHistory() {
                     pageRows.map((r) => {
                       const dt = fmtDate(r.date);
                       return (
-                        <tr key={r.key} className="border-b border-slate-800/70 hover:bg-slate-800/30">
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-slate-500">{r.sr}</td>
-                          <td className="whitespace-nowrap border-r border-slate-800/60 px-4 py-3">
-                            <div className="text-slate-300">{dt.date}</div>
-                            <div className="text-xs text-slate-500">{dt.time}</div>
+                        <tr key={r.key} className={`border-b ${t.tr}`}>
+                          <td className={`border-r px-4 py-3 ${t.td} ${t.muted}`}>{r.sr}</td>
+                          <td className={`whitespace-nowrap border-r px-4 py-3 ${t.td}`}>
+                            <div className={t.text}>{dt.date}</div>
+                            <div className={`text-xs ${t.muted}`}>{dt.time}</div>
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 font-semibold text-amber-400">
+                          <td className={`border-r px-4 py-3 font-semibold ${t.td} ${t.invoice}`}>
                             {r.invoiceNo}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-slate-300">{r.details}</td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 font-medium text-white">
-                            <ProductCell value={r.product} onView={setViewProducts} />
+                          <td className={`border-r px-4 py-3 ${t.td} ${t.text}`}>{r.details}</td>
+                          <td className={`border-r px-4 py-3 font-medium ${t.td} ${t.strong}`}>
+                            <ProductCell value={r.product} onView={setViewProducts} t={t} />
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right">{money(r.price)}</td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-yellow-300">
+                          <td className={`border-r px-4 py-3 text-right ${t.td}`}>{money(r.price)}</td>
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.receivable}`}>
                             {money(r.receivableShow)}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right">{r.qty || "-"}</td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-emerald-400">
+                          <td className={`border-r px-4 py-3 text-right ${t.td}`}>{r.qty || "-"}</td>
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.cashIn}`}>
                             {money(r.cashIn)}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-rose-400">
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.cashOut}`}>
                             {money(r.cashOut)}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-purple-300">
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.vendor}`}>
                             {r.isVendor ? money(r.vendorPay) : "-"}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-blue-400">
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.owner}`}>
                             {r.ownerReturn > 0 ? (
                               <>
                                 <div>Rs. {Number(r.ownerCapital).toLocaleString("en-PK")}</div>
-                                <div className="text-xs font-semibold text-rose-400">
+                                <div className={`text-xs font-semibold ${t.cashOut}`}>
                                   − Rs. {Number(r.ownerReturn).toLocaleString("en-PK")}
                                 </div>
                               </>
@@ -989,21 +1201,21 @@ export default function InventoryHistory() {
                               money(r.ownerCapital)
                             )}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-bold text-white">
+                          <td className={`border-r px-4 py-3 text-right font-bold ${t.td} ${t.hand}`}>
                             {money(r.cashInHand)}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-cyan-400">
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.cost}`}>
                             {money(r.inventoryCost)}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-lime-400">
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.profit}`}>
                             {money(r.profit)}
                           </td>
-                          <td className="border-r border-slate-800/60 px-4 py-3 text-right font-semibold text-orange-400">
+                          <td className={`border-r px-4 py-3 text-right font-semibold ${t.td} ${t.expense}`}>
                             {money(r.expense)}
                           </td>
                           <td
                             className={`px-4 py-3 text-right font-semibold ${
-                              r.netProfit < 0 ? "text-rose-400" : "text-teal-300"
+                              r.netProfit < 0 ? t.netNeg : t.netPos
                             }`}
                           >
                             {netMoney(r.netProfit)}
@@ -1014,26 +1226,22 @@ export default function InventoryHistory() {
                   )}
                 </tbody>
 
-                <tfoot className="sticky bottom-0 bg-[#0b1220]">
-                  <tr className="border-t-2 border-slate-600 text-sm font-bold">
-                    <td colSpan={6} className="px-4 py-3.5 text-right uppercase tracking-wide text-slate-400">
+                <tfoot className={`sticky bottom-0 ${t.tfoot}`}>
+                  <tr className={`border-t-2 text-sm font-bold ${t.tfootBorder}`}>
+                    <td colSpan={6} className={`px-4 py-3.5 text-right uppercase tracking-wide ${t.tfootLabel}`}>
                       Grand Total
                     </td>
-                    <td className="px-4 py-3.5 text-right text-yellow-300">{money(totals.receivable)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.receivable}`}>{money(totals.receivable)}</td>
                     <td className="px-4 py-3.5"></td>
-                    <td className="px-4 py-3.5 text-right text-emerald-400">{money(totals.cashIn)}</td>
-                    <td className="px-4 py-3.5 text-right text-rose-400">{money(totals.cashOut)}</td>
-                    <td className="px-4 py-3.5 text-right text-purple-300">{money(totals.vendorPay)}</td>
-                    <td className="px-4 py-3.5 text-right text-blue-400">{money(totals.ownerCapital)}</td>
-                    <td className="px-4 py-3.5 text-right text-white">{money(totals.cashInHand)}</td>
-                    <td className="px-4 py-3.5 text-right text-cyan-400">{money(totals.inventoryCost)}</td>
-                    <td className="px-4 py-3.5 text-right text-lime-400">{money(totals.profit)}</td>
-                    <td className="px-4 py-3.5 text-right text-orange-400">{money(totals.expense)}</td>
-                    <td
-                      className={`px-4 py-3.5 text-right ${
-                        totals.netProfit < 0 ? "text-rose-400" : "text-teal-300"
-                      }`}
-                    >
+                    <td className={`px-4 py-3.5 text-right ${t.cashIn}`}>{money(totals.cashIn)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.cashOut}`}>{money(totals.cashOut)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.vendor}`}>{money(totals.vendorPay)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.owner}`}>{money(totals.ownerCapital)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.hand}`}>{money(totals.cashInHand)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.cost}`}>{money(totals.inventoryCost)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.profit}`}>{money(totals.profit)}</td>
+                    <td className={`px-4 py-3.5 text-right ${t.expense}`}>{money(totals.expense)}</td>
+                    <td className={`px-4 py-3.5 text-right ${totals.netProfit < 0 ? t.netNeg : t.netPos}`}>
                       {netMoney(totals.netProfit)}
                     </td>
                   </tr>
@@ -1042,41 +1250,49 @@ export default function InventoryHistory() {
             )}
           </div>
 
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-800 px-4 py-3 sm:flex-row">
-            <p className="text-sm text-slate-500">
-              Showing <span className="font-semibold text-slate-300">{showingFrom}</span> to{" "}
-              <span className="font-semibold text-slate-300">{showingTo}</span> of{" "}
-              <span className="font-semibold text-slate-300">{rows.length}</span> records
+          <div
+            className={`flex flex-col items-center justify-between gap-3 border-t px-4 py-3 sm:flex-row ${t.pagerBorder}`}
+          >
+            <p className={`text-sm ${t.pagerText}`}>
+              Showing <span className={`font-semibold ${t.pagerStrong}`}>{showingFrom}</span> to{" "}
+              <span className={`font-semibold ${t.pagerStrong}`}>{showingTo}</span> of{" "}
+              <span className={`font-semibold ${t.pagerStrong}`}>{rows.length}</span> records
             </p>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <PageBtn title="First" onClick={() => setPage(1)} disabled={page === 1}>
+              <PageBtn t={t} title="First" onClick={() => setPage(1)} disabled={page === 1}>
                 <ChevronsLeft size={16} />
               </PageBtn>
-              <PageBtn title="Previous" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+              <PageBtn
+                t={t}
+                title="Previous"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
                 <ChevronLeft size={16} />
               </PageBtn>
 
               {getPageList(page, totalPages).map((p, i) =>
                 p === "..." ? (
-                  <span key={`dots-${i}`} className="px-1 text-slate-600">
+                  <span key={`dots-${i}`} className={`px-1 ${t.dots}`}>
                     ...
                   </span>
                 ) : (
-                  <PageBtn key={p} active={p === page} onClick={() => setPage(p)}>
+                  <PageBtn t={t} key={p} active={p === page} onClick={() => setPage(p)}>
                     {p}
                   </PageBtn>
                 )
               )}
 
               <PageBtn
+                t={t}
                 title="Next"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
               >
                 <ChevronRight size={16} />
               </PageBtn>
-              <PageBtn title="Last" onClick={() => setPage(totalPages)} disabled={page === totalPages}>
+              <PageBtn t={t} title="Last" onClick={() => setPage(totalPages)} disabled={page === totalPages}>
                 <ChevronsRight size={16} />
               </PageBtn>
             </div>
@@ -1084,24 +1300,24 @@ export default function InventoryHistory() {
         </div>
       </div>
 
-      {/* ✅ Products popup - poori list yahan dikhti hai */}
+      {/* Products popup - poori list yahan dikhti hai */}
       {viewProducts && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
           onClick={() => setViewProducts(null)}
         >
           <div
-            className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-slate-700 bg-[#0b1220] shadow-2xl"
+            className={`flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border shadow-2xl ${t.popupBg}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-              <h3 className="text-base font-bold text-white">
-                All Products <span className="text-amber-400">({viewProducts.length})</span>
+            <div className={`flex items-center justify-between border-b px-4 py-3 ${t.popupHead}`}>
+              <h3 className={`text-base font-bold ${t.title}`}>
+                All Products <span className="text-amber-500">({viewProducts.length})</span>
               </h3>
               <button
                 onClick={() => setViewProducts(null)}
                 title="Close"
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/70 text-slate-300 transition hover:bg-slate-700"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition ${t.popupClose}`}
               >
                 <X size={16} />
               </button>
@@ -1109,11 +1325,8 @@ export default function InventoryHistory() {
 
             <ol className="flex-1 space-y-1 overflow-y-auto p-4">
               {viewProducts.map((name, i) => (
-                <li
-                  key={i}
-                  className="flex gap-3 rounded-lg bg-slate-800/40 px-3 py-2 text-sm text-white"
-                >
-                  <span className="w-6 shrink-0 text-right font-semibold text-slate-500">{i + 1}.</span>
+                <li key={i} className={`flex gap-3 rounded-lg px-3 py-2 text-sm ${t.popupItem}`}>
+                  <span className={`w-6 shrink-0 text-right font-semibold ${t.popupNum}`}>{i + 1}.</span>
                   <span className="break-words font-medium">{name}</span>
                 </li>
               ))}
